@@ -15454,6 +15454,15 @@ const POLYTANK_IO={
       this.resetMobileSticks();
     }
   },
+  syncMobileUpgradeBadge(){
+    const badge=document.getElementById('polytank-mobile-upgrade-badge');
+    if(!badge) return;
+    const points=Math.max(0,this.player?.points||0);
+    badge.textContent=String(points);
+    badge.style.display=points>0?'inline-flex':'none';
+    const btn=this.mobileDom.upgradeButton;
+    if(btn) btn.setAttribute('aria-label',points>0?`Open upgrades, ${points} points available`:'Open upgrades');
+  },
   handleMobileMenuToggle(){
     if(!this.mobileControlsEnabled||!this.active) return;
     if(this.menuOpen&&this.pausedByMenu){
@@ -17389,15 +17398,6 @@ const POLYTANK_IO={
       this.mobileUpgradeDockLevel=-1;
       if(this.mobileControlsEnabled) this.manualUpgradeDock=false;
       this.setUpgradeDockVisible(false,preferredHideSide);
-      return;
-    }
-    if(this.mobileControlsEnabled){
-      const currentLevel=this.player.level||1;
-      if(this.mobileUpgradeDockLevel!==currentLevel){
-        this.manualUpgradeDock=true;
-        this.mobileUpgradeDockLevel=currentLevel;
-      }
-      this.setUpgradeDockVisible(this.manualUpgradeDock,'left');
       return;
     }
     const shouldShow=this.manualUpgradeDock||eligible;
@@ -21918,6 +21918,7 @@ const POLYTANK_IO={
     setText('polytank-level-next',`Lvl ${this.player.level} • Score ${(this.player.score||0).toLocaleString()}`);
     setText('polytank-level-progress',`Lvl ${this.player.level} Tank`);
     setText('polytank-level-percent',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Spectating Arena Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`HP ${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
+    this.syncMobileUpgradeBadge();
     if(this.overlayEl) this.overlayEl.classList.toggle('death-spectate-clean',this.player.deadTimer>0&&!!this.deathSpectateTargetId&&this.deathSpectateUiHidden);
     const fill=document.getElementById('polytank-level-fill');
     if(fill) fill.style.width=`${xpRatio*100}%`;
