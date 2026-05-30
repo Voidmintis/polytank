@@ -9,16 +9,15 @@
 html,body{width:100%;height:100%;min-height:100dvh;overflow:hidden;touch-action:none;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);font-family:'Rajdhani',sans-serif;color:var(--text);display:flex;flex-direction:column;position:relative;transition:background 1.5s;overscroll-behavior:none}
 
-#polytank-overlay :is(#polytank-skins-title,#polytank-skins-detail-name,#polytank-branch-title,#polytank-sandbox-title,#polytank-boss-title,#polytank-level-header,#polytank-level-sub,#polytank-leaderboard-title,#polytank-orientation-lock-title,#of-victory-title,#admin-title),
-#admin-panel :is(#admin-title),
-#status,.discovery-toast,#combo-display,#sep-bar-big,#reveal-overlay,#meltdown-overlay,#of-victory{
+#polytank-overlay :is(#polytank-title,#polytank-skins-title,#polytank-branch-title,#polytank-sandbox-title,#polytank-level-name,#polytank-leaderboard-title,#of-victory-title),
+#admin-panel :is(#admin-title){
   -webkit-text-stroke:.55px rgba(28,32,40,.7);
   text-shadow:-1px 0 rgba(28,32,40,.66),1px 0 rgba(28,32,40,.66),0 -1px rgba(28,32,40,.66),0 1px rgba(28,32,40,.66),-1px -1px rgba(28,32,40,.5),1px -1px rgba(28,32,40,.5),-1px 1px rgba(28,32,40,.5),1px 1px rgba(28,32,40,.5);
 }
 
-#polytank-overlay :is(.polytank-menu-label,#polytank-title){
-  -webkit-text-stroke:.55px rgba(255,255,255,.72);
-  text-shadow:-1px 0 rgba(255,255,255,.64),1px 0 rgba(255,255,255,.64),0 -1px rgba(255,255,255,.64),0 1px rgba(255,255,255,.64),-1px -1px rgba(255,255,255,.46),1px -1px rgba(255,255,255,.46),-1px 1px rgba(255,255,255,.46),1px 1px rgba(255,255,255,.46);
+#polytank-overlay :is(.polytank-menu-kicker,.polytank-menu-label,#polytank-copy,#polytank-status-line,#polytank-version-tag,#polytank-name-input,#polytank-local-code-input,#polytank-mode-toggle,#polytank-mode-toggle-label,#polytank-mode-toggle-icon,.polytank-mode-option,.polytank-theme-option,#polytank-dev-mode-pill,#polytank-dev-admin-sub,#polytank-new-btn,#polytank-settings-btn,#polytank-skins-btn,#polytank-skins-subtitle,#polytank-skins-detail-desc,#polytank-skins-detail-unlock,#polytank-skins-close,#admin-code-input,#admin-fusion-btn,#admin-selected-name,#admin-granted-label,#polytank-upgrade-points,.polytank-upgrade-label,.polytank-upgrade-key,.polytank-upgrade-level,.polytank-leader-rank,.polytank-leader-name,#polytank-minimap-label,#polytank-level-header,#polytank-level-sub,#polytank-level-progress,#polytank-branch-copy,#polytank-branch-close,.polytank-branch-name,#polytank-boss-title,#polytank-orientation-lock-title,.polytank-team-switch.active){
+  -webkit-text-stroke:0;
+  text-shadow:none;
 }
 
 #stars{position:fixed;inset:0;pointer-events:none;z-index:0}
