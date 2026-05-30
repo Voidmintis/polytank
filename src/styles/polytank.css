@@ -215,6 +215,7 @@ body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-row{min-height:22px;p
 body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-label{font-size:.54rem}
 body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-key,body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-level{font-size:.4rem}
 body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-btn{width:24px;font-size:.62rem}
+body.mobile-touch .polytank-joystick{bottom:16px;width:124px;height:124px}
 body.mobile-touch #polytank-bottom-hud{width:min(360px,calc(100vw - 276px));min-width:min(220px,calc(100vw - 286px));bottom:88px}
 body.mobile-touch #polytank-minimap-shell{right:10px;top:56px;bottom:auto;width:min(132px,24vw)}
 body.mobile-touch #polytank-scoreboard-shell{right:10px;top:206px;width:min(168px,28vw)}
@@ -605,7 +606,25 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   #polytank-name-input{font-size:1.7rem}
   #polytank-menu-select-row{grid-template-columns:1fr}
   #polytank-main-action-row{grid-template-columns:1fr}
-  #polytank-play-btn,#polytank-party-link-btn,#polytank-new-btn{grid-column:1;grid-row:auto}
+  #polytank-play-btn,#polytank-party-link-btn,#polytank-new-btn{grid-column:1;grid-row:auto;min-height:40px;font-size:.92rem}
+  #polytank-settings-btn{min-height:36px;font-size:.66rem}
+  #polytank-mode-toggle{height:56px;font-size:.92rem}
+  .polytank-mode-option{min-height:36px;font-size:1.18rem}
+}
+
+@media (max-width:920px) and (orientation:landscape) and (pointer:coarse){
+  body.mobile-touch #polytank-title{font-size:2.2rem}
+  body.mobile-touch #polytank-copy{font-size:.76rem}
+  body.mobile-touch #polytank-name-input{padding:10px 12px;font-size:1.2rem}
+  body.mobile-touch #polytank-main-action-row{gap:6px;row-gap:6px}
+  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn{min-height:34px;font-size:.68rem;border-width:1px}
+  body.mobile-touch #polytank-upgrade-dock{top:50px;width:min(176px,35vw)}
+  body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points{padding:3px 6px;font-size:.34rem}
+  body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points strong{font-size:.48rem}
+  body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-row{min-height:18px;gap:3px;padding-left:6px}
+  body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-label{font-size:.46rem}
+  body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-key,body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-level{font-size:.34rem}
+  body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-btn{width:20px;font-size:.52rem}
 }
 
 #polytank-menu-card.bounce-in{animation:polytankMenuBounce .48s cubic-bezier(.12,.84,.24,1.12)}
