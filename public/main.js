@@ -15479,8 +15479,12 @@ const POLYTANK_IO={
     if(!this.mobileControlsEnabled||!this.active||!this.player) return;
     this.manualUpgradeDock=!this.manualUpgradeDock;
     if(this.overlayEl) this.overlayEl.classList.toggle('show-upgrades',this.manualUpgradeDock);
-    if(!this.manualUpgradeDock) this.mobileUpgradeDockLevel=this.player.level||1;
-    this.syncUpgradeDock('left');
+    if(this.manualUpgradeDock){
+      this.setUpgradeDockVisible(true,'left');
+      return;
+    }
+    this.mobileUpgradeDockLevel=this.player.level||1;
+    this.setUpgradeDockVisible(false,'left');
   },
   normalizePlayerName(value){
     const cleaned=String(value||'').replace(/[^a-z0-9 _\-\[\]]/gi,' ').replace(/\s+/g,' ').trim();
@@ -17394,9 +17398,12 @@ const POLYTANK_IO={
       return;
     }
     const eligible=this.player.points>0&&this.player.deadTimer<=0&&(this.player.level||1)>=this.upgradeUnlockLevel;
+    if(this.mobileControlsEnabled){
+      this.setUpgradeDockVisible(this.manualUpgradeDock,this.manualUpgradeDock?'left':preferredHideSide);
+      return;
+    }
     if(!eligible){
       this.mobileUpgradeDockLevel=-1;
-      if(this.mobileControlsEnabled) this.manualUpgradeDock=false;
       this.setUpgradeDockVisible(false,preferredHideSide);
       return;
     }
