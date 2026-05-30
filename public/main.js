@@ -21524,6 +21524,11 @@ const POLYTANK_IO={
     this.spawnBurst(tank.x,tank.y,tank.bodyColor,18,260);
     this.awardScoreToOwner(ownerId,tank.isPlayer?2400:950);
     const owner=this.getTankById(ownerId);
+    if(owner&&owner.id!==tank.id&&tank.isPlayer){
+      const defeatedLevel=Math.max(1,Math.round(tank.level||1));
+      const levelBasedKillXp=Math.min(160,Math.max(18,Math.round(8+defeatedLevel*2.5)));
+      this.awardXpToOwner(ownerId,levelBasedKillXp);
+    }
     const previousName=tank.displayName;
     if(owner) owner.kills=(owner.kills||0)+1;
     if(this.isCtfMode()&&this.ctfFlags.length){
