@@ -9,6 +9,13 @@
 html,body{width:100%;height:100%;min-height:100dvh;overflow:hidden;touch-action:none;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);font-family:'Rajdhani',sans-serif;color:var(--text);display:flex;flex-direction:column;position:relative;transition:background 1.5s;overscroll-behavior:none}
 
+#polytank-overlay :is(div,span,strong,small,p,label,button,input,select,option,textarea,h1,h2,h3,h4,h5,h6),
+#admin-panel :is(div,span,strong,small,p,label,button,input,select,option,textarea),
+#status,.discovery-toast,#combo-display,#sep-bar-big,#reveal-overlay,#meltdown-overlay,#of-victory{
+  -webkit-text-stroke:.55px rgba(28,32,40,.7);
+  text-shadow:-1px 0 rgba(28,32,40,.66),1px 0 rgba(28,32,40,.66),0 -1px rgba(28,32,40,.66),0 1px rgba(28,32,40,.66),-1px -1px rgba(28,32,40,.5),1px -1px rgba(28,32,40,.5),-1px 1px rgba(28,32,40,.5),1px 1px rgba(28,32,40,.5);
+}
+
 #stars{position:fixed;inset:0;pointer-events:none;z-index:0}
 .star-layer{position:absolute;top:-40%;left:-40%;width:180%;height:180%;will-change:transform}
 .star{position:absolute;border-radius:50%;background:#fff;animation:twinkle var(--d,3s) var(--delay,0s) ease-in-out infinite alternate}
@@ -74,17 +81,17 @@ body.shake-lg{animation:shake-lg .7s ease}
 @keyframes warp-distort{0%,100%{filter:none}25%{filter:hue-rotate(20deg) saturate(2) blur(.6px) brightness(1.1)}50%{filter:hue-rotate(-30deg) saturate(3) blur(1.4px) brightness(.85)}75%{filter:hue-rotate(25deg) saturate(2.5) blur(1px) brightness(1.15)}}
 body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 
-#polytank-overlay{position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:17;display:none;overflow:hidden;pointer-events:none;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.03) 0%,rgba(255,255,255,0) 42%),linear-gradient(180deg,#34343a 0%,#2a2a30 38%,#232328 100%)}
+#polytank-overlay{position:fixed;left:0;top:0;width:100vw;height:100dvh;min-height:100dvh;z-index:17;display:none;overflow:hidden;pointer-events:none;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.03) 0%,rgba(255,255,255,0) 42%),linear-gradient(180deg,#34343a 0%,#2a2a30 38%,#232328 100%)}
 #polytank-overlay::before{content:'';position:absolute;inset:0;z-index:12;pointer-events:none;opacity:0;background:#000;transition:opacity .36s ease}
 #polytank-overlay.show{display:block;pointer-events:auto}
 #polytank-overlay.wait-transition::before{opacity:1}
 #polytank-overlay.launch-transition::before{opacity:.96}
 #polytank-overlay.game-blur #polytank-canvas{filter:blur(13px) saturate(.9);transition:filter .5s ease}
 #polytank-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
-#polytank-menu{position:absolute;inset:0;z-index:6;display:none;align-items:center;justify-content:center;padding:10px;overflow:hidden;--polytank-menu-fit:clamp(.46,calc((100vh - 18px)/1320),1);--cio-glow-x:50%;--cio-glow-y:34%;background:radial-gradient(circle at 50% 18%,rgba(120,190,255,.12),transparent 34%),rgba(8,12,20,.42);backdrop-filter:blur(8px)}
+#polytank-menu{position:absolute;inset:0;z-index:6;display:none;align-items:center;justify-content:center;padding:10px;overflow:hidden;--polytank-menu-fit:clamp(.42,calc((100dvh - 18px)/1320),1);--cio-glow-x:50%;--cio-glow-y:34%;background:radial-gradient(circle at 50% 18%,rgba(120,190,255,.12),transparent 34%),rgba(8,12,20,.42);backdrop-filter:blur(8px)}
 #polytank-menu.open{display:flex;pointer-events:auto}
 #polytank-menu::after{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.95;background:radial-gradient(circle at var(--cio-glow-x) var(--cio-glow-y),rgba(116,190,255,.16) 0%,rgba(116,190,255,0) 34%),radial-gradient(circle at 50% 72%,rgba(255,255,255,.05) 0%,rgba(255,255,255,0) 36%);transition:background .2s ease;animation:polytank-menu-bg-float 9s ease-in-out infinite}
-#polytank-menu-card{width:min(1280px,calc(100vw - 20px));height:calc(100vh - 20px);max-height:none;margin:0;padding:18px 20px;border-radius:22px;border:1px solid rgba(150,208,255,.16);overflow:hidden;--cio-shift-x:0px;--cio-shift-y:0px;--cio-tilt-x:0deg;--cio-tilt-y:0deg;--cio-scale:1;display:flex;flex-direction:column;zoom:var(--polytank-menu-fit);background:linear-gradient(180deg,rgba(17,23,34,.95),rgba(11,15,24,.96));transform:scale(var(--cio-scale));transition:box-shadow .22s ease,border-color .22s ease;box-shadow:0 28px 80px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.05),0 0 34px rgba(95,170,255,.08);position:relative;z-index:1}
+#polytank-menu-card{width:min(1280px,calc(100vw - 20px));height:calc(100dvh - 20px);max-height:none;margin:0;padding:18px 20px;border-radius:22px;border:1px solid rgba(150,208,255,.16);overflow:hidden;--cio-shift-x:0px;--cio-shift-y:0px;--cio-tilt-x:0deg;--cio-tilt-y:0deg;--cio-scale:1;display:flex;flex-direction:column;zoom:var(--polytank-menu-fit);background:linear-gradient(180deg,rgba(17,23,34,.95),rgba(11,15,24,.96));transform:scale(var(--cio-scale));transition:box-shadow .22s ease,border-color .22s ease;box-shadow:0 28px 80px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.05),0 0 34px rgba(95,170,255,.08);position:relative;z-index:1}
 #polytank-menu-card::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:.88;background:radial-gradient(circle at var(--cio-glow-x) var(--cio-glow-y),rgba(141,214,255,.16) 0%,rgba(141,214,255,0) 40%),linear-gradient(115deg,rgba(255,255,255,.09),rgba(255,255,255,0) 18%,rgba(255,255,255,.06) 42%,rgba(255,255,255,0) 62%);mix-blend-mode:screen}
 @supports not (zoom:1){#polytank-menu-card{--cio-scale:var(--polytank-menu-fit);transform-origin:center center}}
 .polytank-menu-kicker{font-family:'Orbitron',monospace;font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;color:rgba(138,210,255,.7)}
@@ -142,7 +149,7 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 .polytank-local-roster-row.self{border-color:rgba(255,226,118,.26);background:rgba(93,80,24,.16)}
 .polytank-menu-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 #polytank-overlay.launch-transition #polytank-menu-card{transform:scale(1.08);opacity:0;filter:blur(12px);transition:transform .45s ease,opacity .45s ease,filter .45s ease}
-#polytank-overlay.waiting-room #polytank-menu-card{width:calc(100vw - 28px);height:calc(100vh - 28px);max-width:none}
+#polytank-overlay.waiting-room #polytank-menu-card{width:calc(100vw - 28px);height:calc(100dvh - 28px);max-width:none}
 #polytank-overlay.waiting-room #polytank-copy,#polytank-overlay.waiting-room #polytank-menu-preview,#polytank-overlay.waiting-room #polytank-live-grid,#polytank-overlay.waiting-room #polytank-menu-session,#polytank-overlay.waiting-room .polytank-menu-actions{display:none}
 #polytank-overlay.waiting-room #polytank-menu-form{grid-template-columns:minmax(0,1fr);gap:12px}
 #polytank-overlay.waiting-room #polytank-local-party-shell{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
@@ -207,18 +214,32 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 #polytank-orientation-lock-copy{margin-top:8px;font-family:'Rajdhani',sans-serif;font-size:1rem;line-height:1.1;color:rgba(220,230,244,.86)}
 
 body.mobile-touch #polytank-mobile-controls{display:block}
-body.mobile-touch #polytank-mobile-menu-btn{display:inline-flex}
-body.mobile-touch #polytank-upgrade-dock{left:10px;right:auto;bottom:auto;top:56px;width:min(196px,38vw);max-height:none;overflow:visible;z-index:8}
-body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points{padding:4px 7px;font-size:.38rem}
-body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points strong{font-size:.54rem}
-body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-row{min-height:22px;padding-left:7px;gap:4px}
-body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-label{font-size:.54rem}
-body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-key,body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-level{font-size:.4rem}
-body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-btn{width:24px;font-size:.62rem}
-body.mobile-touch .polytank-joystick{bottom:16px;width:124px;height:124px}
-body.mobile-touch #polytank-bottom-hud{width:min(360px,calc(100vw - 276px));min-width:min(220px,calc(100vw - 286px));bottom:88px}
-body.mobile-touch #polytank-minimap-shell{right:10px;top:56px;bottom:auto;width:min(132px,24vw)}
-body.mobile-touch #polytank-scoreboard-shell{right:10px;top:206px;width:min(168px,28vw)}
+body.mobile-touch #polytank-mobile-menu-btn{display:inline-flex;left:8px;top:calc(6px + var(--safe-top));min-width:58px;height:34px;padding:0 10px;font-size:.45rem}
+body.mobile-touch #polytank-menu{padding:calc(4px + var(--safe-top)) calc(4px + var(--safe-bottom));--polytank-menu-fit:clamp(.32,calc((100dvh - 12px)/1480),.74)}
+body.mobile-touch #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px);padding:8px 8px 6px;border-radius:14px}
+body.mobile-touch #polytank-overlay.waiting-room #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px)}
+body.mobile-touch #polytank-menu-form{gap:6px}
+body.mobile-touch #polytank-name-input{padding:10px 12px;font-size:1.12rem;border-radius:12px}
+body.mobile-touch #polytank-local-code-input{padding:8px 10px;font-size:.52rem;border-radius:10px}
+body.mobile-touch #polytank-menu-preview{gap:6px}
+body.mobile-touch #polytank-live-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+body.mobile-touch .polytank-menu-banner{padding:7px 9px;font-size:.72rem;line-height:1.02}
+body.mobile-touch #polytank-main-action-row{gap:6px;row-gap:6px}
+body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-skins-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn{min-height:32px;padding:0 10px;font-size:.6rem;letter-spacing:.08em}
+body.mobile-touch #polytank-mode-toggle{height:42px;font-size:.72rem}
+body.mobile-touch .polytank-mode-option{min-height:28px;font-size:.72rem;padding:0 10px}
+body.mobile-touch #polytank-mode-dropdown{max-height:min(30vh,180px)}
+body.mobile-touch #polytank-upgrade-dock{left:8px;right:auto;top:calc(48px + var(--safe-top));width:min(176px,34vw);max-height:none;overflow:visible;z-index:8}
+body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points{padding:3px 6px;font-size:.34rem}
+body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points strong{font-size:.48rem}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-row{min-height:18px;gap:3px;padding-left:6px}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-label{font-size:.46rem}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-key,body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-level{font-size:.34rem}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-btn{width:20px;font-size:.52rem}
+body.mobile-touch .polytank-joystick{bottom:calc(8px + var(--safe-bottom));width:110px;height:110px}
+body.mobile-touch #polytank-bottom-hud{width:min(320px,calc(100vw - 210px));min-width:min(190px,calc(100vw - 220px));bottom:calc(70px + var(--safe-bottom))}
+body.mobile-touch #polytank-minimap-shell{right:8px;top:calc(44px + var(--safe-top));bottom:auto;width:min(122px,22vw)}
+body.mobile-touch #polytank-scoreboard-shell{right:8px;top:calc(162px + var(--safe-top));width:min(158px,26vw)}
 
 body.mobile-touch.mobile-portrait-lock #polytank-orientation-lock{display:flex;pointer-events:auto}
 body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
@@ -352,18 +373,18 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 .tt-footer{margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-size:.56rem;line-height:1.28;color:rgba(188,209,245,.58)}
 
 @media (max-width:980px){
-  #polytank-menu{padding:6px;--polytank-menu-fit:clamp(.4,calc((100vh - 8px)/1380),.9)}
-  #polytank-menu-card{width:calc(100vw - 12px);height:calc(100vh - 12px);padding:14px;border-radius:18px}
+  #polytank-menu{padding:6px;--polytank-menu-fit:clamp(.4,calc((100dvh - 8px)/1380),.9)}
+  #polytank-menu-card{width:calc(100vw - 12px);height:calc(100dvh - 12px);padding:14px;border-radius:18px}
   #polytank-menu-form{grid-template-columns:1fr;gap:8px}
   #polytank-menu-preview{grid-template-columns:repeat(3,minmax(0,1fr))}
   #polytank-local-party-room{grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:8px}
   #polytank-local-party-canvas{max-width:150px}
   .polytank-perma-head{flex-direction:column}
-  #polytank-scoreboard-shell{right:12px;top:222px;width:min(214px,44vw)}
-  #polytank-upgrade-dock{width:min(208px,calc(100vw - 24px));left:12px;bottom:12px;right:auto;top:auto}
-  #polytank-minimap-shell{right:12px;top:12px;bottom:auto;width:min(174px,36vw)}
+  #polytank-scoreboard-shell{right:12px;top:calc(222px + var(--safe-top));width:min(214px,44vw)}
+  #polytank-upgrade-dock{width:min(208px,calc(100vw - 24px));left:12px;bottom:calc(12px + var(--safe-bottom));right:auto;top:auto}
+  #polytank-minimap-shell{right:12px;top:calc(12px + var(--safe-top));bottom:auto;width:min(174px,36vw)}
   #polytank-boss-panel{width:min(92vw,540px)}
-  #polytank-bottom-hud{width:min(92vw,420px);min-width:0;bottom:10px}
+  #polytank-bottom-hud{width:min(92vw,420px);min-width:0;bottom:calc(10px + var(--safe-bottom))}
   #polytank-branch-panel{right:12px;left:auto;top:126px;width:min(92vw,430px)}
   #polytank-sandbox-toggle{right:12px;top:64px}
   #polytank-sandbox-panel{right:12px;top:112px;width:min(92vw,360px)}
@@ -439,7 +460,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-mode-toggle:active{transform:translateY(0);filter:brightness(.98)}
 #polytank-mode-toggle.open #polytank-mode-toggle-icon{transform:rotate(180deg)}
 #polytank-mode-toggle-icon{transition:transform .16s ease}
-#polytank-mode-dropdown{display:none;border-radius:8px;overflow:hidden;border:3px solid rgba(48,54,63,.4);box-shadow:0 14px 28px rgba(18,23,33,.22)}
+#polytank-mode-dropdown{display:none;border-radius:8px;overflow:hidden;border:3px solid rgba(48,54,63,.4);box-shadow:0 14px 28px rgba(18,23,33,.22);max-height:min(34vh,240px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #polytank-mode-dropdown.open{display:grid}
 .polytank-mode-option{
   border:0;
