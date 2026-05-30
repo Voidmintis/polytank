@@ -15347,10 +15347,38 @@ const POLYTANK_IO={
         this.toggleMobileUpgradeDock();
       });
     }
+    this.bindMobileUpgradeDockInteractions();
     document.body.classList.toggle('mobile-touch',this.mobileControlsEnabled);
     this.bindMobileStick('left');
     this.bindMobileStick('right');
     this.refreshMobileUiState();
+  },
+  bindMobileUpgradeDockInteractions(){
+    const dock=document.getElementById('polytank-upgrade-dock');
+    if(!dock||dock.dataset.mobileBound==='1') return;
+    dock.dataset.mobileBound='1';
+    // Some mobile browsers can swallow inline onclick handlers inside transformed overlays.
+    // Handle upgrade taps directly here and suppress duplicate click propagation.
+    dock.addEventListener('pointerup',event=>{
+      if(!this.mobileControlsEnabled||!this.active||!this.player) return;
+      if(event.pointerType==='mouse'&&event.button!==0) return;
+      const target=event.target instanceof Element?event.target:null;
+      if(!target||target.closest('#polytank-upgrade-close')) return;
+      const row=target.closest('.polytank-upgrade-row');
+      if(!row) return;
+      const kind=row.getAttribute('data-kind')||'';
+      if(!kind) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.buyUpgrade(kind);
+    },{passive:false});
+    dock.addEventListener('click',event=>{
+      if(!this.mobileControlsEnabled) return;
+      const target=event.target instanceof Element?event.target:null;
+      if(!target||!target.closest('.polytank-upgrade-row')) return;
+      event.preventDefault();
+      event.stopPropagation();
+    },true);
   },
   bindMobileStick(side){
     const stickEl=side==='left'?this.mobileDom.left:this.mobileDom.right;
