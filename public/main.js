@@ -17556,6 +17556,16 @@ const POLYTANK_IO={
     this.bossPanelEl.classList.toggle('open',shouldOpen);
     if(shouldOpen) this.animatePopup(this.bossPanelEl);
   },
+  requestFullscreenIfAvailable(){
+    if(!this.mobileControlsEnabled||document.fullscreenElement) return;
+    const target=this.overlayEl||document.documentElement;
+    const request=target.requestFullscreen||target.webkitRequestFullscreen||target.msRequestFullscreen;
+    if(typeof request!=='function') return;
+    try{
+      const result=request.call(target);
+      if(result&&typeof result.catch==='function') result.catch(()=>{});
+    }catch(_err){}
+  },
   startMatch(options={}){
     if(!this.active) return;
     if(this.inMatch&&this.menuOpen){
@@ -17575,6 +17585,7 @@ const POLYTANK_IO={
       toast('Polytank.io progress restored.','#9feaff');
       return;
     }
+    this.requestFullscreenIfAvailable();
     this.triggerLaunchTransition(()=>{
       if(forceFresh) this.clearProgress();
       if(this.overlayEl) this.overlayEl.classList.remove('waiting-room');
