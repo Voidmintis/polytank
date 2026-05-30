@@ -7296,16 +7296,16 @@ function setMode(m){
   if(CREATOR.active&&m!=='creator') CREATOR.exit();
   if(advActive&&m!=='adventure') advExit();
   if(m!=='orbfight') orbFightStop();
-  if(typeof CIRCLE_IO!=='undefined'&&CIRCLE_IO&&m!=='circleio') CIRCLE_IO.stop();
-  if(els.status) els.status.style.display=m==='circleio'?'none':'';
+  if(typeof POLYTANK_IO!=='undefined'&&POLYTANK_IO&&m!=='polytank') POLYTANK_IO.stop();
+  if(els.status) els.status.style.display=m==='polytank'?'none':'';
   const subtitleEl=document.getElementById('subtitle');
-  if(subtitleEl) subtitleEl.style.display=m==='circleio'?'none':'';
+  if(subtitleEl) subtitleEl.style.display=m==='polytank'?'none':'';
   const skinsBtn=document.getElementById('skins-btn');
-  if(skinsBtn) skinsBtn.style.display=m==='circleio'?'none':'';
-  if(m==='circleio'&&typeof SKINS!=='undefined'&&SKINS&&SKINS.active) SKINS.hide();
+  if(skinsBtn) skinsBtn.style.display=m==='polytank'?'none':'';
+  if(m==='polytank'&&typeof SKINS!=='undefined'&&SKINS&&SKINS.active) SKINS.hide();
   SFX.tab();
   document.querySelectorAll('.tab').forEach(t=>{
-    const key={fusion:'fus',puzzle:'puz',gravity:'gra',ifusion:'inf',scifi:'sci',adventure:'adv',boss:'bos',orbfight:'orb',circleio:'cir',creator:'cre'}[m];
+    const key={fusion:'fus',puzzle:'puz',gravity:'gra',ifusion:'inf',scifi:'sci',adventure:'adv',boss:'bos',orbfight:'orb',polytank:'cir',creator:'cre'}[m];
     t.classList.toggle('active',t.textContent.toLowerCase().includes(key));
   });
   bossRun=0;
@@ -7318,7 +7318,7 @@ function setMode(m){
   else els.recipeHint.classList.remove('show');
   if(m==='creator'){ CREATOR.enter(); return; }
   if(m==='orbfight'){ orbFightEnter(); return; }
-  if(m==='circleio'){ CIRCLE_IO.enter(); return; }
+  if(m==='polytank'){ POLYTANK_IO.enter(); return; }
   if(m==='ifusion'){ IFUSION.enter(); return; }
   // Show main circles for all other modes
   [els.red,els.blue,els.green].forEach(e=>e.classList.remove('hidden'));
@@ -9271,7 +9271,7 @@ function adminSetEnabled(enabled){
   const content=document.getElementById('admin-content');
   if(lock) lock.style.display=adminUnlocked?'none':'block';
   if(content) content.style.display=adminUnlocked?'flex':'none';
-  if(!adminUnlocked&&typeof CIRCLE_IO!=='undefined'&&CIRCLE_IO&&typeof CIRCLE_IO.toggleBossPanel==='function') CIRCLE_IO.toggleBossPanel(false);
+  if(!adminUnlocked&&typeof POLYTANK_IO!=='undefined'&&POLYTANK_IO&&typeof POLYTANK_IO.toggleBossPanel==='function') POLYTANK_IO.toggleBossPanel(false);
   adminRefreshMissionBossUnlock();
   adminRefreshArenaCloserButton();
   adminRefreshMothershipButton();
@@ -9304,15 +9304,15 @@ const ADMIN_ITEMS={
   mission_boss_spire:{label:'Helix Sentinel',color:'#ffb357',type:'orbfight-boss',orbType:'mission_boss_spire'},
   mission_boss_eclipse:{label:'Eclipse Regent',color:'#93a6ff',type:'orbfight-boss',orbType:'mission_boss_eclipse'},
   mission_boss_cataclysm:{label:'Cataclysm Engine',color:'#ff6d8d',type:'orbfight-boss',orbType:'mission_boss_cataclysm'},
-  arena_closer:{label:'Play as Arena Closer',color:'#ffe777',type:'circleio-admin'},
-  mothership_admin:{label:'Play as Mothership',color:'#28c7ff',type:'circleio-admin'},
-  circleio_centerboss:{label:'Center Boss',color:'#efe06d',type:'circleio-boss'},
-  circleio_alpha:{label:'Alpha Pentagon',color:'#8ba0ff',type:'circleio-boss'},
-  fallen_twin:{label:'Fallen Twin',color:'#a1a8b8',type:'circleio-boss'},
-  fallen_destroyer:{label:'Fallen Destroyer',color:'#8d93a0',type:'circleio-boss'},
-  fallen_overlord:{label:'Fallen Overlord',color:'#9aa2af',type:'circleio-boss'},
-  fallen_octo:{label:'Fallen Octo',color:'#9098a7',type:'circleio-boss'},
-  fallen_necromancer:{label:'Fallen Necromancer',color:'#a8afbc',type:'circleio-boss'},
+  arena_closer:{label:'Play as Arena Closer',color:'#ffe777',type:'polytank-admin'},
+  mothership_admin:{label:'Play as Mothership',color:'#28c7ff',type:'polytank-admin'},
+  polytank_centerboss:{label:'Center Boss',color:'#efe06d',type:'polytank-boss'},
+  polytank_alpha:{label:'Alpha Pentagon',color:'#8ba0ff',type:'polytank-boss'},
+  fallen_twin:{label:'Fallen Twin',color:'#a1a8b8',type:'polytank-boss'},
+  fallen_destroyer:{label:'Fallen Destroyer',color:'#8d93a0',type:'polytank-boss'},
+  fallen_overlord:{label:'Fallen Overlord',color:'#9aa2af',type:'polytank-boss'},
+  fallen_octo:{label:'Fallen Octo',color:'#9098a7',type:'polytank-boss'},
+  fallen_necromancer:{label:'Fallen Necromancer',color:'#a8afbc',type:'polytank-boss'},
 };
 const ADMIN_BOSS_KEYS=['boss_1','boss_2','boss_3','boss_4','boss_5','infinite'];
 const ADMIN_MISSION_BOSS_KEYS=['mission_boss_spire','mission_boss_eclipse','mission_boss_cataclysm'];
@@ -9402,7 +9402,7 @@ function adminRefreshMissionBossUnlock(){
 function adminRefreshArenaCloserButton(){
   const button=document.getElementById('admin-arena-closer-btn');
   if(!button) return;
-  const active=typeof CIRCLE_IO!=='undefined'&&CIRCLE_IO&&CIRCLE_IO.player&&CIRCLE_IO.player.specialRole==='arenaCloser';
+  const active=typeof POLYTANK_IO!=='undefined'&&POLYTANK_IO&&POLYTANK_IO.player&&POLYTANK_IO.player.specialRole==='arenaCloser';
   button.classList.toggle('active',active);
   button.textContent=active?'Playing as Arena Closer':'Play as Arena Closer';
 }
@@ -9410,7 +9410,7 @@ function adminRefreshArenaCloserButton(){
 function adminRefreshMothershipButton(){
   const button=document.getElementById('admin-mothership-btn');
   if(!button) return;
-  const active=typeof CIRCLE_IO!=='undefined'&&CIRCLE_IO&&CIRCLE_IO.player&&CIRCLE_IO.player.specialRole==='mothership';
+  const active=typeof POLYTANK_IO!=='undefined'&&POLYTANK_IO&&POLYTANK_IO.player&&POLYTANK_IO.player.specialRole==='mothership';
   button.classList.toggle('active',active);
   button.textContent=active?'Playing as Mothership':'Play as Mothership';
 }
@@ -9427,8 +9427,8 @@ function adminSetScale(rawValue){
   const next=Math.max(0.35,Math.min(2.6,Number(rawValue)||1));
   adminScaleValue=Math.round(next*100)/100;
   adminRefreshScaleControl();
-  if(typeof CIRCLE_IO!=='undefined'&&CIRCLE_IO&&typeof CIRCLE_IO.setAdminScale==='function'){
-    CIRCLE_IO.setAdminScale(adminScaleValue);
+  if(typeof POLYTANK_IO!=='undefined'&&POLYTANK_IO&&typeof POLYTANK_IO.setAdminScale==='function'){
+    POLYTANK_IO.setAdminScale(adminScaleValue);
   }
 }
 
@@ -9525,13 +9525,13 @@ function adminPlayAsArenaCloser(){
   if(!adminUnlocked){toast('Admin access required','#ff8866');return;}
   document.getElementById('admin-panel').classList.remove('open');
   const activate=()=>{
-    if(typeof CIRCLE_IO==='undefined'||!CIRCLE_IO) return;
-    CIRCLE_IO.activateArenaCloser();
+    if(typeof POLYTANK_IO==='undefined'||!POLYTANK_IO) return;
+    POLYTANK_IO.activateArenaCloser();
     adminRefreshArenaCloserButton();
     adminRefreshMothershipButton();
   };
-  if(mode!=='circleio'){
-    setMode('circleio');
+  if(mode!=='polytank'){
+    setMode('polytank');
     setTimeout(activate,180);
   } else {
     activate();
@@ -9542,13 +9542,13 @@ function adminPlayAsMothership(){
   if(!adminUnlocked){toast('Admin access required','#ff8866');return;}
   document.getElementById('admin-panel').classList.remove('open');
   const activate=()=>{
-    if(typeof CIRCLE_IO==='undefined'||!CIRCLE_IO) return;
-    CIRCLE_IO.activateMothership();
+    if(typeof POLYTANK_IO==='undefined'||!POLYTANK_IO) return;
+    POLYTANK_IO.activateMothership();
     adminRefreshArenaCloserButton();
     adminRefreshMothershipButton();
   };
-  if(mode!=='circleio'){
-    setMode('circleio');
+  if(mode!=='polytank'){
+    setMode('polytank');
     setTimeout(activate,180);
   } else {
     activate();
@@ -14974,9 +14974,9 @@ function ofSelectOrb(k){ OF.selectOrb(k); }
 function ofStartBattle(){ OF.startBattle(); }
 
 // ══════════════════════════════════════════
-// ✦ CIRCLE.IO SKINS DATA
+// ✦ Polytank.io SKINS DATA
 // ══════════════════════════════════════════
-const CIRCLEIO_SKINS_DATA={
+const polytank_SKINS_DATA={
   body:[
     {id:'default',name:'Team Classic',rarity:'common',desc:'Your standard team-colored hull.',unlock:'free',swatchClass:'cio-swatch-default-body'},
     {id:'shadow',name:'Shadow',rarity:'common',desc:'A dark silhouette that blends with the night.',unlock:'free',swatchClass:'cio-swatch-shadow',overrideColor:'#1a1a2e',overrideBarrel:'#0f0f1a'},
@@ -15018,7 +15018,7 @@ const CIRCLEIO_SKINS_DATA={
   ],
 };
 
-const CIRCLE_IO={
+const POLYTANK_IO={
   active:false,
   initialized:false,
   overlayEl:null,
@@ -15064,14 +15064,14 @@ const CIRCLE_IO={
   gameVariant:'ffa',
   playerTeam:'blue',
   playerName:'',
-  nameStorageKey:'circle_alchemy_circleio_name_v1',
-  mapThemeStorageKey:'circle_alchemy_circleio_map_theme_v1',
-  progressStorageKey:'circle_alchemy_circleio_progress_v1',
-  circleMetaStorageKey:'circle_alchemy_circleio_meta_v1',
+  nameStorageKey:'circle_alchemy_polytank_name_v1',
+  mapThemeStorageKey:'circle_alchemy_polytank_map_theme_v1',
+  progressStorageKey:'circle_alchemy_polytank_progress_v1',
+  circleMetaStorageKey:'circle_alchemy_polytank_meta_v1',
   mapTheme:'light',
   settingsPanelOpen:false,
   skinsShopOpen:false,
-  skinsStorageKey:'circle_alchemy_circleio_skins_v2',
+  skinsStorageKey:'circle_alchemy_polytank_skins_v2',
   activeSkins:{body:'default',cannon:'default',bullet:'default',frame:'none'},
   skinsTab:'body',
   skinsFocusId:null,
@@ -15086,8 +15086,8 @@ const CIRCLE_IO={
   modeObjective:{dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:''},
   waitingTransitionTimer:0,
   launchTransitionTimer:0,
-  localPartyChannelName:'circle_alchemy_circleio_local_party_v1',
-  localPartyStoragePrefix:'circle_alchemy_circleio_local_party_room_',
+  localPartyChannelName:'circle_alchemy_polytank_local_party_v1',
+  localPartyStoragePrefix:'circle_alchemy_polytank_local_party_room_',
   localPartyClientId:'',
   localPartyChannel:null,
   localPartyCode:'',
@@ -15124,7 +15124,7 @@ const CIRCLE_IO={
   guardId:0,
   dominatorId:0,
   bossEntityId:0,
-  bossHotkeyKeys:['circleio_alpha','fallen_twin','fallen_destroyer','fallen_overlord','fallen_octo','fallen_necromancer'],
+  bossHotkeyKeys:['polytank_alpha','fallen_twin','fallen_destroyer','fallen_overlord','fallen_octo','fallen_necromancer'],
   teamStyles:{
     blue:{body:'#44c3ff',barrel:'#deefff',bullet:'#88e9ff',zone:'rgba(70,185,255,.11)',spawn:'rgba(80,200,255,.2)',mini:'#66cdff'},
     red:{body:'#ff666f',barrel:'#ffd7c6',bullet:'#ffb385',zone:'rgba(255,90,102,.1)',spawn:'rgba(255,110,126,.2)',mini:'#ff8b92'},
@@ -15150,7 +15150,7 @@ const CIRCLE_IO={
   upgradeOrder:['regen','maxHealth','bodyDamage','bulletSpeed','bulletPenetration','bulletDamage','reload','moveSpeed'],
   permaUpgradeOrder:['spawnLevel','startingPoints','hardenedHull','coreBallistics','kineticFeed','survivorProtocol'],
   permaUpgradeDefs:{
-    spawnLevel:{label:'Spawn Level',desc:'+2 starting levels every fresh Circle.io run.',max:6,baseCost:30,stepCost:26},
+    spawnLevel:{label:'Spawn Level',desc:'+2 starting levels every fresh Polytank.io run.',max:6,baseCost:30,stepCost:26},
     startingPoints:{label:'Reserve Points',desc:'+1 unspent upgrade point on every fresh deployment.',max:6,baseCost:38,stepCost:30},
     hardenedHull:{label:'Hardened Hull',desc:'+12% max health and +6% body damage per rank.',max:8,baseCost:44,stepCost:34},
     coreBallistics:{label:'Core Ballistics',desc:'+12% bullet damage and +8% penetration per rank.',max:8,baseCost:48,stepCost:38},
@@ -15249,13 +15249,13 @@ const CIRCLE_IO={
   },
   bind(){
     if(this.initialized) return;
-    this.overlayEl=document.getElementById('circleio-overlay');
+    this.overlayEl=document.getElementById('polytank-overlay');
     if(this.overlayEl&&this.overlayEl.parentElement!==document.body) document.body.appendChild(this.overlayEl);
-    this.bossPanelEl=document.getElementById('circleio-boss-panel');
-    this.sandboxPanelEl=document.getElementById('circleio-sandbox-panel');
-    this.sandboxToggleEl=document.getElementById('circleio-sandbox-toggle');
-    this.canvas=document.getElementById('circleio-canvas');
-    this.minimapCanvas=document.getElementById('circleio-minimap');
+    this.bossPanelEl=document.getElementById('polytank-boss-panel');
+    this.sandboxPanelEl=document.getElementById('polytank-sandbox-panel');
+    this.sandboxToggleEl=document.getElementById('polytank-sandbox-toggle');
+    this.canvas=document.getElementById('polytank-canvas');
+    this.minimapCanvas=document.getElementById('polytank-minimap');
     if(!this.canvas) return;
     this.ctx=this.canvas.getContext('2d');
     this.minimapCtx=this.minimapCanvas?this.minimapCanvas.getContext('2d'):null;
@@ -15274,22 +15274,22 @@ const CIRCLE_IO={
         return;
       }
       if(!this.active||!this.inMatch||this.menuOpen||event.button!==0) return;
-      if(event.target&&typeof event.target.closest==='function'&&(event.target.closest('#circleio-upgrade-dock')||event.target.closest('#circleio-topbar')||event.target.closest('#circleio-boss-panel')||event.target.closest('#circleio-sandbox-panel')||event.target.closest('#circleio-sandbox-toggle'))) return;
+      if(event.target&&typeof event.target.closest==='function'&&(event.target.closest('#polytank-upgrade-dock')||event.target.closest('#polytank-topbar')||event.target.closest('#polytank-boss-panel')||event.target.closest('#polytank-sandbox-panel')||event.target.closest('#polytank-sandbox-toggle'))) return;
       this.pointer.down=true;
       this.tryAdminTakeoverByClick(event.clientX,event.clientY);
     });
     window.addEventListener('mouseup',()=>{ this.pointer.down=false; });
     document.addEventListener('pointerdown',event=>{
       if(!this.menuOpen||!this.modeDropdownOpen) return;
-      if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#circleio-mode-select')) return;
+      if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-mode-select')) return;
       this.toggleModeDropdown(false);
     });
     document.addEventListener('pointerdown',event=>{
       if(!this.menuOpen||!this.settingsPanelOpen) return;
-      if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#circleio-settings-panel,#circleio-settings-btn')) return;
+      if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-settings-panel,#polytank-settings-btn')) return;
       this.toggleSettingsPanel(false);
     });
-    const nameInput=document.getElementById('circleio-name-input');
+    const nameInput=document.getElementById('polytank-name-input');
     if(nameInput){
       nameInput.addEventListener('input',()=>{
         if(this.localPartyCode&&this.localPartyMember){
@@ -15330,10 +15330,10 @@ const CIRCLE_IO={
   },
   applyMapTheme(){
     const dark=this.isDarkMapTheme();
-    document.body.classList.toggle('circleio-map-dark',dark);
+    document.body.classList.toggle('polytank-map-dark',dark);
     if(this.overlayEl) this.overlayEl.classList.toggle('map-dark',dark);
-    const lightButton=document.getElementById('circleio-theme-light');
-    const darkButton=document.getElementById('circleio-theme-dark');
+    const lightButton=document.getElementById('polytank-theme-light');
+    const darkButton=document.getElementById('polytank-theme-dark');
     if(lightButton) lightButton.classList.toggle('active',!dark);
     if(darkButton) darkButton.classList.toggle('active',dark);
   },
@@ -15349,15 +15349,15 @@ const CIRCLE_IO={
     try{ localStorage.setItem(this.mapThemeStorageKey,this.mapTheme); }catch(_err){}
     this.applyMapTheme();
   },
-  animatePopup(element,className='circleio-popup-anim'){
+  animatePopup(element,className='polytank-popup-anim'){
     if(!element) return;
     element.classList.remove(className);
     void element.offsetWidth;
     element.classList.add(className);
   },
   toggleSettingsPanel(force){
-    const panel=document.getElementById('circleio-settings-panel');
-    const button=document.getElementById('circleio-settings-btn');
+    const panel=document.getElementById('polytank-settings-panel');
+    const button=document.getElementById('polytank-settings-btn');
     this.settingsPanelOpen=typeof force==='boolean'?force:!this.settingsPanelOpen;
     if(panel) panel.classList.toggle('open',this.settingsPanelOpen);
     if(button) button.classList.toggle('active',this.settingsPanelOpen);
@@ -15370,9 +15370,9 @@ const CIRCLE_IO={
     return typeof CIRCLE_ALCHEMY_DEV_MODE!=='undefined'&&!!CIRCLE_ALCHEMY_DEV_MODE;
   },
   syncDevAdminSettingsUi(){
-    const shell=document.getElementById('circleio-dev-admin-shell');
-    const button=document.getElementById('circleio-dev-admin-btn');
-    const sub=document.getElementById('circleio-dev-admin-sub');
+    const shell=document.getElementById('polytank-dev-admin-shell');
+    const button=document.getElementById('polytank-dev-admin-btn');
+    const sub=document.getElementById('polytank-dev-admin-sub');
     if(!shell||!button||!sub) return;
     const isDev=this.isDevMode();
     shell.classList.toggle('open',isDev);
@@ -15445,7 +15445,7 @@ const CIRCLE_IO={
   },
   openSkinsShop(){
     this.loadSkins();
-    const shop=document.getElementById('circleio-skins-shop');
+    const shop=document.getElementById('polytank-skins-shop');
     if(!shop) return;
     this.skinsShopOpen=true;
     shop.classList.add('open');
@@ -15460,14 +15460,14 @@ const CIRCLE_IO={
     requestAnimationFrame(animatePreview);
   },
   closeSkinsShop(){
-    const shop=document.getElementById('circleio-skins-shop');
+    const shop=document.getElementById('polytank-skins-shop');
     if(!shop) return;
     this.skinsShopOpen=false;
     shop.classList.remove('open');
   },
   updateSkinsTeamBadge(){
-    const badge=document.getElementById('circleio-skins-team-badge');
-    const name=document.getElementById('circleio-skins-team-name');
+    const badge=document.getElementById('polytank-skins-team-badge');
+    const name=document.getElementById('polytank-skins-team-name');
     if(!badge||!name) return;
     const team=this.playerTeam||'blue';
     badge.className='';
@@ -15485,10 +15485,10 @@ const CIRCLE_IO={
     this.updateSkinsSidebar(this.skinsFocusId);
   },
   renderSkinsGrid(skipAnim){
-    const grid=document.getElementById('circleio-skins-grid');
+    const grid=document.getElementById('polytank-skins-grid');
     if(!grid) return;
     const cat=this.skinsTab||'body';
-    const skins=(CIRCLEIO_SKINS_DATA[cat]||[]);
+    const skins=(polytank_SKINS_DATA[cat]||[]);
     const equippedId=this.activeSkins[cat]||'default';
     grid.innerHTML='';
     skins.forEach((skin,i)=>{
@@ -15509,11 +15509,11 @@ const CIRCLE_IO={
   selectSkinCard(skinId){
     this.skinsFocusId=skinId;
     document.querySelectorAll('.cio-skin-card').forEach(card=>{
-      card.classList.toggle('selected',card.querySelector('.cio-skin-name')?.textContent===(CIRCLEIO_SKINS_DATA[this.skinsTab||'body']||[]).find(s=>s.id===skinId)?.name);
+      card.classList.toggle('selected',card.querySelector('.cio-skin-name')?.textContent===(polytank_SKINS_DATA[this.skinsTab||'body']||[]).find(s=>s.id===skinId)?.name);
     });
     // Re-render to update selected state
     const cat=this.skinsTab||'body';
-    const skins=CIRCLEIO_SKINS_DATA[cat]||[];
+    const skins=polytank_SKINS_DATA[cat]||[];
     document.querySelectorAll('.cio-skin-card').forEach((card,i)=>{
       const skin=skins[i];
       if(!skin) return;
@@ -15524,12 +15524,12 @@ const CIRCLE_IO={
   },
   updateSkinsSidebar(skinId){
     const cat=this.skinsTab||'body';
-    const skin=(CIRCLEIO_SKINS_DATA[cat]||[]).find(s=>s.id===skinId);
-    const nameEl=document.getElementById('circleio-skins-detail-name');
-    const rarityEl=document.getElementById('circleio-skins-detail-rarity');
-    const descEl=document.getElementById('circleio-skins-detail-desc');
-    const unlockEl=document.getElementById('circleio-skins-detail-unlock');
-    const equipBtn=document.getElementById('circleio-skins-equip');
+    const skin=(polytank_SKINS_DATA[cat]||[]).find(s=>s.id===skinId);
+    const nameEl=document.getElementById('polytank-skins-detail-name');
+    const rarityEl=document.getElementById('polytank-skins-detail-rarity');
+    const descEl=document.getElementById('polytank-skins-detail-desc');
+    const unlockEl=document.getElementById('polytank-skins-detail-unlock');
+    const equipBtn=document.getElementById('polytank-skins-equip');
     if(!skin){
       if(nameEl) nameEl.textContent='Select a skin';
       if(rarityEl) rarityEl.innerHTML='';
@@ -15554,7 +15554,7 @@ const CIRCLE_IO={
     const cat=this.skinsTab||'body';
     const skinId=this.skinsFocusId;
     if(!skinId) return;
-    const skin=(CIRCLEIO_SKINS_DATA[cat]||[]).find(s=>s.id===skinId);
+    const skin=(polytank_SKINS_DATA[cat]||[]).find(s=>s.id===skinId);
     if(!skin||!this.isSkinUnlocked(skin)) return;
     this.activeSkins={...this.activeSkins,[cat]:skinId};
     this.saveSkins();
@@ -15571,7 +15571,7 @@ const CIRCLE_IO={
     return colors[team||'blue']||colors.blue;
   },
   renderSkinsShopPreview(skinId){
-    const canvas=document.getElementById('circleio-skins-preview');
+    const canvas=document.getElementById('polytank-skins-preview');
     if(!canvas) return;
     const ctx=canvas.getContext('2d');
     const W=canvas.width, H=canvas.height;
@@ -15585,7 +15585,7 @@ const CIRCLE_IO={
     for(let xi=0;xi<W;xi+=gs){ctx.beginPath();ctx.moveTo(xi,0);ctx.lineTo(xi,H);ctx.stroke();}
     for(let yi=0;yi<H;yi+=gs){ctx.beginPath();ctx.moveTo(0,yi);ctx.lineTo(W,yi);ctx.stroke();}
     const cat=this.skinsTab||'body';
-    const skin=(CIRCLEIO_SKINS_DATA[cat]||[]).find(s=>s.id===skinId);
+    const skin=(polytank_SKINS_DATA[cat]||[]).find(s=>s.id===skinId);
     const cx=W/2, cy=H/2, r=42;
     const team=this.playerTeam||'blue';
     const teamBodyColor=this.getTeamBodyColor(team);
@@ -15856,22 +15856,22 @@ const CIRCLE_IO={
     return true;
   },
   refreshMenuState(){
-    const summary=document.getElementById('circleio-menu-session');
-    const playButton=document.getElementById('circleio-play-btn');
-    const newButton=document.getElementById('circleio-new-btn');
-    const partyLinkButton=document.getElementById('circleio-party-link-btn');
-    const localCode=document.getElementById('circleio-local-party-code');
-    const localStatus=document.getElementById('circleio-local-party-status');
-    const localCreate=document.getElementById('circleio-local-create-btn');
-    const localJoin=document.getElementById('circleio-local-join-btn');
-    const localLeave=document.getElementById('circleio-local-leave-btn');
-    const localInput=document.getElementById('circleio-local-code-input');
-    const localAi=document.getElementById('circleio-local-ai-btn');
-    const localAddSim=document.getElementById('circleio-local-add-sim-btn');
-    const localRemoveSim=document.getElementById('circleio-local-remove-sim-btn');
-    const prefSame=document.getElementById('circleio-local-pref-same');
-    const prefDifferent=document.getElementById('circleio-local-pref-different');
-    const prefRandom=document.getElementById('circleio-local-pref-random');
+    const summary=document.getElementById('polytank-menu-session');
+    const playButton=document.getElementById('polytank-play-btn');
+    const newButton=document.getElementById('polytank-new-btn');
+    const partyLinkButton=document.getElementById('polytank-party-link-btn');
+    const localCode=document.getElementById('polytank-local-party-code');
+    const localStatus=document.getElementById('polytank-local-party-status');
+    const localCreate=document.getElementById('polytank-local-create-btn');
+    const localJoin=document.getElementById('polytank-local-join-btn');
+    const localLeave=document.getElementById('polytank-local-leave-btn');
+    const localInput=document.getElementById('polytank-local-code-input');
+    const localAi=document.getElementById('polytank-local-ai-btn');
+    const localAddSim=document.getElementById('polytank-local-add-sim-btn');
+    const localRemoveSim=document.getElementById('polytank-local-remove-sim-btn');
+    const prefSame=document.getElementById('polytank-local-pref-same');
+    const prefDifferent=document.getElementById('polytank-local-pref-different');
+    const prefRandom=document.getElementById('polytank-local-pref-random');
     const hasResume=!!this.resumeSnapshot;
     const pausedSession=this.inMatch&&this.pausedByMenu;
     const localPartyActive=!!this.localPartyCode;
@@ -15885,7 +15885,7 @@ const CIRCLE_IO={
         :(pausedSession
           ?'Match paused. Resume to continue from the current frame, or start a fresh arena.'
           :(hasResume
-            ?'Saved arena ready. Resume your last Circle.io run or start a fresh arena.'
+            ?'Saved arena ready. Resume your last Polytank.io run or start a fresh arena.'
             :'Fresh arena ready. No permanent upgrades are active.'));
     }
     if(playButton) playButton.textContent=pausedSession?'Resume Match':(this.localPartyRole==='host'?'Launch Test Match':(hasResume?'Resume Saved Run':'Play'));
@@ -15895,7 +15895,7 @@ const CIRCLE_IO={
     if(newButton) newButton.disabled=this.isLocalPartyGuest();
     if(partyLinkButton){
       partyLinkButton.textContent=pausedSession?'Leave Match':'Copy Party Link';
-      partyLinkButton.setAttribute('onclick',pausedSession?'CIRCLE_IO.leaveToLobby()':'CIRCLE_IO.copyPartyLink()');
+      partyLinkButton.setAttribute('onclick',pausedSession?'POLYTANK_IO.leaveToLobby()':'POLYTANK_IO.copyPartyLink()');
     }
     if(localCode) localCode.textContent=localPartyActive?this.localPartyCode:'NO CODE';
     if(localStatus){
@@ -15935,9 +15935,9 @@ const CIRCLE_IO={
     this.menuReadoutTimer-=Math.max(0,dt);
     if(this.menuReadoutTimer>0) return;
     this.menuReadoutTimer=0.12;
-    const densityEl=document.getElementById('circleio-live-density');
-    const pingEl=document.getElementById('circleio-live-ping');
-    const threatEl=document.getElementById('circleio-live-threat');
+    const densityEl=document.getElementById('polytank-live-density');
+    const pingEl=document.getElementById('polytank-live-ping');
+    const threatEl=document.getElementById('polytank-live-threat');
     if(!densityEl&&!pingEl&&!threatEl) return;
     const t=this.menuFxTime;
     const modeBias=this.isFreeForAllMode()?5:this.isMothershipMode()?12:this.isSandboxMode()?-8:this.isMazeMode()?9:0;
@@ -15950,8 +15950,8 @@ const CIRCLE_IO={
     if(threatEl) threatEl.textContent=`${threat}%`;
   },
   updateCircleMenuInteractivity(dt){
-    const menu=document.getElementById('circleio-menu');
-    const card=document.getElementById('circleio-menu-card');
+    const menu=document.getElementById('polytank-menu');
+    const card=document.getElementById('polytank-menu-card');
     if(!menu||!card||!this.menuOpen) return;
     const blend=1-Math.exp(-Math.max(0,dt)*8.6);
     this.menuPointer.x+=(this.menuPointer.targetX-this.menuPointer.x)*blend;
@@ -16024,9 +16024,9 @@ const CIRCLE_IO={
   ensureLocalPartyClient(){
     if(this.localPartyClientId) return this.localPartyClientId;
     let stored='';
-    try{ stored=sessionStorage.getItem('circle_alchemy_circleio_local_party_client_v1')||''; }catch(_err){}
+    try{ stored=sessionStorage.getItem('circle_alchemy_polytank_local_party_client_v1')||''; }catch(_err){}
     if(!stored) stored=`lp_${Math.random().toString(36).slice(2,10)}`;
-    try{ sessionStorage.setItem('circle_alchemy_circleio_local_party_client_v1',stored); }catch(_err){}
+    try{ sessionStorage.setItem('circle_alchemy_polytank_local_party_client_v1',stored); }catch(_err){}
     this.localPartyClientId=stored;
     return stored;
   },
@@ -16080,7 +16080,7 @@ const CIRCLE_IO={
     const bounds=this.getLocalPartyBounds();
     return {
       id:this.ensureLocalPartyClient(),
-      name:this.normalizePlayerName(document.getElementById('circleio-name-input')?.value||this.playerName||this.loadPlayerName()),
+      name:this.normalizePlayerName(document.getElementById('polytank-name-input')?.value||this.playerName||this.loadPlayerName()),
       x:bounds.min+Math.random()*(bounds.max-bounds.min),
       y:bounds.min+Math.random()*(bounds.max-bounds.min),
       teamPref:'same',
@@ -16236,7 +16236,7 @@ const CIRCLE_IO={
       toast('This browser does not support local lobby sync.','#ff9f7f');
       return false;
     }
-    const input=document.getElementById('circleio-local-code-input');
+    const input=document.getElementById('polytank-local-code-input');
     const code=this.normalizeLocalPartyCode(input?.value||'');
     if(!code){
       toast('Enter a local lobby code first.','#ffb584');
@@ -16374,7 +16374,7 @@ const CIRCLE_IO={
   },
   updateLocalPartyLoop(dt){
     if(!this.localPartyMember) return;
-    const nameInput=document.getElementById('circleio-name-input');
+    const nameInput=document.getElementById('polytank-name-input');
     const nextName=this.normalizePlayerName(nameInput?.value||this.localPartyMember.name||this.loadPlayerName());
     if(nextName!==this.localPartyMember.name) this.localPartyMember.name=nextName;
     const moveX=(this.localPartyKeys.right?1:0)-(this.localPartyKeys.left?1:0);
@@ -16419,18 +16419,18 @@ const CIRCLE_IO={
     }
   },
   renderLocalPartyRoster(){
-    const roster=document.getElementById('circleio-local-party-roster');
+    const roster=document.getElementById('polytank-local-party-roster');
     if(!roster) return;
     const members=Array.isArray(this.localPartyState?.members)?this.localPartyState.members.slice():[];
     if(!members.length){
-      roster.innerHTML='<div class="circleio-local-roster-row"><div class="circleio-local-roster-name">Waiting Room Empty<strong>Lobby</strong></div><div class="circleio-local-roster-meta">Open another tab</div></div>';
+      roster.innerHTML='<div class="polytank-local-roster-row"><div class="polytank-local-roster-name">Waiting Room Empty<strong>Lobby</strong></div><div class="polytank-local-roster-meta">Open another tab</div></div>';
       return;
     }
     members.sort((left,right)=>(right.id===this.localPartyState?.hostId?1:0)-(left.id===this.localPartyState?.hostId?1:0)||String(left.name).localeCompare(String(right.name)));
-    roster.innerHTML=members.map(member=>`<div class="circleio-local-roster-row ${member.id===this.localPartyClientId?'self':''}"><div class="circleio-local-roster-name">${member.name}<strong>${member.id===this.localPartyState?.hostId?'HOST':'REAL PLAYER'}</strong></div><div class="circleio-local-roster-meta">${(member.resolvedTeam||'blue').toUpperCase()}${member.id===this.localPartyClientId&&this.localPartyRole==='guest'?` • ${String(member.teamPref||'same').toUpperCase()}`:''}</div></div>`).join('');
+    roster.innerHTML=members.map(member=>`<div class="polytank-local-roster-row ${member.id===this.localPartyClientId?'self':''}"><div class="polytank-local-roster-name">${member.name}<strong>${member.id===this.localPartyState?.hostId?'HOST':'REAL PLAYER'}</strong></div><div class="polytank-local-roster-meta">${(member.resolvedTeam||'blue').toUpperCase()}${member.id===this.localPartyClientId&&this.localPartyRole==='guest'?` • ${String(member.teamPref||'same').toUpperCase()}`:''}</div></div>`).join('');
   },
   renderLocalPartyPreview(){
-    const canvas=document.getElementById('circleio-local-party-canvas');
+    const canvas=document.getElementById('polytank-local-party-canvas');
     if(!canvas) return;
     const context=canvas.getContext('2d');
     if(!context) return;
@@ -16824,10 +16824,10 @@ const CIRCLE_IO={
     }
   },
   syncGameModeButtons(){
-    const buttons=[...document.querySelectorAll('[data-circleio-mode]')];
+    const buttons=[...document.querySelectorAll('[data-polytank-mode]')];
     let activeLabel='FFA';
     buttons.forEach(button=>{
-      const variant=this.normalizeGameVariant(button.getAttribute('data-circleio-mode'));
+      const variant=this.normalizeGameVariant(button.getAttribute('data-polytank-mode'));
       button.classList.toggle('active',variant===this.gameVariant);
       button.disabled=this.isLocalPartyGuest();
       if(variant===this.gameVariant){
@@ -16835,12 +16835,12 @@ const CIRCLE_IO={
         activeLabel=def?.label||button.textContent||'FFA';
       }
     });
-    const toggleLabel=document.getElementById('circleio-mode-toggle-label');
+    const toggleLabel=document.getElementById('polytank-mode-toggle-label');
     if(toggleLabel) toggleLabel.textContent=activeLabel;
   },
   toggleModeDropdown(force){
-    const dropdown=document.getElementById('circleio-mode-dropdown');
-    const toggle=document.getElementById('circleio-mode-toggle');
+    const dropdown=document.getElementById('polytank-mode-dropdown');
+    const toggle=document.getElementById('polytank-mode-toggle');
     if(!dropdown||!toggle) return;
     this.modeDropdownOpen=typeof force==='boolean'?force:!this.modeDropdownOpen;
     dropdown.classList.toggle('open',this.modeDropdownOpen);
@@ -16885,9 +16885,9 @@ const CIRCLE_IO={
     _pauseOpen=this.pausedByMenu;
   },
   updateMenuPreview(){
-    const modeLabel=document.getElementById('circleio-preview-mode');
-    const mapLabel=document.getElementById('circleio-preview-map');
-    const hudLabel=document.getElementById('circleio-preview-hud');
+    const modeLabel=document.getElementById('polytank-preview-mode');
+    const mapLabel=document.getElementById('polytank-preview-map');
+    const hudLabel=document.getElementById('polytank-preview-hud');
     const variant=this.getGameVariantDef();
     if(modeLabel) modeLabel.textContent=variant.label;
     if(mapLabel) mapLabel.textContent=variant.map;
@@ -16903,10 +16903,10 @@ const CIRCLE_IO={
     const classOptions=Object.entries(this.classDefs).map(([classId,def])=>`<option value="${classId}">${def.name}</option>`).join('');
     const shapeOptions=Object.keys(this.shapeDefs).map(kind=>`<option value="${kind}">${kind.charAt(0).toUpperCase()+kind.slice(1)}</option>`).join('');
     const bossOptions=this.bossHotkeyKeys.map(key=>`<option value="${key}">${(ADMIN_ITEMS[key]?.label)||key}</option>`).join('');
-    const playerClass=document.getElementById('circleio-sandbox-player-class');
-    const aiClass=document.getElementById('circleio-sandbox-ai-class');
-    const shapeSelect=document.getElementById('circleio-sandbox-shape');
-    const bossSelect=document.getElementById('circleio-sandbox-boss');
+    const playerClass=document.getElementById('polytank-sandbox-player-class');
+    const aiClass=document.getElementById('polytank-sandbox-ai-class');
+    const shapeSelect=document.getElementById('polytank-sandbox-shape');
+    const bossSelect=document.getElementById('polytank-sandbox-boss');
     if(playerClass) playerClass.innerHTML=classOptions;
     if(aiClass) aiClass.innerHTML=classOptions;
     if(shapeSelect) shapeSelect.innerHTML=shapeOptions;
@@ -16914,8 +16914,8 @@ const CIRCLE_IO={
   },
   syncSandboxSelections(){
     if(!this.player) return;
-    const playerClass=document.getElementById('circleio-sandbox-player-class');
-    const playerLevel=document.getElementById('circleio-sandbox-player-level');
+    const playerClass=document.getElementById('polytank-sandbox-player-class');
+    const playerLevel=document.getElementById('polytank-sandbox-player-level');
     if(playerClass) playerClass.value=this.player.classId||'basic';
     if(playerLevel) playerLevel.value=Math.max(1,Math.round(this.player.level||1));
   },
@@ -16948,9 +16948,9 @@ const CIRCLE_IO={
   },
   toggleMenu(open){
     this.menuOpen=!!open;
-    const menu=document.getElementById('circleio-menu');
-    const menuCard=document.getElementById('circleio-menu-card');
-    const input=document.getElementById('circleio-name-input');
+    const menu=document.getElementById('polytank-menu');
+    const menuCard=document.getElementById('polytank-menu-card');
+    const input=document.getElementById('polytank-name-input');
     if(this.overlayEl) this.overlayEl.classList.toggle('menu-open',this.menuOpen);
     if(this.overlayEl) this.overlayEl.classList.toggle('waiting-room',this.menuOpen&&!!this.localPartyCode);
     if(menu) menu.classList.toggle('open',this.menuOpen);
@@ -17101,7 +17101,7 @@ const CIRCLE_IO={
   onPointerMove(event){
     if(!this.active) return;
     if(this.menuOpen){
-      const card=document.getElementById('circleio-menu-card');
+      const card=document.getElementById('polytank-menu-card');
       if(card){
         const rect=card.getBoundingClientRect();
         if(rect.width>0&&rect.height>0){
@@ -17128,7 +17128,7 @@ const CIRCLE_IO={
   },
   onWheel(event){
     if(!this.active||!this.inMatch||this.menuOpen) return;
-    if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#circleio-upgrade-dock,#circleio-topbar,#circleio-boss-panel,#circleio-branch-panel,#circleio-sandbox-panel,#circleio-sandbox-toggle')) return;
+    if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-upgrade-dock,#polytank-topbar,#polytank-boss-panel,#polytank-branch-panel,#polytank-sandbox-panel,#polytank-sandbox-toggle')) return;
     event.preventDefault();
     const factor=event.deltaY<0?1.12:0.89;
     this.setZoom((this.camera.targetZoom||this.camera.zoom||1)*factor,false);
@@ -17177,7 +17177,7 @@ const CIRCLE_IO={
     this.setZoom(this.getAutoZoomForTank(tank),instant);
   },
   setUpgradeDockVisible(visible,side='left'){
-    const dock=document.getElementById('circleio-upgrade-dock');
+    const dock=document.getElementById('polytank-upgrade-dock');
     if(!dock) return;
     if(visible){
       const alreadyVisible=dock.classList.contains('is-visible');
@@ -17210,26 +17210,26 @@ const CIRCLE_IO={
     this.setUpgradeDockVisible(shouldShow,shouldShow?'left':preferredHideSide);
   },
   populateBossPanel(){
-    const list=document.getElementById('circleio-boss-list');
+    const list=document.getElementById('polytank-boss-list');
     if(!list) return;
     const specialChoices=this.getAdminClassChoices().filter(classId=>String(classId).startsWith('admin_'));
     const specialControls=`
-      <button class="circleio-boss-btn" onclick="CIRCLE_IO.toggleSpecialTankPanel()">${this.specialTankPanelOpen?'Hide Special Tanks':'Become Special Tanks'}</button>
-      <button class="circleio-boss-btn" onclick="CIRCLE_IO.adminReturnToRegularTank()">Return To Regular Tank</button>
-      <button class="circleio-boss-btn" onclick="CIRCLE_IO.toggleAdminClickTakeover()">Click AI Takeover ${this.adminClickTakeover?'ON':'OFF'}</button>
+      <button class="polytank-boss-btn" onclick="POLYTANK_IO.toggleSpecialTankPanel()">${this.specialTankPanelOpen?'Hide Special Tanks':'Become Special Tanks'}</button>
+      <button class="polytank-boss-btn" onclick="POLYTANK_IO.adminReturnToRegularTank()">Return To Regular Tank</button>
+      <button class="polytank-boss-btn" onclick="POLYTANK_IO.toggleAdminClickTakeover()">Click AI Takeover ${this.adminClickTakeover?'ON':'OFF'}</button>
     `;
     const specialList=this.specialTankPanelOpen
       ? specialChoices.map(classId=>{
           const def=this.getClassDef(classId);
-          return `<button class="circleio-boss-btn" onclick="CIRCLE_IO.chooseClass('${classId}')">${def.name.replace('[ADMIN] ','')}</button>`;
+          return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.chooseClass('${classId}')">${def.name.replace('[ADMIN] ','')}</button>`;
         }).join('')
       : '';
     const summonList=this.specialTankPanelOpen?'':this.bossHotkeyKeys.map(key=>{
       const item=ADMIN_ITEMS[key];
       if(!item) return '';
-      return `<button class="circleio-boss-btn" onclick="CIRCLE_IO.hotkeySummonBoss('${key}')">${item.label}</button>`;
+      return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.hotkeySummonBoss('${key}')">${item.label}</button>`;
     }).join('');
-    list.innerHTML=specialControls+specialList+summonList+`<button class="circleio-boss-btn close" onclick="CIRCLE_IO.toggleBossPanel(false)">Close</button>`;
+    list.innerHTML=specialControls+specialList+summonList+`<button class="polytank-boss-btn close" onclick="POLYTANK_IO.toggleBossPanel(false)">Close</button>`;
   },
   toggleSpecialTankPanel(force){
     this.specialTankPanelOpen=typeof force==='boolean'?force:!this.specialTankPanelOpen;
@@ -17410,11 +17410,11 @@ const CIRCLE_IO={
       return;
     }
     const forceFresh=!!options.forceFresh;
-    const input=document.getElementById('circleio-name-input');
+    const input=document.getElementById('polytank-name-input');
     this.playerName=this.normalizePlayerName(input?input.value:this.loadPlayerName());
     try{ localStorage.setItem(this.nameStorageKey,this.playerName); }catch(_err){}
     if(this.resumeSnapshot&&!forceFresh&&this.applyProgressSnapshot(this.resumeSnapshot)){
-      toast('Circle.io progress restored.','#9feaff');
+      toast('Polytank.io progress restored.','#9feaff');
       return;
     }
     this.triggerLaunchTransition(()=>{
@@ -17441,14 +17441,14 @@ const CIRCLE_IO={
   hotkeySummonBoss(key){
     if(!adminUnlocked) return;
     this.toggleBossPanel(false);
-    if(key==='circleio_centerboss'){
+    if(key==='polytank_centerboss'){
       if(!this.centerBoss||this.centerBoss.hp<=0) this.centerBoss=this.createCenterBoss();
       else this.centerBoss.hp=this.centerBoss.maxHp;
       this.centerBoss.barTimer=2.5;
       toast('Mid Alpha restored.','#8ba0ff');
       return;
     }
-    if(key==='circleio_alpha'){
+    if(key==='polytank_alpha'){
       this.spawnArenaBoss(key);
       return;
     }
@@ -17697,8 +17697,8 @@ const CIRCLE_IO={
   },
   applySandboxPlayerSetup(){
     if(!this.isSandboxMode()||!this.player) return;
-    const classId=document.getElementById('circleio-sandbox-player-class')?.value||'basic';
-    const level=document.getElementById('circleio-sandbox-player-level')?.value||45;
+    const classId=document.getElementById('polytank-sandbox-player-class')?.value||'basic';
+    const level=document.getElementById('polytank-sandbox-player-level')?.value||45;
     const base=this.getBase('sandbox-hub');
     this.player.team='blue';
     this.player.respawnBaseId='sandbox-hub';
@@ -17720,14 +17720,14 @@ const CIRCLE_IO={
   },
   spawnSandboxBoss(){
     if(!this.isSandboxMode()) return null;
-    const key=document.getElementById('circleio-sandbox-boss')?.value||'circleio_alpha';
+    const key=document.getElementById('polytank-sandbox-boss')?.value||'polytank_alpha';
     return this.spawnArenaBoss(key);
   },
   spawnSandboxAiTank(){
     if(!this.isSandboxMode()) return null;
-    const classId=document.getElementById('circleio-sandbox-ai-class')?.value||'basic';
-    const level=document.getElementById('circleio-sandbox-ai-level')?.value||30;
-    const team=document.getElementById('circleio-sandbox-ai-team')?.value||'red';
+    const classId=document.getElementById('polytank-sandbox-ai-class')?.value||'basic';
+    const level=document.getElementById('polytank-sandbox-ai-level')?.value||30;
+    const team=document.getElementById('polytank-sandbox-ai-team')?.value||'red';
     const point=this.getSandboxSpawnPoint(520);
     const tank=this.createTank(team,{id:`sandbox_ai_${++this.tankId}`,x:point.x,y:point.y,isBot:true,baseId:null,invuln:.7,displayName:`${team.toUpperCase()} AI`,classId});
     this.setTankPreset(tank,classId,level,{priorityOrder:['bulletDamage','reload','bulletSpeed','moveSpeed','maxHealth','bodyDamage','bulletPenetration','regen']});
@@ -17739,8 +17739,8 @@ const CIRCLE_IO={
   },
   spawnSandboxShape(){
     if(!this.isSandboxMode()) return;
-    const kind=document.getElementById('circleio-sandbox-shape')?.value||'square';
-    const count=this.clamp(Math.round(Number(document.getElementById('circleio-sandbox-shape-count')?.value)||1),1,24);
+    const kind=document.getElementById('polytank-sandbox-shape')?.value||'square';
+    const count=this.clamp(Math.round(Number(document.getElementById('polytank-sandbox-shape-count')?.value)||1),1,24);
     for(let index=0;index<count;index++) this.spawnShape(kind,'center');
     toast(`Spawned ${count} ${kind}${count===1?'':'s'}.`,this.shapeDefs[kind]?.color||'#ffe27a');
   },
@@ -18023,7 +18023,7 @@ const CIRCLE_IO={
       mission_boss_spire:{label:'Helix Sentinel',kind:'spire',r:114,maxHp:21400,reload:1.08,bulletSpeed:460,bulletDamage:44,bulletPenetration:8.5,bulletRadius:10,cannonCount:3,barrelLength:112,barrelWidth:20,moveSpeed:94,color:'#ffb357'},
       mission_boss_eclipse:{label:'Eclipse Regent',kind:'eclipse',r:116,maxHp:22800,reload:0.88,bulletSpeed:440,bulletDamage:46,bulletPenetration:9.5,bulletRadius:10,cannonCount:4,barrelLength:110,barrelWidth:18,moveSpeed:100,color:'#93a6ff'},
       mission_boss_cataclysm:{label:'Cataclysm Engine',kind:'cataclysm',r:126,maxHp:26800,reload:1.34,bulletSpeed:390,bulletDamage:78,bulletPenetration:11.5,bulletRadius:15,cannonCount:2,barrelLength:124,barrelWidth:28,moveSpeed:82,color:'#ff6d8d'},
-      circleio_alpha:{label:'Summoned Alpha',kind:'alpha',r:132,maxHp:21200,reload:1.65,bulletSpeed:0,bulletDamage:0,bulletPenetration:0,bulletRadius:0,cannonCount:0,barrelLength:0,barrelWidth:0,moveSpeed:28,color:'#8ba0ff'},
+      polytank_alpha:{label:'Summoned Alpha',kind:'alpha',r:132,maxHp:21200,reload:1.65,bulletSpeed:0,bulletDamage:0,bulletPenetration:0,bulletRadius:0,cannonCount:0,barrelLength:0,barrelWidth:0,moveSpeed:28,color:'#8ba0ff'},
     };
     const config=configs[key]||configs.boss_1;
     return {
@@ -18274,7 +18274,7 @@ const CIRCLE_IO={
       admin_boss_void:'boss_4',
       admin_boss_ultimate:'boss_5',
       admin_boss_infinite:'infinite',
-      admin_boss_alpha:'circleio_alpha',
+      admin_boss_alpha:'polytank_alpha',
       admin_boss_spire:'mission_boss_spire',
       admin_boss_eclipse:'mission_boss_eclipse',
       admin_boss_cataclysm:'mission_boss_cataclysm',
@@ -18471,10 +18471,10 @@ const CIRCLE_IO={
     return `<svg viewBox="0 0 96 96" aria-hidden="true">${barrelMarkup}${orbiters}<circle cx="48" cy="48" r="${bodyRadius.toFixed(2)}" fill="${previewTank.bodyColor}" stroke="${this.darkenColor(previewTank.bodyColor,.46)}" stroke-width="4"/><circle cx="48" cy="48" r="${Math.max(6,bodyRadius*0.34).toFixed(2)}" fill="rgba(245,248,252,.96)"/></svg>`;
   },
   renderClassChoicePanel(){
-    const panel=document.getElementById('circleio-branch-panel');
-    const options=document.getElementById('circleio-branch-options');
-    const title=document.getElementById('circleio-branch-title');
-    const copy=document.getElementById('circleio-branch-copy');
+    const panel=document.getElementById('polytank-branch-panel');
+    const options=document.getElementById('polytank-branch-options');
+    const title=document.getElementById('polytank-branch-title');
+    const copy=document.getElementById('polytank-branch-copy');
     if(!panel||!options||!title||!copy) return;
     if(!this.pendingClassChoice||!this.player){
       panel.dataset.renderKey='';
@@ -18490,7 +18490,7 @@ const CIRCLE_IO={
       copy.textContent=`Choose a branch from ${current.name}.`;
       options.innerHTML=this.pendingClassChoice.options.map(classId=>{
         const def=this.getClassDef(classId);
-        return `<button class="circleio-branch-option" onclick="CIRCLE_IO.chooseClass('${classId}')"><div class="circleio-branch-icon-wrap"><div class="circleio-branch-icon">${this.getClassPreviewSvg(classId,this.pendingClassChoice.level)}</div></div><div class="circleio-branch-name">${def.name}</div></button>`;
+        return `<button class="polytank-branch-option" onclick="POLYTANK_IO.chooseClass('${classId}')"><div class="polytank-branch-icon-wrap"><div class="polytank-branch-icon">${this.getClassPreviewSvg(classId,this.pendingClassChoice.level)}</div></div><div class="polytank-branch-name">${def.name}</div></button>`;
       }).join('');
       panel.dataset.renderKey=renderKey;
     }
@@ -19276,10 +19276,10 @@ const CIRCLE_IO={
   },
   syncTeamButtons(){
     const activeTeam=this.getPlayerSpawnTeam();
-    const blueButton=document.getElementById('circleio-team-blue');
-    const redButton=document.getElementById('circleio-team-red');
-    const greenButton=document.getElementById('circleio-team-green');
-    const purpleButton=document.getElementById('circleio-team-purple');
+    const blueButton=document.getElementById('polytank-team-blue');
+    const redButton=document.getElementById('polytank-team-red');
+    const greenButton=document.getElementById('polytank-team-green');
+    const purpleButton=document.getElementById('polytank-team-purple');
     const locked=this.isLocalPartyGuest();
     const dominatorLocked=!!(this.player&&this.player.isDominator);
     const selectable=new Set(this.getSelectableTeams());
@@ -19774,7 +19774,7 @@ const CIRCLE_IO={
     };
   },
   spawnAlphaPentagon(){
-    return this.spawnArenaBoss('circleio_alpha');
+    return this.spawnArenaBoss('polytank_alpha');
   },
   loop(now){
     if(!this.active||(!this.inMatch&&!this.menuOpen)) return;
@@ -20879,7 +20879,7 @@ const CIRCLE_IO={
     if(this.isMothershipMode()){
       this.ambientBossTimer=Math.max(0,this.ambientBossTimer-dt);
       if(this.ambientBossTimer<=0&&this.summonedBosses.length<3){
-        const keys=['circleio_alpha','fallen_destroyer','fallen_overlord','fallen_necromancer'];
+        const keys=['polytank_alpha','fallen_destroyer','fallen_overlord','fallen_necromancer'];
         this.spawnArenaBoss(keys[Math.floor(Math.random()*keys.length)]);
         this.ambientBossTimer=24+Math.random()*18;
       }
@@ -21521,32 +21521,32 @@ const CIRCLE_IO={
     this.updateTankDerivedStats(tank,false);
     if(kind==='maxHealth') tank.hp=Math.min(tank.maxHp,tank.hp+26);
     if(kind==='regen') tank.hp=Math.min(tank.maxHp,tank.hp+12);
-    if(tank.isPlayer&&!silent) toast(`Circle.io upgrade: ${kind}.`,'#9feaff');
+    if(tank.isPlayer&&!silent) toast(`Polytank.io upgrade: ${kind}.`,'#9feaff');
     this.updateHud();
     return true;
   },
   buttonIdForUpgrade(kind){
     return {
-      regen:'circleio-up-regen',
-      maxHealth:'circleio-up-maxhealth',
-      bodyDamage:'circleio-up-bodydamage',
-      bulletSpeed:'circleio-up-bulletspeed',
-      bulletPenetration:'circleio-up-bulletpenetration',
-      bulletDamage:'circleio-up-bulletdamage',
-      reload:'circleio-up-reload',
-      moveSpeed:'circleio-up-movespeed'
+      regen:'polytank-up-regen',
+      maxHealth:'polytank-up-maxhealth',
+      bodyDamage:'polytank-up-bodydamage',
+      bulletSpeed:'polytank-up-bulletspeed',
+      bulletPenetration:'polytank-up-bulletpenetration',
+      bulletDamage:'polytank-up-bulletdamage',
+      reload:'polytank-up-reload',
+      moveSpeed:'polytank-up-movespeed'
     }[kind];
   },
   levelIdForUpgrade(kind){
     return {
-      regen:'circleio-lvl-regen',
-      maxHealth:'circleio-lvl-maxhealth',
-      bodyDamage:'circleio-lvl-bodydamage',
-      bulletSpeed:'circleio-lvl-bulletspeed',
-      bulletPenetration:'circleio-lvl-bulletpenetration',
-      bulletDamage:'circleio-lvl-bulletdamage',
-      reload:'circleio-lvl-reload',
-      moveSpeed:'circleio-lvl-movespeed'
+      regen:'polytank-lvl-regen',
+      maxHealth:'polytank-lvl-maxhealth',
+      bodyDamage:'polytank-lvl-bodydamage',
+      bulletSpeed:'polytank-lvl-bulletspeed',
+      bulletPenetration:'polytank-lvl-bulletpenetration',
+      bulletDamage:'polytank-lvl-bulletdamage',
+      reload:'polytank-lvl-reload',
+      moveSpeed:'polytank-lvl-movespeed'
     }[kind];
   },
   zoneLabel(){
@@ -21609,22 +21609,22 @@ const CIRCLE_IO={
     const xpRatio=this.player.xpNext?this.clamp(this.player.xp/this.player.xpNext,0,1):0;
     const nextCheckpoint=this.getNextClassCheckpoint(this.player);
     this.syncTeamButtons();
-    setText('circleio-team',this.player.specialRole==='arenaCloser'?'CLOSER':this.player.team.toUpperCase());
-    setText('circleio-class',this.player.className);
-    setText('circleio-level',String(this.player.level));
-    setText('circleio-xp',`${Math.floor(this.player.xp)} / ${this.player.xpNext}`);
-    setText('circleio-score',(this.player.score||0).toLocaleString());
-    setText('circleio-health',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Disconnected - Spectating Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
-    setText('circleio-event',this.summonedBosses.length?`SUMMON x${this.summonedBosses.length}`:'MID ALPHA');
-    setText('circleio-points',String(this.player.points));
-    setText('circleio-level-name',this.player.displayName);
-    setText('circleio-level-next',`Lvl ${this.player.level} • Score ${(this.player.score||0).toLocaleString()}`);
-    setText('circleio-level-progress',`Lvl ${this.player.level} Tank`);
-    setText('circleio-level-percent',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Spectating Arena Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`HP ${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
+    setText('polytank-team',this.player.specialRole==='arenaCloser'?'CLOSER':this.player.team.toUpperCase());
+    setText('polytank-class',this.player.className);
+    setText('polytank-level',String(this.player.level));
+    setText('polytank-xp',`${Math.floor(this.player.xp)} / ${this.player.xpNext}`);
+    setText('polytank-score',(this.player.score||0).toLocaleString());
+    setText('polytank-health',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Disconnected - Spectating Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
+    setText('polytank-event',this.summonedBosses.length?`SUMMON x${this.summonedBosses.length}`:'MID ALPHA');
+    setText('polytank-points',String(this.player.points));
+    setText('polytank-level-name',this.player.displayName);
+    setText('polytank-level-next',`Lvl ${this.player.level} • Score ${(this.player.score||0).toLocaleString()}`);
+    setText('polytank-level-progress',`Lvl ${this.player.level} Tank`);
+    setText('polytank-level-percent',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Spectating Arena Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`HP ${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
     if(this.overlayEl) this.overlayEl.classList.toggle('death-spectate-clean',this.player.deadTimer>0&&!!this.deathSpectateTargetId&&this.deathSpectateUiHidden);
-    const fill=document.getElementById('circleio-level-fill');
+    const fill=document.getElementById('polytank-level-fill');
     if(fill) fill.style.width=`${xpRatio*100}%`;
-    const detail=document.getElementById('circleio-detail-body');
+    const detail=document.getElementById('polytank-detail-body');
     if(detail){
       const lines=[
         ['Mode',variant.label],
@@ -21646,9 +21646,9 @@ const CIRCLE_IO={
         ...(this.isCtfMode()?[['Flag Score',`${this.ctfScores.blue} - ${this.ctfScores.red}`]]:[]),
         ['Controls',`${this.controlledDominatorId?'F leave Dominator':'F control Dominator'} • C Auto Spin ${this.autoSpinEnabled?'ON':'OFF'} • E Auto Fire ${this.autoFireEnabled?'ON':'OFF'}${this.player?.specialRole==='mothership'?' • R Summon':''}`],
       ];
-      detail.innerHTML=lines.map(([label,value])=>`<div class='circleio-detail-line'><span>${label}</span><strong>${value}</strong></div>`).join('');
+      detail.innerHTML=lines.map(([label,value])=>`<div class='polytank-detail-line'><span>${label}</span><strong>${value}</strong></div>`).join('');
     }
-    const leaderboard=document.getElementById('circleio-leaderboard-list');
+    const leaderboard=document.getElementById('polytank-leaderboard-list');
     if(leaderboard){
       const entries=this.getLeaderboardEntries();
       const topScore=Math.max(1,entries[0]?.tank?.score||1);
@@ -21659,7 +21659,7 @@ const CIRCLE_IO={
         const name=tank.displayName||'Player';
         const scoreText=this.formatCompactScore(score);
         const tankLabel=tank.className||'Basic';
-        return `<div class="circleio-leader-row ${tank.isPlayer?'player ':''}${team} ${tank.isPartyReal?'real-player':''}"><div class="circleio-leader-fill ${team}" style="width:${width}%"></div><div class="circleio-leader-text"><span class="circleio-leader-name">${name}</span><span class="circleio-leader-score">${scoreText}</span><span class="circleio-leader-tank">${tankLabel}</span></div></div>`;
+        return `<div class="polytank-leader-row ${tank.isPlayer?'player ':''}${team} ${tank.isPartyReal?'real-player':''}"><div class="polytank-leader-fill ${team}" style="width:${width}%"></div><div class="polytank-leader-text"><span class="polytank-leader-name">${name}</span><span class="polytank-leader-score">${scoreText}</span><span class="polytank-leader-tank">${tankLabel}</span></div></div>`;
       }).join('');
       leaderboard.innerHTML=playerRows;
     }
@@ -22527,7 +22527,7 @@ const CIRCLE_IO={
       this.ctx.restore();
     }
   },
-  drawCircleioPointers(){
+  drawpolytankPointers(){
     if(this.isMothershipMode()){
       if(this.cageWall&&!this.cageWall.released) this.drawScreenPointer((this.cageWall.x1+this.cageWall.x2)*0.5,this.cageWall.y,'#8fcaff','WALL');
       else if(this.enemyMothership&&this.enemyMothership.hp>0) this.drawScreenPointer(this.enemyMothership.x,this.enemyMothership.y,'#ff707f','MOTHERSHIP');
@@ -22710,8 +22710,8 @@ const CIRCLE_IO={
     let barrelColor=this.tintColor(tank.barrelColor,'#e66767',hitTint*.53);
     // ── Skin color overrides ─────────────────────────────────────────
     if(isPlayer&&this.activeSkins){
-      const bodySkinDef=(CIRCLEIO_SKINS_DATA.body||[]).find(s=>s.id===this.activeSkins.body);
-      const cannonSkinDef=(CIRCLEIO_SKINS_DATA.cannon||[]).find(s=>s.id===this.activeSkins.cannon);
+      const bodySkinDef=(polytank_SKINS_DATA.body||[]).find(s=>s.id===this.activeSkins.body);
+      const cannonSkinDef=(polytank_SKINS_DATA.cannon||[]).find(s=>s.id===this.activeSkins.cannon);
       const t=Date.now()*0.001;
       if(bodySkinDef&&bodySkinDef.overrideColor) bodyColor=bodySkinDef.overrideColor;
       else if(bodySkinDef?.id==='rainbow_cycle') bodyColor=`hsl(${(t*45)%360},80%,58%)`;
@@ -22720,7 +22720,7 @@ const CIRCLE_IO={
     const bodyStrokeColor=this.tintColor(this.brightenColor(bodyColor,.12),'#1d2732',.23+hitTint*.1);
     let barrelStrokeColor=this.tintColor(this.brightenColor(barrelColor,.12),'#1d2732',.21+hitTint*.1);
     if(isPlayer&&this.activeSkins){
-      const cannonSkinDef=(CIRCLEIO_SKINS_DATA.cannon||[]).find(s=>s.id===this.activeSkins.cannon);
+      const cannonSkinDef=(polytank_SKINS_DATA.cannon||[]).find(s=>s.id===this.activeSkins.cannon);
       if(cannonSkinDef?.overrideStroke) barrelStrokeColor=cannonSkinDef.overrideStroke;
     }
     // ── End skin color overrides ─────────────────────────────────────
@@ -22731,7 +22731,7 @@ const CIRCLE_IO={
     this.ctx.rotate(tank.aimAngle);
     // Cannon skin glow
     if(isPlayer&&this.activeSkins){
-      const cannonSkinDef=(CIRCLEIO_SKINS_DATA.cannon||[]).find(s=>s.id===this.activeSkins.cannon);
+      const cannonSkinDef=(polytank_SKINS_DATA.cannon||[]).find(s=>s.id===this.activeSkins.cannon);
       if(cannonSkinDef?.glowColor){ this.ctx.shadowColor=cannonSkinDef.glowColor; this.ctx.shadowBlur=14; }
     }
     this.ctx.fillStyle=barrelColor;
@@ -23131,7 +23131,7 @@ const CIRCLE_IO={
     if(!cleanSpectate){
       this.drawServerEventBanner();
       this.drawEncounterObjectiveBar();
-      this.drawCircleioPointers();
+      this.drawpolytankPointers();
       this.drawDamageNumbers();
     }
     this.renderMinimap();
@@ -27694,14 +27694,14 @@ Object.entries(ADMIN_ITEMS).forEach(([k,v])=>v.key=k);
 
 // Wait two animation frames so the browser fully lays out header + canvas area
 // before placing circles — fixes the "circles in corner" bug on mobile
-const __circleioStandalone=typeof window!=='undefined'&&window.__CIRCLEIO_STANDALONE__===true;
+const __polytankStandalone=typeof window!=='undefined'&&window.__polytank_STANDALONE__===true;
 requestAnimationFrame(()=>requestAnimationFrame(()=>{
-  if(__circleioStandalone){
-    document.body.classList.add('circleio-standalone');
+  if(__polytankStandalone){
+    document.body.classList.add('polytank-standalone');
     const menu=document.getElementById('main-menu');
     if(menu) menu.style.display='none';
-    mode='circleio';
-    CIRCLE_IO.enter();
+    mode='polytank';
+    POLYTANK_IO.enter();
     return;
   }
   MENU_SCENE.init();
@@ -27760,7 +27760,7 @@ const __copilotExposeNames = [
   'ofActivateLaser','ofClearAll','ofMissionDeploy','ofMissionSelect','ofMissionSetMode','ofPickBoss','ofPickMothership','ofPickRandomize','ofRandomizePrompt','ofReset','ofSelectOrb','ofShowBossPicker','ofShowCelestial','ofShowCustomFusions','ofShowMainOrbs','ofShowSummonPicker','ofStartBattle','ofSummonBoss','ofToggleDelete','ofToggleMissionPanel','ofToggleSpawnPanel','ofToggleZoom',
   'adminAnnihilateAll','adminCheckCode','adminPlayAsArenaCloser','adminPlayAsMothership','adminRemoveTestBoss','adminSelect','adminSummon','adminToggle','adminToggleTestBoss','adminUnlockAllSignals','adminUnlockAllSkins','adminUnlockMissionBosses',
   'adminSetScale',
-  'FUSION_MODE','IFUSION','OPS','RL','QL','ScifiNav','SKINS','CREATOR','CIRCLE_IO','TUTORIAL'
+  'FUSION_MODE','IFUSION','OPS','RL','QL','ScifiNav','SKINS','CREATOR','POLYTANK_IO','TUTORIAL'
 ];
 if (typeof window !== 'undefined') {
   for (const name of __copilotExposeNames) {

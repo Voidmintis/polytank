@@ -3,26 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Circle.io</title>
-<link rel="icon" type="image/svg+xml" href="/circleio-favicon.svg">
-<link rel="stylesheet" href="/src/styles/circleio.css">
+<title>Polytank.io</title>
+<link rel="icon" type="image/svg+xml" href="/polytank-favicon.svg">
+<link rel="stylesheet" href="/src/styles/polytank.css">
 <style>
-body.circleio-standalone {
+body.polytank-standalone {
   background:#10161e;
 }
 
-body.circleio-standalone #main-menu,
-body.circleio-standalone #pause-screen,
-body.circleio-standalone #status,
-body.circleio-standalone #restart-btn,
-body.circleio-standalone #skins-btn,
-body.circleio-standalone #ops-btn,
-body.circleio-standalone #subtitle {
+body.polytank-standalone #main-menu,
+body.polytank-standalone #pause-screen,
+body.polytank-standalone #status,
+body.polytank-standalone #restart-btn,
+body.polytank-standalone #skins-btn,
+body.polytank-standalone #ops-btn,
+body.polytank-standalone #subtitle {
   display:none !important;
 }
 </style>
 </head>
-<body class="circleio-standalone">
+<body class="polytank-standalone">
 
 <div id="stars"><div class="star-layer" id="stars-far"></div><div class="star-layer" id="stars-mid"></div><div class="star-layer" id="stars-near"></div></div>
 <div id="warp"></div>
@@ -49,266 +49,266 @@ body.circleio-standalone #subtitle {
   <div id="of-victory-icon"></div>
   <div id="of-victory-title"></div>
   <div id="of-victory-sub"></div>
-  <button class="of-ctrl-btn" type="button" onclick="CIRCLE_IO.resetRun()">↺ PLAY AGAIN</button>
+  <button class="of-ctrl-btn" type="button" onclick="POLYTANK_IO.resetRun()">↺ PLAY AGAIN</button>
 </div>
 
-<div id="circleio-overlay">
-  <canvas id="circleio-canvas"></canvas>
-  <div id="circleio-menu" class="open">
-    <div id="circleio-menu-card">
-      <div id="circleio-menu-hero">
-        <div class="circleio-menu-kicker">Circle.io Lobby</div>
-        <div id="circleio-title">circle.io</div>
-        <div id="circleio-copy">Fast arena battles in a live background.</div>
+<div id="polytank-overlay">
+  <canvas id="polytank-canvas"></canvas>
+  <div id="polytank-menu" class="open">
+    <div id="polytank-menu-card">
+      <div id="polytank-menu-hero">
+        <div class="polytank-menu-kicker">Polytank.io Lobby</div>
+        <div id="polytank-title">Polytank.io</div>
+        <div id="polytank-copy">Fast arena battles in a live background.</div>
       </div>
-      <div id="circleio-menu-form">
+      <div id="polytank-menu-form">
         <div>
-          <input id="circleio-name-input" type="text" maxlength="24" autocomplete="nickname" placeholder="Nickname" />
+          <input id="polytank-name-input" type="text" maxlength="24" autocomplete="nickname" placeholder="Nickname" />
         </div>
-        <div id="circleio-menu-select-row">
-          <div class="circleio-menu-select-group" id="circleio-mode-select">
-            <div class="circleio-menu-label">Game Mode</div>
-            <button type="button" id="circleio-mode-toggle" onclick="CIRCLE_IO.toggleModeDropdown()">
-              <span id="circleio-mode-toggle-label">FFA</span>
-              <span id="circleio-mode-toggle-icon">⌄</span>
+        <div id="polytank-menu-select-row">
+          <div class="polytank-menu-select-group" id="polytank-mode-select">
+            <div class="polytank-menu-label">Game Mode</div>
+            <button type="button" id="polytank-mode-toggle" onclick="POLYTANK_IO.toggleModeDropdown()">
+              <span id="polytank-mode-toggle-label">FFA</span>
+              <span id="polytank-mode-toggle-icon">⌄</span>
             </button>
-            <div id="circleio-mode-dropdown" class="open">
-              <button type="button" class="circleio-mode-option active" id="circleio-mode-ffa" data-circleio-mode="ffa" onclick="CIRCLE_IO.setGameVariant('ffa')">FFA</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-2teams" data-circleio-mode="2teams" onclick="CIRCLE_IO.setGameVariant('2teams')">2 Teams</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-4teams" data-circleio-mode="4teams" onclick="CIRCLE_IO.setGameVariant('4teams')">4 Teams</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-maze" data-circleio-mode="maze" onclick="CIRCLE_IO.setGameVariant('maze')">Maze</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-breakout" data-circleio-mode="breakout" onclick="CIRCLE_IO.setGameVariant('breakout')">Breakout</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-sandbox" data-circleio-mode="sandbox" onclick="CIRCLE_IO.setGameVariant('sandbox')">Sandbox</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-domination" data-circleio-mode="domination" onclick="CIRCLE_IO.setGameVariant('domination')">Domination</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-tag" data-circleio-mode="tag" onclick="CIRCLE_IO.setGameVariant('tag')">Tag</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-ctf" data-circleio-mode="ctf" onclick="CIRCLE_IO.setGameVariant('ctf')">Capture Flag</button>
-              <button type="button" class="circleio-mode-option" id="circleio-mode-mothership" data-circleio-mode="mothership" onclick="CIRCLE_IO.setGameVariant('mothership')">Mothership</button>
+            <div id="polytank-mode-dropdown" class="open">
+              <button type="button" class="polytank-mode-option active" id="polytank-mode-ffa" data-polytank-mode="ffa" onclick="POLYTANK_IO.setGameVariant('ffa')">FFA</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-2teams" data-polytank-mode="2teams" onclick="POLYTANK_IO.setGameVariant('2teams')">2 Teams</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-4teams" data-polytank-mode="4teams" onclick="POLYTANK_IO.setGameVariant('4teams')">4 Teams</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-maze" data-polytank-mode="maze" onclick="POLYTANK_IO.setGameVariant('maze')">Maze</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-breakout" data-polytank-mode="breakout" onclick="POLYTANK_IO.setGameVariant('breakout')">Breakout</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-sandbox" data-polytank-mode="sandbox" onclick="POLYTANK_IO.setGameVariant('sandbox')">Sandbox</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-domination" data-polytank-mode="domination" onclick="POLYTANK_IO.setGameVariant('domination')">Domination</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-tag" data-polytank-mode="tag" onclick="POLYTANK_IO.setGameVariant('tag')">Tag</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-ctf" data-polytank-mode="ctf" onclick="POLYTANK_IO.setGameVariant('ctf')">Capture Flag</button>
+              <button type="button" class="polytank-mode-option" id="polytank-mode-mothership" data-polytank-mode="mothership" onclick="POLYTANK_IO.setGameVariant('mothership')">Mothership</button>
             </div>
           </div>
         </div>
-        <div id="circleio-team-row-wrap">
-          <div class="circleio-menu-label">Spawn Team</div>
-          <div class="circleio-team-switcher">
-            <button type="button" class="circleio-team-switch blue active" id="circleio-team-blue" onclick="CIRCLE_IO.setPlayerTeam('blue')">Blue</button>
-            <button type="button" class="circleio-team-switch red" id="circleio-team-red" onclick="CIRCLE_IO.setPlayerTeam('red')">Red</button>
-            <button type="button" class="circleio-team-switch green" id="circleio-team-green" onclick="CIRCLE_IO.setPlayerTeam('green')">Green</button>
-            <button type="button" class="circleio-team-switch purple" id="circleio-team-purple" onclick="CIRCLE_IO.setPlayerTeam('purple')">Purple</button>
+        <div id="polytank-team-row-wrap">
+          <div class="polytank-menu-label">Spawn Team</div>
+          <div class="polytank-team-switcher">
+            <button type="button" class="polytank-team-switch blue active" id="polytank-team-blue" onclick="POLYTANK_IO.setPlayerTeam('blue')">Blue</button>
+            <button type="button" class="polytank-team-switch red" id="polytank-team-red" onclick="POLYTANK_IO.setPlayerTeam('red')">Red</button>
+            <button type="button" class="polytank-team-switch green" id="polytank-team-green" onclick="POLYTANK_IO.setPlayerTeam('green')">Green</button>
+            <button type="button" class="polytank-team-switch purple" id="polytank-team-purple" onclick="POLYTANK_IO.setPlayerTeam('purple')">Purple</button>
           </div>
         </div>
-        <div id="circleio-main-action-row" class="circleio-menu-actions">
-          <button type="button" id="circleio-play-btn" onclick="CIRCLE_IO.startMatch()">Play</button>
-          <button type="button" id="circleio-party-link-btn" onclick="CIRCLE_IO.copyPartyLink()">Copy Party Link</button>
-          <button type="button" id="circleio-skins-btn" onclick="CIRCLE_IO.openSkinsShop()">Skins</button>
-          <button type="button" id="circleio-settings-btn" onclick="CIRCLE_IO.toggleSettingsPanel()">Settings</button>
-          <button type="button" id="circleio-new-btn" onclick="CIRCLE_IO.startFreshMatch()">Switch Game Mode</button>
+        <div id="polytank-main-action-row" class="polytank-menu-actions">
+          <button type="button" id="polytank-play-btn" onclick="POLYTANK_IO.startMatch()">Play</button>
+          <button type="button" id="polytank-party-link-btn" onclick="POLYTANK_IO.copyPartyLink()">Copy Party Link</button>
+          <button type="button" id="polytank-skins-btn" onclick="POLYTANK_IO.openSkinsShop()">Skins</button>
+          <button type="button" id="polytank-settings-btn" onclick="POLYTANK_IO.toggleSettingsPanel()">Settings</button>
+          <button type="button" id="polytank-new-btn" onclick="POLYTANK_IO.startFreshMatch()">Switch Game Mode</button>
         </div>
-        <div id="circleio-settings-panel">
-          <div class="circleio-menu-label">Map Theme</div>
-          <div id="circleio-theme-switcher">
-            <button type="button" class="circleio-theme-option active" id="circleio-theme-light" onclick="CIRCLE_IO.setMapTheme('light')">Light</button>
-            <button type="button" class="circleio-theme-option" id="circleio-theme-dark" onclick="CIRCLE_IO.setMapTheme('dark')">Dark</button>
+        <div id="polytank-settings-panel">
+          <div class="polytank-menu-label">Map Theme</div>
+          <div id="polytank-theme-switcher">
+            <button type="button" class="polytank-theme-option active" id="polytank-theme-light" onclick="POLYTANK_IO.setMapTheme('light')">Light</button>
+            <button type="button" class="polytank-theme-option" id="polytank-theme-dark" onclick="POLYTANK_IO.setMapTheme('dark')">Dark</button>
           </div>
-          <div id="circleio-dev-admin-shell">
-            <div class="circleio-menu-label">Developer</div>
-            <div id="circleio-dev-admin-row">
-              <div id="circleio-dev-mode-pill">Dev Mode</div>
-              <button type="button" class="circleio-theme-option" id="circleio-dev-admin-btn" onclick="CIRCLE_IO.toggleDevAdmin()">Admin: Off</button>
+          <div id="polytank-dev-admin-shell">
+            <div class="polytank-menu-label">Developer</div>
+            <div id="polytank-dev-admin-row">
+              <div id="polytank-dev-mode-pill">Dev Mode</div>
+              <button type="button" class="polytank-theme-option" id="polytank-dev-admin-btn" onclick="POLYTANK_IO.toggleDevAdmin()">Admin: Off</button>
             </div>
-            <div id="circleio-dev-admin-sub">Admin overrides are available only while running in dev mode.</div>
+            <div id="polytank-dev-admin-sub">Admin overrides are available only while running in dev mode.</div>
           </div>
         </div>
-        <div id="circleio-status-line" class="circleio-menu-label">Press Enter to deploy or resume</div>
-        <div id="circleio-menu-advanced">
+        <div id="polytank-status-line" class="polytank-menu-label">Press Enter to deploy or resume</div>
+        <div id="polytank-menu-advanced">
         <div>
-          <div class="circleio-menu-label">Game Mode</div>
-          <div class="circleio-menu-banner">Quick mode controls moved to the top selector.</div>
+          <div class="polytank-menu-label">Game Mode</div>
+          <div class="polytank-menu-banner">Quick mode controls moved to the top selector.</div>
         </div>
-        <div id="circleio-menu-preview">
-          <div class="circleio-menu-chip"><span>Mode</span><strong id="circleio-preview-mode">Free For All</strong></div>
-          <div class="circleio-menu-chip"><span>Map</span><strong id="circleio-preview-map">Open Arena</strong></div>
-          <div class="circleio-menu-chip"><span>HUD</span><strong id="circleio-preview-hud">Leaderboard, Minimap, Upgrades</strong></div>
+        <div id="polytank-menu-preview">
+          <div class="polytank-menu-chip"><span>Mode</span><strong id="polytank-preview-mode">Free For All</strong></div>
+          <div class="polytank-menu-chip"><span>Map</span><strong id="polytank-preview-map">Open Arena</strong></div>
+          <div class="polytank-menu-chip"><span>HUD</span><strong id="polytank-preview-hud">Leaderboard, Minimap, Upgrades</strong></div>
         </div>
-        <div id="circleio-live-grid" aria-live="polite">
-          <div class="circleio-live-chip"><span>Arena Density</span><strong id="circleio-live-density">65%</strong></div>
-          <div class="circleio-live-chip"><span>Signal Ping</span><strong id="circleio-live-ping">18 ms</strong></div>
-          <div class="circleio-live-chip warning"><span>Threat Index</span><strong id="circleio-live-threat">34%</strong></div>
+        <div id="polytank-live-grid" aria-live="polite">
+          <div class="polytank-live-chip"><span>Arena Density</span><strong id="polytank-live-density">65%</strong></div>
+          <div class="polytank-live-chip"><span>Signal Ping</span><strong id="polytank-live-ping">18 ms</strong></div>
+          <div class="polytank-live-chip warning"><span>Threat Index</span><strong id="polytank-live-threat">34%</strong></div>
         </div>
-        <div id="circleio-local-party-shell">
-          <div class="circleio-perma-head">
+        <div id="polytank-local-party-shell">
+          <div class="polytank-perma-head">
             <div>
-              <div class="circleio-menu-label">Local Party Lobby</div>
-              <div class="circleio-perma-copy">Create a code, invite another tab in this browser, and stage the match in a live waiting room.</div>
+              <div class="polytank-menu-label">Local Party Lobby</div>
+              <div class="polytank-perma-copy">Create a code, invite another tab in this browser, and stage the match in a live waiting room.</div>
             </div>
-            <div id="circleio-local-party-code">NO CODE</div>
+            <div id="polytank-local-party-code">NO CODE</div>
           </div>
-          <div class="circleio-local-party-actions">
-            <button type="button" id="circleio-local-create-btn" onclick="CIRCLE_IO.createLocalParty()">Create Code</button>
-            <div class="circleio-local-join-box">
-              <input id="circleio-local-code-input" type="text" maxlength="8" autocomplete="off" placeholder="JOIN CODE" />
-              <button type="button" id="circleio-local-join-btn" onclick="CIRCLE_IO.joinLocalParty()">Join</button>
+          <div class="polytank-local-party-actions">
+            <button type="button" id="polytank-local-create-btn" onclick="POLYTANK_IO.createLocalParty()">Create Code</button>
+            <div class="polytank-local-join-box">
+              <input id="polytank-local-code-input" type="text" maxlength="8" autocomplete="off" placeholder="JOIN CODE" />
+              <button type="button" id="polytank-local-join-btn" onclick="POLYTANK_IO.joinLocalParty()">Join</button>
             </div>
-            <button type="button" id="circleio-local-leave-btn" onclick="CIRCLE_IO.leaveLocalParty()">Leave Lobby</button>
+            <button type="button" id="polytank-local-leave-btn" onclick="POLYTANK_IO.leaveLocalParty()">Leave Lobby</button>
           </div>
-          <div id="circleio-local-party-status" class="circleio-menu-banner">No local party yet. Create a code or join one from another tab in the same browser.</div>
-          <div id="circleio-local-party-config">
+          <div id="polytank-local-party-status" class="polytank-menu-banner">No local party yet. Create a code or join one from another tab in the same browser.</div>
+          <div id="polytank-local-party-config">
             <div>
-              <div class="circleio-menu-label">Friend Team Preference</div>
-              <div class="circleio-team-switcher" id="circleio-local-team-pref-switcher">
-                <button type="button" class="circleio-team-switch" id="circleio-local-pref-same" onclick="CIRCLE_IO.setLocalPartyTeamPreference('same')">Same</button>
-                <button type="button" class="circleio-team-switch" id="circleio-local-pref-different" onclick="CIRCLE_IO.setLocalPartyTeamPreference('different')">Different</button>
-                <button type="button" class="circleio-team-switch" id="circleio-local-pref-random" onclick="CIRCLE_IO.setLocalPartyTeamPreference('random')">Random</button>
+              <div class="polytank-menu-label">Friend Team Preference</div>
+              <div class="polytank-team-switcher" id="polytank-local-team-pref-switcher">
+                <button type="button" class="polytank-team-switch" id="polytank-local-pref-same" onclick="POLYTANK_IO.setLocalPartyTeamPreference('same')">Same</button>
+                <button type="button" class="polytank-team-switch" id="polytank-local-pref-different" onclick="POLYTANK_IO.setLocalPartyTeamPreference('different')">Different</button>
+                <button type="button" class="polytank-team-switch" id="polytank-local-pref-random" onclick="POLYTANK_IO.setLocalPartyTeamPreference('random')">Random</button>
               </div>
             </div>
-            <button type="button" id="circleio-local-ai-btn" onclick="CIRCLE_IO.toggleLocalPartyAi()">AI ON</button>
+            <button type="button" id="polytank-local-ai-btn" onclick="POLYTANK_IO.toggleLocalPartyAi()">AI ON</button>
           </div>
-          <div class="circleio-local-party-actions secondary">
-            <button type="button" id="circleio-local-add-sim-btn" onclick="CIRCLE_IO.addLocalPartyTestAi()">Add Test Real AI</button>
-            <div class="circleio-menu-label">Host can seed fake real-player bots for match testing.</div>
-            <button type="button" id="circleio-local-remove-sim-btn" onclick="CIRCLE_IO.removeLocalPartyTestAi()">Remove Test AI</button>
+          <div class="polytank-local-party-actions secondary">
+            <button type="button" id="polytank-local-add-sim-btn" onclick="POLYTANK_IO.addLocalPartyTestAi()">Add Test Real AI</button>
+            <div class="polytank-menu-label">Host can seed fake real-player bots for match testing.</div>
+            <button type="button" id="polytank-local-remove-sim-btn" onclick="POLYTANK_IO.removeLocalPartyTestAi()">Remove Test AI</button>
           </div>
-          <div id="circleio-local-party-room">
-            <canvas id="circleio-local-party-canvas" width="320" height="320"></canvas>
-            <div id="circleio-local-party-roster"></div>
+          <div id="polytank-local-party-room">
+            <canvas id="polytank-local-party-canvas" width="320" height="320"></canvas>
+            <div id="polytank-local-party-roster"></div>
           </div>
         </div>
-        <div id="circleio-menu-session" class="circleio-menu-banner">Fresh arena ready.</div>
+        <div id="polytank-menu-session" class="polytank-menu-banner">Fresh arena ready.</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="circleio-scoreboard-shell">
-    <div id="circleio-leaderboard-title">Scoreboard</div>
-    <div id="circleio-leaderboard-list"></div>
+  <div id="polytank-scoreboard-shell">
+    <div id="polytank-leaderboard-title">Scoreboard</div>
+    <div id="polytank-leaderboard-list"></div>
   </div>
 
-  <div id="circleio-upgrade-dock">
-    <div id="circleio-upgrade-points">Upgrade Points <strong id="circleio-points">0</strong></div>
-    <div class="circleio-upgrade-row" data-kind="regen"><div class="circleio-upgrade-label">Health Regen</div><div class="circleio-upgrade-key">[1]</div><div class="circleio-upgrade-level" id="circleio-lvl-regen">x0</div><button class="circleio-upgrade-btn regen" id="circleio-up-regen" onclick="CIRCLE_IO.buyUpgrade('regen')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="maxHealth"><div class="circleio-upgrade-label">Max Health</div><div class="circleio-upgrade-key">[2]</div><div class="circleio-upgrade-level" id="circleio-lvl-maxhealth">x0</div><button class="circleio-upgrade-btn maxHealth" id="circleio-up-maxhealth" onclick="CIRCLE_IO.buyUpgrade('maxHealth')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="bodyDamage"><div class="circleio-upgrade-label">Body Damage</div><div class="circleio-upgrade-key">[3]</div><div class="circleio-upgrade-level" id="circleio-lvl-bodydamage">x0</div><button class="circleio-upgrade-btn bodyDamage" id="circleio-up-bodydamage" onclick="CIRCLE_IO.buyUpgrade('bodyDamage')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="bulletSpeed"><div class="circleio-upgrade-label">Bullet Speed</div><div class="circleio-upgrade-key">[4]</div><div class="circleio-upgrade-level" id="circleio-lvl-bulletspeed">x0</div><button class="circleio-upgrade-btn bulletSpeed" id="circleio-up-bulletspeed" onclick="CIRCLE_IO.buyUpgrade('bulletSpeed')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="bulletPenetration"><div class="circleio-upgrade-label">Bullet Penetration</div><div class="circleio-upgrade-key">[5]</div><div class="circleio-upgrade-level" id="circleio-lvl-bulletpenetration">x0</div><button class="circleio-upgrade-btn bulletPenetration" id="circleio-up-bulletpenetration" onclick="CIRCLE_IO.buyUpgrade('bulletPenetration')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="bulletDamage"><div class="circleio-upgrade-label">Bullet Damage</div><div class="circleio-upgrade-key">[6]</div><div class="circleio-upgrade-level" id="circleio-lvl-bulletdamage">x0</div><button class="circleio-upgrade-btn bulletDamage" id="circleio-up-bulletdamage" onclick="CIRCLE_IO.buyUpgrade('bulletDamage')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="reload"><div class="circleio-upgrade-label">Reload</div><div class="circleio-upgrade-key">[7]</div><div class="circleio-upgrade-level" id="circleio-lvl-reload">x0</div><button class="circleio-upgrade-btn reload" id="circleio-up-reload" onclick="CIRCLE_IO.buyUpgrade('reload')">+</button></div>
-    <div class="circleio-upgrade-row" data-kind="moveSpeed"><div class="circleio-upgrade-label">Movement Speed</div><div class="circleio-upgrade-key">[8]</div><div class="circleio-upgrade-level" id="circleio-lvl-movespeed">x0</div><button class="circleio-upgrade-btn moveSpeed" id="circleio-up-movespeed" onclick="CIRCLE_IO.buyUpgrade('moveSpeed')">+</button></div>
+  <div id="polytank-upgrade-dock">
+    <div id="polytank-upgrade-points">Upgrade Points <strong id="polytank-points">0</strong></div>
+    <div class="polytank-upgrade-row" data-kind="regen"><div class="polytank-upgrade-label">Health Regen</div><div class="polytank-upgrade-key">[1]</div><div class="polytank-upgrade-level" id="polytank-lvl-regen">x0</div><button class="polytank-upgrade-btn regen" id="polytank-up-regen" onclick="POLYTANK_IO.buyUpgrade('regen')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="maxHealth"><div class="polytank-upgrade-label">Max Health</div><div class="polytank-upgrade-key">[2]</div><div class="polytank-upgrade-level" id="polytank-lvl-maxhealth">x0</div><button class="polytank-upgrade-btn maxHealth" id="polytank-up-maxhealth" onclick="POLYTANK_IO.buyUpgrade('maxHealth')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="bodyDamage"><div class="polytank-upgrade-label">Body Damage</div><div class="polytank-upgrade-key">[3]</div><div class="polytank-upgrade-level" id="polytank-lvl-bodydamage">x0</div><button class="polytank-upgrade-btn bodyDamage" id="polytank-up-bodydamage" onclick="POLYTANK_IO.buyUpgrade('bodyDamage')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="bulletSpeed"><div class="polytank-upgrade-label">Bullet Speed</div><div class="polytank-upgrade-key">[4]</div><div class="polytank-upgrade-level" id="polytank-lvl-bulletspeed">x0</div><button class="polytank-upgrade-btn bulletSpeed" id="polytank-up-bulletspeed" onclick="POLYTANK_IO.buyUpgrade('bulletSpeed')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="bulletPenetration"><div class="polytank-upgrade-label">Bullet Penetration</div><div class="polytank-upgrade-key">[5]</div><div class="polytank-upgrade-level" id="polytank-lvl-bulletpenetration">x0</div><button class="polytank-upgrade-btn bulletPenetration" id="polytank-up-bulletpenetration" onclick="POLYTANK_IO.buyUpgrade('bulletPenetration')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="bulletDamage"><div class="polytank-upgrade-label">Bullet Damage</div><div class="polytank-upgrade-key">[6]</div><div class="polytank-upgrade-level" id="polytank-lvl-bulletdamage">x0</div><button class="polytank-upgrade-btn bulletDamage" id="polytank-up-bulletdamage" onclick="POLYTANK_IO.buyUpgrade('bulletDamage')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="reload"><div class="polytank-upgrade-label">Reload</div><div class="polytank-upgrade-key">[7]</div><div class="polytank-upgrade-level" id="polytank-lvl-reload">x0</div><button class="polytank-upgrade-btn reload" id="polytank-up-reload" onclick="POLYTANK_IO.buyUpgrade('reload')">+</button></div>
+    <div class="polytank-upgrade-row" data-kind="moveSpeed"><div class="polytank-upgrade-label">Movement Speed</div><div class="polytank-upgrade-key">[8]</div><div class="polytank-upgrade-level" id="polytank-lvl-movespeed">x0</div><button class="polytank-upgrade-btn moveSpeed" id="polytank-up-movespeed" onclick="POLYTANK_IO.buyUpgrade('moveSpeed')">+</button></div>
   </div>
 
-  <button id="circleio-sandbox-toggle" type="button" onclick="CIRCLE_IO.toggleSandboxPanel()">Sandbox Menu</button>
-  <div id="circleio-sandbox-panel">
-    <div id="circleio-sandbox-head">
+  <button id="polytank-sandbox-toggle" type="button" onclick="POLYTANK_IO.toggleSandboxPanel()">Sandbox Menu</button>
+  <div id="polytank-sandbox-panel">
+    <div id="polytank-sandbox-head">
       <div>
-        <div id="circleio-sandbox-title">Sandbox Console</div>
-        <div id="circleio-sandbox-copy">Pick your class and level, then spawn bosses, shapes, or AI tanks into the chamber.</div>
+        <div id="polytank-sandbox-title">Sandbox Console</div>
+        <div id="polytank-sandbox-copy">Pick your class and level, then spawn bosses, shapes, or AI tanks into the chamber.</div>
       </div>
-      <button class="circleio-sandbox-close" type="button" onclick="CIRCLE_IO.toggleSandboxPanel(false)">Close</button>
+      <button class="polytank-sandbox-close" type="button" onclick="POLYTANK_IO.toggleSandboxPanel(false)">Close</button>
     </div>
-    <div class="circleio-sandbox-section">
-      <div class="circleio-sandbox-label">Player Loadout</div>
-      <div class="circleio-sandbox-row">
-        <select class="circleio-sandbox-field" id="circleio-sandbox-player-class"></select>
-        <input class="circleio-sandbox-field" id="circleio-sandbox-player-level" type="number" min="1" max="150" value="45" />
+    <div class="polytank-sandbox-section">
+      <div class="polytank-sandbox-label">Player Loadout</div>
+      <div class="polytank-sandbox-row">
+        <select class="polytank-sandbox-field" id="polytank-sandbox-player-class"></select>
+        <input class="polytank-sandbox-field" id="polytank-sandbox-player-level" type="number" min="1" max="150" value="45" />
       </div>
-      <div class="circleio-sandbox-row single"><button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.applySandboxPlayerSetup()">Become Tank</button></div>
+      <div class="polytank-sandbox-row single"><button class="polytank-sandbox-action" type="button" onclick="POLYTANK_IO.applySandboxPlayerSetup()">Become Tank</button></div>
     </div>
-    <div class="circleio-sandbox-section">
-      <div class="circleio-sandbox-label">Summon Boss</div>
-      <div class="circleio-sandbox-row single"><select class="circleio-sandbox-field" id="circleio-sandbox-boss"></select></div>
-      <div class="circleio-sandbox-row single"><button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.spawnSandboxBoss()">Spawn Boss</button></div>
+    <div class="polytank-sandbox-section">
+      <div class="polytank-sandbox-label">Summon Boss</div>
+      <div class="polytank-sandbox-row single"><select class="polytank-sandbox-field" id="polytank-sandbox-boss"></select></div>
+      <div class="polytank-sandbox-row single"><button class="polytank-sandbox-action" type="button" onclick="POLYTANK_IO.spawnSandboxBoss()">Spawn Boss</button></div>
     </div>
-    <div class="circleio-sandbox-section">
-      <div class="circleio-sandbox-label">Summon AI Tank</div>
-      <div class="circleio-sandbox-row">
-        <select class="circleio-sandbox-field" id="circleio-sandbox-ai-class"></select>
-        <input class="circleio-sandbox-field" id="circleio-sandbox-ai-level" type="number" min="1" max="150" value="30" />
+    <div class="polytank-sandbox-section">
+      <div class="polytank-sandbox-label">Summon AI Tank</div>
+      <div class="polytank-sandbox-row">
+        <select class="polytank-sandbox-field" id="polytank-sandbox-ai-class"></select>
+        <input class="polytank-sandbox-field" id="polytank-sandbox-ai-level" type="number" min="1" max="150" value="30" />
       </div>
-      <div class="circleio-sandbox-row">
-        <select class="circleio-sandbox-field" id="circleio-sandbox-ai-team">
+      <div class="polytank-sandbox-row">
+        <select class="polytank-sandbox-field" id="polytank-sandbox-ai-team">
           <option value="red">Red</option>
           <option value="blue">Blue</option>
           <option value="yellow">Yellow</option>
           <option value="neutral">Neutral</option>
         </select>
-        <button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.spawnSandboxAiTank()">Spawn AI</button>
+        <button class="polytank-sandbox-action" type="button" onclick="POLYTANK_IO.spawnSandboxAiTank()">Spawn AI</button>
       </div>
     </div>
-    <div class="circleio-sandbox-section">
-      <div class="circleio-sandbox-label">Summon Shape</div>
-      <div class="circleio-sandbox-row">
-        <select class="circleio-sandbox-field" id="circleio-sandbox-shape"></select>
-        <input class="circleio-sandbox-field" id="circleio-sandbox-shape-count" type="number" min="1" max="24" value="3" />
+    <div class="polytank-sandbox-section">
+      <div class="polytank-sandbox-label">Summon Shape</div>
+      <div class="polytank-sandbox-row">
+        <select class="polytank-sandbox-field" id="polytank-sandbox-shape"></select>
+        <input class="polytank-sandbox-field" id="polytank-sandbox-shape-count" type="number" min="1" max="24" value="3" />
       </div>
-      <div class="circleio-sandbox-row single"><button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.spawnSandboxShape()">Spawn Shapes</button></div>
-      <div class="circleio-sandbox-note">Sandbox uses a compact chamber. Normal ambient bosses, shapes, and team waves stay off until you summon them.</div>
+      <div class="polytank-sandbox-row single"><button class="polytank-sandbox-action" type="button" onclick="POLYTANK_IO.spawnSandboxShape()">Spawn Shapes</button></div>
+      <div class="polytank-sandbox-note">Sandbox uses a compact chamber. Normal ambient bosses, shapes, and team waves stay off until you summon them.</div>
     </div>
   </div>
 
-  <div id="circleio-branch-panel">
-    <div id="circleio-branch-head">
+  <div id="polytank-branch-panel">
+    <div id="polytank-branch-head">
       <div>
-        <div id="circleio-branch-title">Tank Upgrade</div>
-        <div id="circleio-branch-copy">Every 15 levels you can branch into a stronger tank line.</div>
+        <div id="polytank-branch-title">Tank Upgrade</div>
+        <div id="polytank-branch-copy">Every 15 levels you can branch into a stronger tank line.</div>
       </div>
-      <button id="circleio-branch-close" onclick="CIRCLE_IO.closeClassChoice()">Ignore</button>
+      <button id="polytank-branch-close" onclick="POLYTANK_IO.closeClassChoice()">Ignore</button>
     </div>
-    <div id="circleio-branch-options"></div>
+    <div id="polytank-branch-options"></div>
   </div>
 
-  <div id="circleio-minimap-shell">
-    <canvas id="circleio-minimap" width="220" height="140"></canvas>
-    <div id="circleio-minimap-label">Minimap</div>
+  <div id="polytank-minimap-shell">
+    <canvas id="polytank-minimap" width="220" height="140"></canvas>
+    <div id="polytank-minimap-label">Minimap</div>
   </div>
 
-  <div id="circleio-bottom-hud">
-    <div id="circleio-level-header">
-      <span id="circleio-level-name">Pilot</span>
-      <span id="circleio-level-next">Score 0</span>
+  <div id="polytank-bottom-hud">
+    <div id="polytank-level-header">
+      <span id="polytank-level-name">Pilot</span>
+      <span id="polytank-level-next">Score 0</span>
     </div>
-    <div id="circleio-level-track"><div id="circleio-level-fill"></div></div>
-    <div id="circleio-level-sub">
-      <span id="circleio-level-progress">Basic Tank • Lv 1</span>
-      <span id="circleio-level-percent">HP 100</span>
+    <div id="polytank-level-track"><div id="polytank-level-fill"></div></div>
+    <div id="polytank-level-sub">
+      <span id="polytank-level-progress">Basic Tank • Lv 1</span>
+      <span id="polytank-level-percent">HP 100</span>
     </div>
   </div>
 
-  <div id="circleio-boss-panel">
-    <div id="circleio-boss-title">Boss Summons</div>
-    <div id="circleio-boss-sub">Admin only. Press H to toggle this panel and summon any boss entry.</div>
-    <div id="circleio-boss-list"></div>
+  <div id="polytank-boss-panel">
+    <div id="polytank-boss-title">Boss Summons</div>
+    <div id="polytank-boss-sub">Admin only. Press H to toggle this panel and summon any boss entry.</div>
+    <div id="polytank-boss-list"></div>
   </div>
 
   <!-- ✦ SKINS SHOP ✦ -->
-  <div id="circleio-skins-shop">
-    <div id="circleio-skins-backdrop" onclick="CIRCLE_IO.closeSkinsShop()"></div>
-    <div id="circleio-skins-panel">
-      <div id="circleio-skins-header">
-        <div id="circleio-skins-title-block">
+  <div id="polytank-skins-shop">
+    <div id="polytank-skins-backdrop" onclick="POLYTANK_IO.closeSkinsShop()"></div>
+    <div id="polytank-skins-panel">
+      <div id="polytank-skins-header">
+        <div id="polytank-skins-title-block">
           <div class="cio-skins-kicker">CUSTOMIZE</div>
-          <div id="circleio-skins-title">✦ Skin Shop</div>
-          <div id="circleio-skins-subtitle">Unlock skins to personalize your tank</div>
+          <div id="polytank-skins-title">✦ Skin Shop</div>
+          <div id="polytank-skins-subtitle">Unlock skins to personalize your tank</div>
         </div>
-        <div id="circleio-skins-team-badge">
-          <span id="circleio-skins-team-dot"></span>
-          <span id="circleio-skins-team-name">Blue Team</span>
+        <div id="polytank-skins-team-badge">
+          <span id="polytank-skins-team-dot"></span>
+          <span id="polytank-skins-team-name">Blue Team</span>
         </div>
-        <button type="button" id="circleio-skins-close" onclick="CIRCLE_IO.closeSkinsShop()">✕</button>
+        <button type="button" id="polytank-skins-close" onclick="POLYTANK_IO.closeSkinsShop()">✕</button>
       </div>
-      <div id="circleio-skins-tabs">
-        <button type="button" class="cio-skin-tab active" data-cat="body" onclick="CIRCLE_IO.setSkinsTab('body')">Body</button>
-        <button type="button" class="cio-skin-tab" data-cat="cannon" onclick="CIRCLE_IO.setSkinsTab('cannon')">Cannon</button>
-        <button type="button" class="cio-skin-tab" data-cat="bullet" onclick="CIRCLE_IO.setSkinsTab('bullet')">Bullets</button>
-        <button type="button" class="cio-skin-tab" data-cat="frame" onclick="CIRCLE_IO.setSkinsTab('frame')">Frame</button>
+      <div id="polytank-skins-tabs">
+        <button type="button" class="cio-skin-tab active" data-cat="body" onclick="POLYTANK_IO.setSkinsTab('body')">Body</button>
+        <button type="button" class="cio-skin-tab" data-cat="cannon" onclick="POLYTANK_IO.setSkinsTab('cannon')">Cannon</button>
+        <button type="button" class="cio-skin-tab" data-cat="bullet" onclick="POLYTANK_IO.setSkinsTab('bullet')">Bullets</button>
+        <button type="button" class="cio-skin-tab" data-cat="frame" onclick="POLYTANK_IO.setSkinsTab('frame')">Frame</button>
       </div>
-      <div id="circleio-skins-body">
-        <div id="circleio-skins-grid"></div>
-        <div id="circleio-skins-sidebar">
-          <canvas id="circleio-skins-preview" width="190" height="190"></canvas>
-          <div id="circleio-skins-detail">
-            <div id="circleio-skins-detail-name">Select a skin</div>
-            <div id="circleio-skins-detail-rarity"></div>
-            <div id="circleio-skins-detail-desc"></div>
-            <div id="circleio-skins-detail-unlock"></div>
-            <button type="button" id="circleio-skins-equip" onclick="CIRCLE_IO.equipSkin()">Equip Skin</button>
+      <div id="polytank-skins-body">
+        <div id="polytank-skins-grid"></div>
+        <div id="polytank-skins-sidebar">
+          <canvas id="polytank-skins-preview" width="190" height="190"></canvas>
+          <div id="polytank-skins-detail">
+            <div id="polytank-skins-detail-name">Select a skin</div>
+            <div id="polytank-skins-detail-rarity"></div>
+            <div id="polytank-skins-detail-desc"></div>
+            <div id="polytank-skins-detail-unlock"></div>
+            <button type="button" id="polytank-skins-equip" onclick="POLYTANK_IO.equipSkin()">Equip Skin</button>
           </div>
         </div>
       </div>
@@ -335,7 +335,7 @@ body.circleio-standalone #subtitle {
   <div id="admin-content" style="display:none">
     <div id="admin-granted-label">⬡ ADMIN ACCESS GRANTED</div>
     <div id="admin-categories">
-      <div class="admin-cat-label">CIRCLE.IO</div>
+      <div class="admin-cat-label">Polytank.io</div>
       <div class="admin-items">
         <button class="admin-item admin-item-tool" id="admin-arena-closer-btn" onclick="adminPlayAsArenaCloser()">Play as Arena Closer</button>
         <button class="admin-item admin-item-tool" id="admin-mothership-btn" onclick="adminPlayAsMothership()">Play as Mothership</button>
@@ -354,7 +354,7 @@ body.circleio-standalone #subtitle {
 </div>
 
 <script>
-window.__CIRCLEIO_STANDALONE__=true;
+window.__polytank_STANDALONE__=true;
 </script>
 <script src="/main.js"></script>
 
