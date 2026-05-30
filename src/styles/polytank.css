@@ -16,6 +16,11 @@ body{background:var(--bg);font-family:'Rajdhani',sans-serif;color:var(--text);di
   text-shadow:-1px 0 rgba(28,32,40,.66),1px 0 rgba(28,32,40,.66),0 -1px rgba(28,32,40,.66),0 1px rgba(28,32,40,.66),-1px -1px rgba(28,32,40,.5),1px -1px rgba(28,32,40,.5),-1px 1px rgba(28,32,40,.5),1px 1px rgba(28,32,40,.5);
 }
 
+#polytank-overlay :is(.polytank-team-switch.active,#polytank-local-leave-btn,#polytank-local-remove-sim-btn,#polytank-new-btn,.polytank-upgrade-btn,#polytank-dev-mode-pill,#polytank-dev-admin-sub,#polytank-skins-btn,#admin-code-input,#admin-fusion-btn,#admin-selected-name,body.polytank-standalone .polytank-upgrade-label,#polytank-menu.paused #polytank-copy){
+  -webkit-text-stroke:.55px rgba(255,255,255,.72);
+  text-shadow:-1px 0 rgba(255,255,255,.64),1px 0 rgba(255,255,255,.64),0 -1px rgba(255,255,255,.64),0 1px rgba(255,255,255,.64),-1px -1px rgba(255,255,255,.46),1px -1px rgba(255,255,255,.46),-1px 1px rgba(255,255,255,.46),1px 1px rgba(255,255,255,.46);
+}
+
 #stars{position:fixed;inset:0;pointer-events:none;z-index:0}
 .star-layer{position:absolute;top:-40%;left:-40%;width:180%;height:180%;will-change:transform}
 .star{position:absolute;border-radius:50%;background:#fff;animation:twinkle var(--d,3s) var(--delay,0s) ease-in-out infinite alternate}
