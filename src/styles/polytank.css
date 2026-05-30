@@ -5,6 +5,9 @@
   --bg:#07080f;--gold:#f5c842;--text:#c8d8ff;--dim:#3a4a6a;--border:#1a2a4a;
   --red:#ff4455;--blue:#4488ff;--green:#44ee88;--purple:#cc44ff;--yellow:#ffee44;--cyan:#44eeff;
   --header-height:78px;--safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
+  --ui-mobile-min-text:0.875rem;
+  --ui-mobile-body-text:clamp(0.875rem,2.9vw,1rem);
+  --ui-mobile-title-text:clamp(1rem,4.4vw,1.2rem);
 }
 html,body{width:100%;height:100%;min-height:100dvh;overflow:hidden;touch-action:none;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);font-family:'Rajdhani',sans-serif;color:var(--text);display:flex;flex-direction:column;position:relative;transition:background 1.5s;overscroll-behavior:none}
@@ -218,8 +221,8 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 #polytank-orientation-lock-copy{margin-top:8px;font-family:'Rajdhani',sans-serif;font-size:1rem;line-height:1.1;color:rgba(220,230,244,.86)}
 
 body.mobile-touch #polytank-mobile-controls{display:block}
-body.mobile-touch #polytank-mobile-menu-btn{display:inline-flex;left:8px;top:calc(6px + var(--safe-top));min-width:58px;height:34px;padding:0 10px;font-size:.45rem}
-body.mobile-touch #polytank-mobile-upgrade-btn{position:absolute;right:8px;top:calc(6px + var(--safe-top));display:inline-flex;align-items:center;gap:8px;min-width:92px;height:34px;padding:0 10px;border:none;border-radius:999px;background:linear-gradient(180deg,rgba(74,84,96,.96),rgba(28,33,41,.98));box-shadow:0 14px 26px rgba(0,0,0,.28);color:#f5f8fb;font-family:'Orbitron',monospace;font-size:.42rem;letter-spacing:.09em;text-transform:uppercase;pointer-events:auto}
+body.mobile-touch #polytank-mobile-menu-btn{display:inline-flex;left:8px;top:calc(6px + var(--safe-top));min-width:72px;height:40px;padding:0 12px;font-size:var(--ui-mobile-min-text);letter-spacing:.04em}
+body.mobile-touch #polytank-mobile-upgrade-btn{position:absolute;right:8px;top:calc(6px + var(--safe-top));display:inline-flex;align-items:center;gap:8px;min-width:114px;height:40px;padding:0 12px;border:none;border-radius:999px;background:linear-gradient(180deg,rgba(74,84,96,.98),rgba(28,33,41,.99));box-shadow:0 14px 26px rgba(0,0,0,.28);color:#f5f8fb;font-family:'Orbitron',monospace;font-size:var(--ui-mobile-min-text);letter-spacing:.05em;text-transform:uppercase;pointer-events:auto}
 body.mobile-touch #polytank-mobile-upgrade-btn .polytank-mobile-upgrade-label{white-space:nowrap}
 body.mobile-touch #polytank-mobile-upgrade-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:linear-gradient(180deg,rgba(255,217,102,.98),rgba(230,162,31,.98));box-shadow:0 0 0 1px rgba(0,0,0,.22),0 6px 12px rgba(0,0,0,.24);color:#17130b;font-size:.62rem;line-height:1;letter-spacing:0;font-weight:800}
 body.mobile-touch #polytank-menu{padding:calc(4px + var(--safe-top)) calc(4px + var(--safe-bottom));--polytank-menu-fit:clamp(.32,calc((100dvh - 12px)/1480),.74)}
@@ -237,24 +240,24 @@ body.mobile-touch #polytank-mode-toggle{height:42px;font-size:.72rem}
 body.mobile-touch .polytank-mode-option{min-height:28px;font-size:.72rem;padding:0 10px}
 body.mobile-touch #polytank-mode-dropdown{max-height:min(30vh,180px)}
 body.mobile-touch .polytank-joystick{bottom:calc(8px + var(--safe-bottom));width:110px;height:110px}
-body.mobile-touch #polytank-bottom-hud{width:min(220px,calc(100vw - 18px));min-width:0;bottom:calc(8px + var(--safe-bottom));padding:0 2px}
-body.mobile-touch #polytank-level-header{gap:4px;font-size:.44rem;justify-content:center}
-body.mobile-touch #polytank-level-name{max-width:44vw;font-size:clamp(.8rem,4.2vw,1rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.mobile-touch #polytank-bottom-hud{width:min(260px,calc(100vw - 18px));min-width:0;bottom:calc(8px + var(--safe-bottom));padding:0 4px}
+body.mobile-touch #polytank-level-header{gap:6px;font-size:var(--ui-mobile-body-text);justify-content:center}
+body.mobile-touch #polytank-level-name{max-width:52vw;font-size:var(--ui-mobile-title-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.mobile-touch #polytank-level-track{height:10px;margin-top:3px;border-width:1px}
 body.mobile-touch #polytank-level-fill::after{width:8px;height:8px;left:2px}
-body.mobile-touch #polytank-level-sub{margin-top:3px;gap:6px;font-size:.38rem;justify-content:center}
+body.mobile-touch #polytank-level-sub{margin-top:4px;gap:8px;font-size:var(--ui-mobile-body-text);justify-content:center}
 body.mobile-touch #polytank-level-progress{max-width:50vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.mobile-touch #polytank-upgrade-dock{position:fixed;inset:calc(44px + var(--safe-top)) 8px calc(8px + var(--safe-bottom)) 8px;width:auto;display:none;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:8px;align-content:start;padding:12px;border-radius:20px;background:linear-gradient(180deg,rgba(12,15,23,.94),rgba(19,22,30,.96));border:1px solid rgba(255,255,255,.1);box-shadow:0 26px 70px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(14px);overflow:hidden;z-index:18;transform:translateY(12px) scale(.985);opacity:0;pointer-events:none}
 body.mobile-touch #polytank-upgrade-dock.is-visible{display:grid;opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
 body.mobile-touch #polytank-upgrade-dock.is-hidden-left,
 body.mobile-touch #polytank-upgrade-dock.is-hidden-right{display:none;opacity:0;pointer-events:none;transform:translateY(calc(100% + 24px)) scale(.985)}
 body.mobile-touch #polytank-upgrade-close{display:inline-flex;position:absolute;top:8px;right:8px;align-items:center;justify-content:center;min-width:78px;height:34px;padding:0 12px;border:none;border-radius:999px;background:rgba(255,255,255,.08);color:#f6f8fb;font-family:'Orbitron',monospace;font-size:.5rem;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;z-index:2}
-body.mobile-touch #polytank-upgrade-points{grid-column:1/-1;padding:8px 12px 8px 12px;font-size:.58rem;border-radius:14px;background:rgba(255,255,255,.06)}
-body.mobile-touch #polytank-upgrade-points strong{font-size:.78rem}
+body.mobile-touch #polytank-upgrade-points{grid-column:1/-1;padding:8px 12px 8px 12px;font-size:var(--ui-mobile-body-text);border-radius:14px;background:rgba(255,255,255,.08);color:#f3f7fc}
+body.mobile-touch #polytank-upgrade-points strong{font-size:1.1rem}
 body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-row{min-height:82px;gap:6px;padding:12px 12px 12px 12px;border-radius:18px;background:rgba(255,255,255,.05);grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:start}
 body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-label{grid-column:1;grid-row:1;font-size:.95rem;line-height:1.04;white-space:normal}
-body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-key{grid-column:1;grid-row:2;font-size:.5rem;align-self:end;opacity:.74}
-body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-level{grid-column:1;grid-row:2;font-size:.58rem;justify-self:end;align-self:end;padding-right:0}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-key{grid-column:1;grid-row:2;font-size:var(--ui-mobile-min-text);align-self:end;opacity:.92;color:#dce7f6}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-level{grid-column:1;grid-row:2;font-size:var(--ui-mobile-body-text);justify-self:end;align-self:end;padding-right:0;color:#f2f7ff}
 body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-btn{grid-column:2;grid-row:1 / span 2;width:40px;height:40px;align-self:center;justify-self:end;font-size:.96rem}
 body.mobile-touch #polytank-minimap-shell,
 body.mobile-touch #polytank-scoreboard-shell{display:none !important}
@@ -274,7 +277,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-level-fill::after{content:'';position:absolute;left:4px;top:50%;width:16px;height:16px;border-radius:50%;transform:translateY(-50%);background:#e6cf58;box-shadow:0 0 0 1px rgba(36,41,47,.42)}
 #polytank-level-sub{margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:14px;font-family:'Orbitron',monospace;font-size:.9rem;color:#eef3f7;position:relative;z-index:2;pointer-events:none}
 #polytank-level-percent{display:inline-flex;justify-content:flex-end;text-align:right;white-space:nowrap}
-#polytank-level-name,#polytank-level-progress{-webkit-text-stroke:.9px rgba(50,58,70,.7);text-shadow:-2px 0 rgba(44,52,64,.62),2px 0 rgba(44,52,64,.62),0 -2px rgba(44,52,64,.62),0 2px rgba(44,52,64,.62),-1px -1px rgba(44,52,64,.62),1px -1px rgba(44,52,64,.62),-1px 1px rgba(44,52,64,.62),1px 1px rgba(44,52,64,.62)}
+#polytank-level-name,#polytank-level-progress{-webkit-text-stroke:0;text-shadow:0 1px 2px rgba(19,24,31,.55)}
 #polytank-overlay.death-spectate-clean #polytank-scoreboard-shell,
 #polytank-overlay.death-spectate-clean #polytank-upgrade-dock,
 #polytank-overlay.death-spectate-clean #polytank-minimap-shell,
@@ -669,15 +672,15 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   body.mobile-touch #polytank-name-input{padding:10px 12px;font-size:1.2rem}
   body.mobile-touch #polytank-menu-form{gap:5px}
   body.mobile-touch #polytank-menu-select-row{gap:6px}
-  body.mobile-touch #polytank-mode-toggle{height:36px;font-size:.62rem}
+  body.mobile-touch #polytank-mode-toggle{height:38px;font-size:var(--ui-mobile-min-text)}
   body.mobile-touch #polytank-mode-dropdown{max-height:none;overflow:visible;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
-  body.mobile-touch .polytank-mode-option{min-height:24px;font-size:.6rem;padding:0 8px}
+  body.mobile-touch .polytank-mode-option{min-height:28px;font-size:var(--ui-mobile-min-text);padding:0 8px}
   body.mobile-touch #polytank-main-action-row{gap:6px;row-gap:6px}
-  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn,body.mobile-touch #polytank-skins-btn{min-height:28px;font-size:.58rem;border-width:1px}
+  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn,body.mobile-touch #polytank-skins-btn{min-height:34px;font-size:var(--ui-mobile-min-text);border-width:1px}
   body.mobile-touch #polytank-settings-panel{padding:6px 8px 8px}
   body.mobile-touch #polytank-theme-switcher{gap:6px}
   body.mobile-touch .polytank-theme-option{min-height:30px;font-size:.52rem}
-  body.mobile-touch #polytank-status-line{font-size:.46rem}
+  body.mobile-touch #polytank-status-line{font-size:var(--ui-mobile-min-text)}
 }
 
 #polytank-menu-card.bounce-in{animation:polytankMenuBounce .48s cubic-bezier(.12,.84,.24,1.12)}
@@ -708,7 +711,7 @@ body.polytank-standalone #polytank-sandbox-panel{
 body.polytank-standalone #polytank-leaderboard-title,
 body.polytank-standalone .polytank-leader-rank,
 body.polytank-standalone .polytank-leader-name,
-body.polytank-standalone .polytank-upgrade-label{color:#304356}
+body.polytank-standalone .polytank-upgrade-label{color:#1f2d3b}
 body.polytank-standalone #polytank-level-header,
 body.polytank-standalone #polytank-level-sub{color:#f4f8fc}
 body.polytank-standalone #polytank-level-track{background:linear-gradient(180deg,rgba(53,60,70,.98),rgba(38,44,52,.98))}
@@ -727,7 +730,7 @@ body.polytank-map-dark #polytank-sandbox-panel{
 body.polytank-map-dark #polytank-leaderboard-title,
 body.polytank-map-dark .polytank-leader-rank,
 body.polytank-map-dark .polytank-leader-name,
-body.polytank-map-dark .polytank-upgrade-label{color:#dbe6f2}
+body.polytank-map-dark .polytank-upgrade-label{color:#eef4ff}
 body.polytank-map-dark #polytank-level-header,
 body.polytank-map-dark #polytank-level-sub{color:#f4f8fc}
 body.polytank-map-dark #polytank-level-track{background:linear-gradient(180deg,rgba(53,60,70,.98),rgba(38,44,52,.98))}
@@ -735,7 +738,7 @@ body.polytank-map-dark #polytank-minimap{border-color:rgba(255,255,255,.1);backg
 
 #polytank-level-name,#polytank-level-progress{color:#f8fbff}
 #polytank-level-header span,
-#polytank-level-sub span{letter-spacing:.02em;text-shadow:-2px 0 rgba(52,61,73,.56),2px 0 rgba(52,61,73,.56),0 -2px rgba(52,61,73,.56),0 2px rgba(52,61,73,.56),-1px -1px rgba(52,61,73,.56),1px -1px rgba(52,61,73,.56),-1px 1px rgba(52,61,73,.56),1px 1px rgba(52,61,73,.56)}
+#polytank-level-sub span{letter-spacing:.01em;text-shadow:0 1px 2px rgba(19,24,31,.45)}
 
 @keyframes polytankMenuBounce{0%{opacity:0;transform:translateY(-18px) scale(.95)}62%{opacity:1;transform:translateY(4px) scale(1.01)}100%{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes polytankDropdownIn{0%{opacity:0;transform:translateY(-8px) scaleY(.92)}100%{opacity:1;transform:translateY(0) scaleY(1)}}
