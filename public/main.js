@@ -17320,7 +17320,7 @@ const POLYTANK_IO={
     if(instant) this.camera.zoom=next;
   },
   getAutoZoomForTank(tank){
-    const mobileZoomScale=this.mobileControlsEnabled?3:1;
+    const mobileZoomScale=this.mobileControlsEnabled?1/3:1;
     const mobileMaxZoom=this.mobileControlsEnabled?3:(this.camera.maxZoom||1.85);
     if(!tank) return 1;
     if(tank.specialRole==='mothership'){
