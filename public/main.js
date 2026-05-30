@@ -17314,14 +17314,17 @@ const POLYTANK_IO={
     return {x:this.camera.x+x/zoom,y:this.camera.y+y/zoom};
   },
   setZoom(value,instant=false){
-    const next=this.clamp(value,this.camera.minZoom||.3,this.camera.maxZoom||1.85);
+    const maxZoom=this.mobileControlsEnabled?2.5:(this.camera.maxZoom||1.85);
+    const next=this.clamp(value,this.camera.minZoom||.3,maxZoom);
     this.camera.targetZoom=next;
     if(instant) this.camera.zoom=next;
   },
   getAutoZoomForTank(tank){
-    const mobileZoomScale=this.mobileControlsEnabled?0.84:1;
+    const mobileZoomScale=this.mobileControlsEnabled?2.5:1;
+    const mobileMaxZoom=this.mobileControlsEnabled?2.5:(this.camera.maxZoom||1.85);
     if(!tank) return 1;
     if(tank.specialRole==='mothership'){
+      if(this.mobileControlsEnabled) return this.clamp(mobileZoomScale,this.camera.minZoom||.3,mobileMaxZoom);
       const barrels=this.getMothershipBarrels();
       const fitRadius=Math.max(
         tank.r*(tank.renderScale||.42)+180,
@@ -17329,7 +17332,7 @@ const POLYTANK_IO={
       );
       return this.clamp((Math.min(this.W,this.H)/(fitRadius*2.45))*mobileZoomScale,this.camera.minZoom||.3,.72);
     }
-    return this.clamp(mobileZoomScale,this.camera.minZoom||.3,this.camera.maxZoom||1.85);
+    return this.clamp(mobileZoomScale,this.camera.minZoom||.3,mobileMaxZoom);
   },
   applyAutoZoomForTank(tank,instant=false){
     this.setZoom(this.getAutoZoomForTank(tank),instant);
