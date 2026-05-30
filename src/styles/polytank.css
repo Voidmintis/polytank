@@ -192,7 +192,31 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 .polytank-boss-btn:hover{transform:translateY(-1px);border-color:rgba(255,216,120,.48);background:rgba(68,58,34,.96)}
 .polytank-boss-btn.close{background:rgba(32,34,40,.98)}
 #polytank-bottom-hud{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;width:min(480px,calc(100vw - 340px));min-width:min(320px,calc(100vw - 36px));padding:2px 8px 4px;border-radius:18px;border:0;background:transparent;box-shadow:none;pointer-events:none}
+#polytank-mobile-controls{position:absolute;inset:0;z-index:7;pointer-events:none;display:none}
+.polytank-joystick{position:absolute;bottom:20px;width:132px;height:132px;border-radius:50%;pointer-events:auto;touch-action:none}
+#polytank-joystick-left{left:16px}
+#polytank-joystick-right{right:16px}
+.polytank-joystick-ring{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.1) 0%,rgba(255,255,255,.02) 62%,rgba(0,0,0,.22) 100%);border:2px solid rgba(255,255,255,.28);box-shadow:inset 0 10px 20px rgba(255,255,255,.08),0 14px 24px rgba(0,0,0,.24)}
+.polytank-joystick-thumb{position:absolute;left:50%;top:50%;width:54px;height:54px;margin-left:-27px;margin-top:-27px;border-radius:50%;background:radial-gradient(circle at 32% 30%,rgba(255,255,255,.95),rgba(220,226,236,.72));border:1px solid rgba(16,20,27,.24);box-shadow:0 8px 14px rgba(0,0,0,.32);transform:translate(0,0)}
+.polytank-joystick.active .polytank-joystick-ring{border-color:rgba(255,236,161,.6);box-shadow:inset 0 10px 20px rgba(255,255,255,.08),0 0 0 1px rgba(255,236,161,.24),0 16px 28px rgba(0,0,0,.26)}
+
+#polytank-orientation-lock{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,11,18,.82);backdrop-filter:blur(4px)}
+#polytank-orientation-lock-card{padding:18px 20px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(19,25,37,.94);max-width:min(88vw,340px);text-align:center}
+#polytank-orientation-lock-title{font-family:'Orbitron',monospace;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:#f7fbff}
+#polytank-orientation-lock-copy{margin-top:8px;font-family:'Rajdhani',sans-serif;font-size:1rem;line-height:1.1;color:rgba(220,230,244,.86)}
+
+body.mobile-touch #polytank-mobile-controls{display:block}
+body.mobile-touch #polytank-upgrade-dock{left:12px;right:auto;bottom:auto;top:72px;width:min(230px,52vw);max-height:calc(100vh - 220px);overflow:auto;z-index:8}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-row{min-height:25px}
+body.mobile-touch #polytank-upgrade-dock .polytank-upgrade-label{font-size:.62rem}
+body.mobile-touch #polytank-bottom-hud{width:min(420px,calc(100vw - 210px));min-width:min(280px,calc(100vw - 220px));bottom:8px}
+body.mobile-touch #polytank-minimap-shell{right:10px;bottom:156px;width:min(148px,30vw)}
+body.mobile-touch #polytank-scoreboard-shell{right:10px;top:68px;width:min(180px,34vw)}
+
+body.mobile-touch.mobile-portrait-lock #polytank-orientation-lock{display:flex;pointer-events:auto}
+body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-overlay.menu-open #polytank-scoreboard-shell,#polytank-overlay.menu-open #polytank-upgrade-dock,#polytank-overlay.menu-open #polytank-minimap-shell,#polytank-overlay.menu-open #polytank-bottom-hud,#polytank-overlay.menu-open #polytank-branch-panel,#polytank-overlay.menu-open #polytank-sandbox-panel,#polytank-overlay.menu-open #polytank-sandbox-toggle{opacity:0;visibility:hidden;pointer-events:none}
+#polytank-overlay.menu-open #polytank-mobile-controls{opacity:0;pointer-events:none}
 #polytank-overlay.sandbox-mode #polytank-scoreboard-shell{opacity:0;visibility:hidden;pointer-events:none}
 #polytank-level-header{display:flex;align-items:center;justify-content:center;gap:0;font-family:'Orbitron',monospace;font-size:.58rem;letter-spacing:.04em;text-transform:none;color:#f2f5f8}
 #polytank-level-name{font-size:clamp(1.9rem,3.5vw,2.8rem);line-height:1.02}
@@ -343,6 +367,12 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
   #polytank-local-party-config,#polytank-local-party-room{grid-template-columns:1fr}
   #polytank-overlay.waiting-room #polytank-local-party-shell{grid-template-columns:1fr}
   #polytank-overlay.waiting-room #polytank-local-party-room,#polytank-overlay.waiting-room .polytank-local-party-actions,#polytank-overlay.waiting-room #polytank-local-party-status,#polytank-overlay.waiting-room #polytank-local-party-config,#polytank-overlay.waiting-room .polytank-local-party-actions.secondary{grid-column:1;grid-row:auto}
+}
+@media (orientation:portrait) and (pointer:coarse){
+  body.mobile-touch #polytank-upgrade-dock,
+  body.mobile-touch #polytank-scoreboard-shell,
+  body.mobile-touch #polytank-minimap-shell,
+  body.mobile-touch #polytank-bottom-hud{opacity:0;pointer-events:none}
 }
 @media (max-width:860px){#game-tooltip{width:min(240px,calc(100vw - 16px));max-height:min(58vh,420px)}}
 @media (max-width:560px){#game-tooltip{width:min(220px,calc(100vw - 12px));max-height:min(52vh,360px);padding:9px 9px 8px}.tt-preview-core,.tt-preview-skin{width:56px;height:56px}}

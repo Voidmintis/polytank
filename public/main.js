@@ -15036,6 +15036,13 @@ const POLYTANK_IO={
   camera:{x:0,y:0,zoom:1,targetZoom:1,minZoom:.3,maxZoom:1.85},
   keys:Object.create(null),
   pointer:{x:0,y:0,down:false},
+  isMobileTouch:false,
+  mobileControlsEnabled:false,
+  mobileOrientationBlocked:false,
+  mobileFireDown:false,
+  mobileLeftStick:{activeId:null,x:0,y:0,magnitude:0},
+  mobileRightStick:{activeId:null,x:0,y:0,magnitude:0},
+  mobileDom:{left:null,right:null,leftThumb:null,rightThumb:null,controls:null,orientationLock:null},
   player:null,
   bots:[],
   bullets:[],
@@ -15259,7 +15266,9 @@ const POLYTANK_IO={
     if(!this.canvas) return;
     this.ctx=this.canvas.getContext('2d');
     this.minimapCtx=this.minimapCanvas?this.minimapCanvas.getContext('2d'):null;
+    this.setupMobileControls();
     window.addEventListener('resize',()=>{ if(this.active) this.resize(); });
+    window.addEventListener('orientationchange',()=>this.refreshMobileUiState());
     document.addEventListener('keydown',event=>this.onKeyDown(event));
     document.addEventListener('keyup',event=>this.onKeyUp(event));
     window.addEventListener('mousemove',event=>this.onPointerMove(event));
@@ -15304,6 +15313,126 @@ const POLYTANK_IO={
     this.populateSandboxPanel();
     this.syncVariantUi();
     this.initialized=true;
+  },
+  isLandscapeOrientation(){
+    return window.innerWidth>=window.innerHeight;
+  },
+  setupMobileControls(){
+    const coarse=typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches;
+    this.isMobileTouch=coarse||('ontouchstart' in window)||((navigator&&navigator.maxTouchPoints)||0)>0;
+    this.mobileControlsEnabled=this.isMobileTouch;
+    this.mobileDom.controls=document.getElementById('polytank-mobile-controls');
+    this.mobileDom.orientationLock=document.getElementById('polytank-orientation-lock');
+    this.mobileDom.left=document.getElementById('polytank-joystick-left');
+    this.mobileDom.right=document.getElementById('polytank-joystick-right');
+    this.mobileDom.leftThumb=document.getElementById('polytank-joystick-left-thumb');
+    this.mobileDom.rightThumb=document.getElementById('polytank-joystick-right-thumb');
+    document.body.classList.toggle('mobile-touch',this.mobileControlsEnabled);
+    this.bindMobileStick('left');
+    this.bindMobileStick('right');
+    this.refreshMobileUiState();
+  },
+  bindMobileStick(side){
+    const stickEl=side==='left'?this.mobileDom.left:this.mobileDom.right;
+    if(!stickEl||stickEl.dataset.bound==='1') return;
+    const isLeft=side==='left';
+    stickEl.dataset.bound='1';
+    stickEl.addEventListener('pointerdown',event=>{
+      if(!this.mobileControlsEnabled||!this.inMatch||this.menuOpen||this.mobileOrientationBlocked) return;
+      event.preventDefault();
+      const stick=isLeft?this.mobileLeftStick:this.mobileRightStick;
+      stick.activeId=event.pointerId;
+      this.updateMobileStick(side,event,true);
+      stickEl.classList.add('active');
+      if(stickEl.setPointerCapture){
+        try{ stickEl.setPointerCapture(event.pointerId); }catch(_err){}
+      }
+    });
+    stickEl.addEventListener('pointermove',event=>{
+      const stick=isLeft?this.mobileLeftStick:this.mobileRightStick;
+      if(stick.activeId!==event.pointerId) return;
+      event.preventDefault();
+      this.updateMobileStick(side,event,false);
+    });
+    const release=event=>{
+      const stick=isLeft?this.mobileLeftStick:this.mobileRightStick;
+      if(stick.activeId!==event.pointerId) return;
+      event.preventDefault();
+      stick.activeId=null;
+      stick.x=0;
+      stick.y=0;
+      stick.magnitude=0;
+      if(!isLeft) this.mobileFireDown=false;
+      this.updateMobileStickVisual(side,0,0,0);
+      stickEl.classList.remove('active');
+    };
+    stickEl.addEventListener('pointerup',release);
+    stickEl.addEventListener('pointercancel',release);
+  },
+  updateMobileStick(side,event,isStart){
+    const stickEl=side==='left'?this.mobileDom.left:this.mobileDom.right;
+    if(!stickEl) return;
+    const rect=stickEl.getBoundingClientRect();
+    const centerX=rect.left+rect.width*0.5;
+    const centerY=rect.top+rect.height*0.5;
+    const maxRadius=Math.min(rect.width,rect.height)*0.32;
+    let dx=event.clientX-centerX;
+    let dy=event.clientY-centerY;
+    const distance=Math.hypot(dx,dy);
+    if(distance>maxRadius&&distance>0){
+      const scale=maxRadius/distance;
+      dx*=scale;
+      dy*=scale;
+    }
+    const nx=maxRadius>0?dx/maxRadius:0;
+    const ny=maxRadius>0?dy/maxRadius:0;
+    const magnitude=this.clamp(Math.hypot(nx,ny),0,1);
+    const stick=side==='left'?this.mobileLeftStick:this.mobileRightStick;
+    stick.x=this.clamp(nx,-1,1);
+    stick.y=this.clamp(ny,-1,1);
+    stick.magnitude=magnitude;
+    if(side==='right') this.mobileFireDown=magnitude>0.1;
+    this.updateMobileStickVisual(side,dx,dy,magnitude);
+    if(side==='right'&&isStart) this.pointer.down=false;
+  },
+  updateMobileStickVisual(side,dx,dy,magnitude){
+    const thumb=side==='left'?this.mobileDom.leftThumb:this.mobileDom.rightThumb;
+    if(thumb) thumb.style.transform=`translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)`;
+    const stickEl=side==='left'?this.mobileDom.left:this.mobileDom.right;
+    if(stickEl) stickEl.classList.toggle('active',magnitude>0.02);
+  },
+  syncPointerFromAim(originX,originY,angle){
+    const zoom=Math.max(0.01,this.camera.zoom||1);
+    const originScreenX=(originX-this.camera.x)*zoom;
+    const originScreenY=(originY-this.camera.y)*zoom;
+    const aimDistance=Math.max(150,Math.min(this.W,this.H)*0.28);
+    this.pointer.x=this.clamp(originScreenX+Math.cos(angle)*aimDistance,0,this.W);
+    this.pointer.y=this.clamp(originScreenY+Math.sin(angle)*aimDistance,0,this.H);
+  },
+  resetMobileSticks(){
+    this.mobileLeftStick.activeId=null;
+    this.mobileRightStick.activeId=null;
+    this.mobileLeftStick.x=0;
+    this.mobileLeftStick.y=0;
+    this.mobileLeftStick.magnitude=0;
+    this.mobileRightStick.x=0;
+    this.mobileRightStick.y=0;
+    this.mobileRightStick.magnitude=0;
+    this.mobileFireDown=false;
+    this.updateMobileStickVisual('left',0,0,0);
+    this.updateMobileStickVisual('right',0,0,0);
+  },
+  refreshMobileUiState(){
+    const blocked=!!(this.mobileControlsEnabled&&this.inMatch&&!this.menuOpen&&!this.isLandscapeOrientation());
+    this.mobileOrientationBlocked=blocked;
+    document.body.classList.toggle('mobile-touch',this.mobileControlsEnabled);
+    document.body.classList.toggle('mobile-portrait-lock',blocked);
+    if(this.mobileDom.orientationLock) this.mobileDom.orientationLock.setAttribute('aria-hidden',blocked?'false':'true');
+    if(blocked){
+      this.pointer.down=false;
+      this.mobileFireDown=false;
+      this.resetMobileSticks();
+    }
   },
   normalizePlayerName(value){
     const cleaned=String(value||'').replace(/[^a-z0-9 _\-\[\]]/gi,' ').replace(/\s+/g,' ').trim();
@@ -16897,6 +17026,7 @@ const POLYTANK_IO={
     if(this.overlayEl) this.overlayEl.classList.toggle('sandbox-mode',this.isSandboxMode());
     this.applyMapTheme();
     this.syncSandboxUi();
+    this.refreshMobileUiState();
     this.refreshMenuState();
   },
   populateSandboxPanel(){
@@ -16969,6 +17099,8 @@ const POLYTANK_IO={
       if(!this.player) this.resetRun();
       this.toggleModeDropdown(false);
       this.pointer.down=false;
+      this.mobileFireDown=false;
+      this.resetMobileSticks();
       this.menuPointer.inside=false;
       this.menuPointer.x=.5;
       this.menuPointer.y=.5;
@@ -16989,6 +17121,7 @@ const POLYTANK_IO={
     if(!this.menuOpen) this.stopMenuFxLoop();
     if(!this.menuOpen) this.toggleModeDropdown(false);
     if(!this.menuOpen) this.toggleSettingsPanel(false);
+    this.refreshMobileUiState();
     this.refreshMenuState();
   },
   onKeyDown(event){
@@ -17147,6 +17280,7 @@ const POLYTANK_IO={
       this.minimapCanvas.height=side;
     }
     this.updateCamera();
+    this.refreshMobileUiState();
   },
   getViewSize(){
     const zoom=Math.max(0.01,this.camera.zoom||1);
@@ -20339,6 +20473,13 @@ const POLYTANK_IO={
     }
     this.deathPanelAnim=0;
     this.deathSpectateUiHidden=false;
+    if(this.mobileControlsEnabled&&this.mobileOrientationBlocked){
+      this.pointer.down=false;
+      this.mobileFireDown=false;
+      this.applyTankDrive(this.player,0,0,dt,6.9,2.2);
+      this.integrateTankVelocity(this.player,dt,this.player.r,this.world.w-this.player.r,this.player.r,this.world.h-this.player.r);
+      return;
+    }
     this.applyZoneEffects(this.player,dt);
     const controlledDominator=this.getControlledDominator();
     let moveX=0;
@@ -20348,6 +20489,10 @@ const POLYTANK_IO={
       if(this.keys.KeyS||this.keys.ArrowDown) moveY+=1;
       if(this.keys.KeyA||this.keys.ArrowLeft) moveX-=1;
       if(this.keys.KeyD||this.keys.ArrowRight) moveX+=1;
+      if(this.mobileControlsEnabled&&this.mobileLeftStick.magnitude>0.04){
+        moveX+=this.mobileLeftStick.x;
+        moveY+=this.mobileLeftStick.y;
+      }
     }
     const moveLength=Math.hypot(moveX,moveY)||1;
     const targetVX=moveX?moveX/moveLength*this.player.moveSpeed:0;
@@ -20360,13 +20505,17 @@ const POLYTANK_IO={
     this.constrainTankToCageWall(this.player);
     const focus=controlledDominator||this.player;
     const pointerWorld=this.screenToWorld(this.pointer.x,this.pointer.y);
+    const usingMobileAim=this.mobileControlsEnabled&&this.mobileRightStick.magnitude>0.08;
     if(this.autoSpinEnabled){
       focus.aimAngle=(focus.aimAngle||0)+dt*this.autoSpinSpeed;
+    } else if(usingMobileAim){
+      focus.aimAngle=Math.atan2(this.mobileRightStick.y,this.mobileRightStick.x||1);
+      this.syncPointerFromAim(focus.x,focus.y,focus.aimAngle);
     } else {
       focus.aimAngle=Math.atan2(pointerWorld.y-focus.y,pointerWorld.x-focus.x||1);
     }
     if(!controlledDominator) this.player.aimAngle=focus.aimAngle;
-    if((this.pointer.down||this.autoFireEnabled)&&focus.specialRole!=='mothership'&&focus.shotTimer<=0) this.fireTank(focus);
+    if((this.pointer.down||this.mobileFireDown||this.autoFireEnabled)&&focus.specialRole!=='mothership'&&focus.shotTimer<=0) this.fireTank(focus);
     this.updateTankOrbiters(this.player,dt);
   },
   updateBots(dt){
