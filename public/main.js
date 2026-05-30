@@ -17319,7 +17319,7 @@ const POLYTANK_IO={
     if(instant) this.camera.zoom=next;
   },
   getAutoZoomForTank(tank){
-    const mobileZoomScale=this.mobileControlsEnabled?(1/1.5):1;
+    const mobileZoomScale=this.mobileControlsEnabled?0.7:1;
     if(!tank) return 1;
     if(tank.specialRole==='mothership'){
       const barrels=this.getMothershipBarrels();

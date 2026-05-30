@@ -566,6 +566,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-new-btn{display:inline-flex;align-items:center;justify-content:center;min-height:50px;border-radius:10px;border:2px solid rgba(74,81,92,.46);background:linear-gradient(180deg,#ffe58e,#ffc66f);color:#32363d;box-shadow:0 9px 0 rgba(157,125,63,.3),0 14px 24px rgba(22,27,35,.2)}
 #polytank-new-btn:hover{filter:brightness(1.03);transform:translateY(-1px)}
 #polytank-status-line{text-align:center;color:rgba(63,70,79,.76)}
+#polytank-version-tag{margin-top:12px;text-align:center;font-family:'Orbitron',monospace;font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:rgba(77,84,96,.62)}
 #polytank-menu-preview,#polytank-live-grid,#polytank-menu-session{display:none}
 #polytank-menu-advanced{display:none}
 #polytank-overlay.waiting-room #polytank-menu-advanced{display:grid;gap:12px}
