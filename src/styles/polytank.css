@@ -16,7 +16,7 @@ body{background:var(--bg);font-family:'Rajdhani',sans-serif;color:var(--text);di
   text-shadow:-1px 0 rgba(28,32,40,.66),1px 0 rgba(28,32,40,.66),0 -1px rgba(28,32,40,.66),0 1px rgba(28,32,40,.66),-1px -1px rgba(28,32,40,.5),1px -1px rgba(28,32,40,.5),-1px 1px rgba(28,32,40,.5),1px 1px rgba(28,32,40,.5);
 }
 
-#polytank-overlay :is(.polytank-menu-kicker,.polytank-menu-label,#polytank-title,#polytank-mode-toggle,#polytank-mode-toggle-label,#polytank-mode-toggle-icon){
+#polytank-overlay :is(.polytank-menu-label,#polytank-title){
   -webkit-text-stroke:.55px rgba(255,255,255,.72);
   text-shadow:-1px 0 rgba(255,255,255,.64),1px 0 rgba(255,255,255,.64),0 -1px rgba(255,255,255,.64),0 1px rgba(255,255,255,.64),-1px -1px rgba(255,255,255,.46),1px -1px rgba(255,255,255,.46),-1px 1px rgba(255,255,255,.46),1px 1px rgba(255,255,255,.46);
 }
@@ -450,6 +450,8 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   border:3px solid rgba(63,69,78,.35);
   background:linear-gradient(180deg,#84de66,#75d85a);
   color:#283425;
+  text-shadow:none;
+  -webkit-text-stroke:0;
   padding:0 14px;
   font-family:'Orbitron',monospace;
   font-size:1.15rem;
@@ -477,7 +479,8 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   font-size:2rem;
   font-weight:700;
   color:#fff;
-  text-shadow:0 2px 0 rgba(0,0,0,.45);
+  text-shadow:none;
+  -webkit-text-stroke:0;
   cursor:pointer;
   transition:transform .12s ease,filter .12s ease;
 }
