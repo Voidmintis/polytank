@@ -211,12 +211,15 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 #polytank-bottom-hud{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;width:min(480px,calc(100vw - 340px));min-width:min(320px,calc(100vw - 36px));padding:2px 8px 4px;border-radius:18px;border:0;background:transparent;box-shadow:none;pointer-events:none}
 #polytank-mobile-controls{position:absolute;inset:0;z-index:7;pointer-events:none;display:none}
 #polytank-mobile-menu-btn{position:absolute;left:12px;top:10px;display:none;align-items:center;justify-content:center;min-width:76px;height:40px;padding:0 14px;border:none;border-radius:999px;background:linear-gradient(180deg,rgba(40,47,59,.96),rgba(21,27,37,.98));box-shadow:0 14px 26px rgba(0,0,0,.28);color:#f5f8fb;font-family:'Orbitron',monospace;font-size:.54rem;letter-spacing:.08em;text-transform:uppercase;pointer-events:auto}
+#polytank-mobile-menu-btn,#polytank-mobile-upgrade-btn{transition:transform .12s ease,filter .12s ease,box-shadow .14s ease,border-color .12s ease}
+#polytank-mobile-menu-btn:active,#polytank-mobile-upgrade-btn:active{transform:translateY(1px) scale(.985);filter:brightness(.96);box-shadow:0 9px 18px rgba(0,0,0,.24)}
 .polytank-joystick{position:absolute;bottom:72px;width:132px;height:132px;border-radius:50%;pointer-events:auto;touch-action:none}
 #polytank-joystick-left{left:16px}
 #polytank-joystick-right{right:16px}
-.polytank-joystick-ring{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.1) 0%,rgba(255,255,255,.02) 62%,rgba(0,0,0,.22) 100%);border:2px solid rgba(255,255,255,.28);box-shadow:inset 0 10px 20px rgba(255,255,255,.08),0 14px 24px rgba(0,0,0,.24)}
-.polytank-joystick-thumb{position:absolute;left:50%;top:50%;width:54px;height:54px;margin-left:-27px;margin-top:-27px;border-radius:50%;background:radial-gradient(circle at 32% 30%,rgba(255,255,255,.95),rgba(220,226,236,.72));border:1px solid rgba(16,20,27,.24);box-shadow:0 8px 14px rgba(0,0,0,.32);transform:translate(0,0)}
-.polytank-joystick.active .polytank-joystick-ring{border-color:rgba(255,236,161,.6);box-shadow:inset 0 10px 20px rgba(255,255,255,.08),0 0 0 1px rgba(255,236,161,.24),0 16px 28px rgba(0,0,0,.26)}
+.polytank-joystick-ring{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 48% 44%,rgba(255,255,255,.13) 0%,rgba(255,255,255,.03) 58%,rgba(0,0,0,.24) 100%);border:2px solid rgba(255,255,255,.32);box-shadow:inset 0 10px 20px rgba(255,255,255,.09),0 14px 24px rgba(0,0,0,.24),0 0 0 1px rgba(10,14,20,.22);backdrop-filter:blur(2px)}
+.polytank-joystick-thumb{position:absolute;left:50%;top:50%;width:56px;height:56px;margin-left:-28px;margin-top:-28px;border-radius:50%;background:radial-gradient(circle at 32% 30%,rgba(255,255,255,.96),rgba(220,226,236,.76));border:1px solid rgba(16,20,27,.24);box-shadow:0 8px 14px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.45);transform:translate(0,0)}
+.polytank-joystick.active .polytank-joystick-ring{border-color:rgba(255,236,161,.68);box-shadow:inset 0 10px 20px rgba(255,255,255,.08),0 0 0 1px rgba(255,236,161,.24),0 16px 28px rgba(0,0,0,.26),0 0 20px rgba(255,215,120,.22)}
+.polytank-joystick.active .polytank-joystick-thumb{box-shadow:0 10px 18px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.52)}
 
 #polytank-orientation-lock{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,11,18,.82);backdrop-filter:blur(4px)}
 #polytank-orientation-lock-card{padding:18px 20px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(19,25,37,.94);max-width:min(88vw,340px);text-align:center}
@@ -224,8 +227,10 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 #polytank-orientation-lock-copy{margin-top:8px;font-family:'Rajdhani',sans-serif;font-size:1rem;line-height:1.1;color:rgba(220,230,244,.86)}
 
 body.mobile-touch #polytank-mobile-controls{display:block}
+body.mobile-touch #polytank-mobile-controls::before{content:'';position:absolute;left:0;right:0;top:0;height:72px;background:linear-gradient(180deg,rgba(9,12,18,.36),rgba(9,12,18,0));pointer-events:none}
 body.mobile-touch #polytank-mobile-menu-btn{display:inline-flex;left:10px;top:calc(8px + var(--safe-top));min-width:84px;height:42px;padding:0 14px;font-size:var(--ui-mobile-min-text);letter-spacing:.03em;border:1px solid rgba(255,255,255,.16)}
 body.mobile-touch #polytank-mobile-upgrade-btn{position:absolute;right:10px;top:calc(8px + var(--safe-top));display:inline-flex;align-items:center;gap:8px;min-width:122px;height:42px;padding:0 14px;border:1px solid rgba(255,255,255,.16);border-radius:999px;background:linear-gradient(180deg,rgba(74,84,96,.98),rgba(28,33,41,.99));box-shadow:0 14px 26px rgba(0,0,0,.28);color:#f5f8fb;font-family:'Orbitron',monospace;font-size:var(--ui-mobile-min-text);letter-spacing:.04em;text-transform:uppercase;pointer-events:auto}
+body.mobile-touch #polytank-mobile-menu-btn:hover,body.mobile-touch #polytank-mobile-upgrade-btn:hover{filter:brightness(1.04);border-color:rgba(255,255,255,.24)}
 body.mobile-touch #polytank-mobile-upgrade-btn .polytank-mobile-upgrade-label{white-space:nowrap}
 body.mobile-touch #polytank-mobile-upgrade-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:linear-gradient(180deg,rgba(255,217,102,.98),rgba(230,162,31,.98));box-shadow:0 0 0 1px rgba(0,0,0,.22),0 6px 12px rgba(0,0,0,.24);color:#17130b;font-size:.62rem;line-height:1;letter-spacing:0;font-weight:800}
 body.mobile-touch #polytank-menu{padding:calc(4px + var(--safe-top)) calc(4px + var(--safe-bottom));--polytank-menu-fit:clamp(.32,calc((100dvh - 12px)/1480),.74)}
