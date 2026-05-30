@@ -15043,6 +15043,7 @@ const POLYTANK_IO={
   mobileLeftStick:{activeId:null,x:0,y:0,magnitude:0},
   mobileRightStick:{activeId:null,x:0,y:0,magnitude:0},
   mobileDom:{left:null,right:null,leftThumb:null,rightThumb:null,controls:null,orientationLock:null,menuButton:null,upgradeButton:null},
+  mobileUpgradeDockLevel:-1,
   player:null,
   bots:[],
   bullets:[],
@@ -15469,7 +15470,8 @@ const POLYTANK_IO={
     if(!this.mobileControlsEnabled||!this.active||!this.player) return;
     this.manualUpgradeDock=!this.manualUpgradeDock;
     if(this.overlayEl) this.overlayEl.classList.toggle('show-upgrades',this.manualUpgradeDock);
-    this.syncUpgradeDock(this.manualUpgradeDock?'left':'left');
+    if(!this.manualUpgradeDock) this.mobileUpgradeDockLevel=this.player.level||1;
+    this.syncUpgradeDock('left');
   },
   normalizePlayerName(value){
     const cleaned=String(value||'').replace(/[^a-z0-9 _\-\[\]]/gi,' ').replace(/\s+/g,' ').trim();
@@ -17378,10 +17380,27 @@ const POLYTANK_IO={
   },
   syncUpgradeDock(preferredHideSide='left'){
     if(!this.player){
+      this.mobileUpgradeDockLevel=-1;
       this.setUpgradeDockVisible(false,preferredHideSide);
       return;
     }
-    const shouldShow=this.manualUpgradeDock||(this.player.points>0&&this.player.deadTimer<=0&&(this.player.level||1)>=this.upgradeUnlockLevel);
+    const eligible=this.player.points>0&&this.player.deadTimer<=0&&(this.player.level||1)>=this.upgradeUnlockLevel;
+    if(!eligible){
+      this.mobileUpgradeDockLevel=-1;
+      if(this.mobileControlsEnabled) this.manualUpgradeDock=false;
+      this.setUpgradeDockVisible(false,preferredHideSide);
+      return;
+    }
+    if(this.mobileControlsEnabled){
+      const currentLevel=this.player.level||1;
+      if(this.mobileUpgradeDockLevel!==currentLevel){
+        this.manualUpgradeDock=true;
+        this.mobileUpgradeDockLevel=currentLevel;
+      }
+      this.setUpgradeDockVisible(this.manualUpgradeDock,'left');
+      return;
+    }
+    const shouldShow=this.manualUpgradeDock||eligible;
     this.setUpgradeDockVisible(shouldShow,shouldShow?'left':preferredHideSide);
   },
   populateBossPanel(){

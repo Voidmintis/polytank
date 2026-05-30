@@ -185,6 +185,7 @@ body.polytank-standalone #subtitle {
 
   <div id="polytank-upgrade-dock">
     <div id="polytank-upgrade-points">Upgrade Points <strong id="polytank-points">0</strong></div>
+    <button id="polytank-upgrade-close" type="button" onclick="POLYTANK_IO.toggleMobileUpgradeDock()">Done</button>
     <div class="polytank-upgrade-row" data-kind="regen"><div class="polytank-upgrade-label">Health Regen</div><div class="polytank-upgrade-key">[1]</div><div class="polytank-upgrade-level" id="polytank-lvl-regen">x0</div><button class="polytank-upgrade-btn regen" id="polytank-up-regen" onclick="POLYTANK_IO.buyUpgrade('regen')">+</button></div>
     <div class="polytank-upgrade-row" data-kind="maxHealth"><div class="polytank-upgrade-label">Max Health</div><div class="polytank-upgrade-key">[2]</div><div class="polytank-upgrade-level" id="polytank-lvl-maxhealth">x0</div><button class="polytank-upgrade-btn maxHealth" id="polytank-up-maxhealth" onclick="POLYTANK_IO.buyUpgrade('maxHealth')">+</button></div>
     <div class="polytank-upgrade-row" data-kind="bodyDamage"><div class="polytank-upgrade-label">Body Damage</div><div class="polytank-upgrade-key">[3]</div><div class="polytank-upgrade-level" id="polytank-lvl-bodydamage">x0</div><button class="polytank-upgrade-btn bodyDamage" id="polytank-up-bodydamage" onclick="POLYTANK_IO.buyUpgrade('bodyDamage')">+</button></div>
