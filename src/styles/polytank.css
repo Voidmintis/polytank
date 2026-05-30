@@ -221,8 +221,8 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 body.mobile-touch #polytank-mobile-controls{display:block}
 body.mobile-touch #polytank-mobile-menu-btn{display:inline-flex;left:8px;top:calc(6px + var(--safe-top));min-width:58px;height:34px;padding:0 10px;font-size:.45rem}
 body.mobile-touch #polytank-menu{padding:calc(4px + var(--safe-top)) calc(4px + var(--safe-bottom));--polytank-menu-fit:clamp(.32,calc((100dvh - 12px)/1480),.74)}
-body.mobile-touch #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px);padding:8px 8px 6px;border-radius:14px}
-body.mobile-touch #polytank-overlay.waiting-room #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px)}
+body.mobile-touch #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px);padding:8px 8px 6px;border-radius:14px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+body.mobile-touch #polytank-overlay.waiting-room #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px);overflow-y:auto}
 body.mobile-touch #polytank-menu-form{gap:6px}
 body.mobile-touch #polytank-name-input{padding:10px 12px;font-size:1.12rem;border-radius:12px}
 body.mobile-touch #polytank-local-code-input{padding:8px 10px;font-size:.52rem;border-radius:10px}
@@ -639,11 +639,22 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 }
 
 @media (max-width:920px) and (orientation:landscape) and (pointer:coarse){
+  body.mobile-touch #polytank-menu{--polytank-menu-fit:clamp(.24,calc((100dvh - 10px)/1220),.58)}
+  body.mobile-touch #polytank-menu-card{width:calc(100vw - 8px);height:calc(100dvh - 8px);padding:6px 6px 4px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   body.mobile-touch #polytank-title{font-size:2.2rem}
   body.mobile-touch #polytank-copy{font-size:.76rem}
   body.mobile-touch #polytank-name-input{padding:10px 12px;font-size:1.2rem}
+  body.mobile-touch #polytank-menu-form{gap:5px}
+  body.mobile-touch #polytank-menu-select-row{gap:6px}
+  body.mobile-touch #polytank-mode-toggle{height:36px;font-size:.62rem}
+  body.mobile-touch #polytank-mode-dropdown{max-height:none;overflow:visible;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
+  body.mobile-touch .polytank-mode-option{min-height:24px;font-size:.6rem;padding:0 8px}
   body.mobile-touch #polytank-main-action-row{gap:6px;row-gap:6px}
-  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn{min-height:34px;font-size:.68rem;border-width:1px}
+  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn,body.mobile-touch #polytank-skins-btn{min-height:28px;font-size:.58rem;border-width:1px}
+  body.mobile-touch #polytank-settings-panel{padding:6px 8px 8px}
+  body.mobile-touch #polytank-theme-switcher{gap:6px}
+  body.mobile-touch .polytank-theme-option{min-height:30px;font-size:.52rem}
+  body.mobile-touch #polytank-status-line{font-size:.46rem}
   body.mobile-touch #polytank-upgrade-dock{top:50px;width:min(176px,35vw)}
   body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points{padding:3px 6px;font-size:.34rem}
   body.mobile-touch #polytank-upgrade-dock #polytank-upgrade-points strong{font-size:.48rem}
@@ -859,3 +870,8 @@ body.polytank-map-dark #polytank-minimap{border-color:rgba(255,255,255,.1);backg
 
 @keyframes cioSwatchRainbow{0%{filter:hue-rotate(0deg)}100%{filter:hue-rotate(360deg)}}
 @keyframes cioSwatchPulse{0%,100%{box-shadow:0 0 6px rgba(100,180,255,.4)}50%{box-shadow:0 0 18px rgba(100,200,255,.9),0 0 32px rgba(80,160,255,.5)}}
+
+#polytank-overlay :is(.polytank-menu-kicker,#polytank-title,#polytank-copy,#polytank-status-line,#polytank-version-tag,#polytank-name-input,#polytank-local-code-input,#polytank-mode-toggle,.polytank-menu-label,.polytank-theme-option,#polytank-dev-mode-pill,#polytank-dev-admin-sub,#polytank-new-btn,#polytank-settings-btn,#polytank-skins-btn,#polytank-skins-subtitle,#polytank-skins-detail-desc,#polytank-skins-detail-unlock,#polytank-skins-close,#admin-title,#admin-code-input,#admin-fusion-btn,#admin-selected-name,#admin-granted-label,#polytank-upgrade-points,.polytank-upgrade-label,.polytank-upgrade-key,.polytank-upgrade-level,#polytank-leaderboard-title,.polytank-leader-rank,.polytank-leader-name,#polytank-minimap-label){
+  -webkit-text-stroke:.55px rgba(255,255,255,.74);
+  text-shadow:-1px 0 rgba(255,255,255,.66),1px 0 rgba(255,255,255,.66),0 -1px rgba(255,255,255,.66),0 1px rgba(255,255,255,.66),-1px -1px rgba(255,255,255,.46),1px -1px rgba(255,255,255,.46),-1px 1px rgba(255,255,255,.46),1px 1px rgba(255,255,255,.46);
+}
