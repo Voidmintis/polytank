@@ -15319,7 +15319,10 @@ const POLYTANK_IO={
   },
   setupMobileControls(){
     const coarse=typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches;
-    this.isMobileTouch=coarse||('ontouchstart' in window)||((navigator&&navigator.maxTouchPoints)||0)>0;
+    const ua=(navigator&&navigator.userAgent)||'';
+    const isMobileUa=/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle|PlayBook|Opera Mini|IEMobile/i.test(ua);
+    const hasTouch=('ontouchstart' in window)||((navigator&&navigator.maxTouchPoints)||0)>0;
+    this.isMobileTouch=!!(isMobileUa&&coarse&&hasTouch);
     this.mobileControlsEnabled=this.isMobileTouch;
     this.mobileDom.controls=document.getElementById('polytank-mobile-controls');
     this.mobileDom.orientationLock=document.getElementById('polytank-orientation-lock');
