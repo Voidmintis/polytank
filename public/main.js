@@ -17402,11 +17402,6 @@ const POLYTANK_IO={
       this.setUpgradeDockVisible(this.manualUpgradeDock,this.manualUpgradeDock?'left':preferredHideSide);
       return;
     }
-    if(!eligible){
-      this.mobileUpgradeDockLevel=-1;
-      this.setUpgradeDockVisible(false,preferredHideSide);
-      return;
-    }
     const shouldShow=this.manualUpgradeDock||eligible;
     this.setUpgradeDockVisible(shouldShow,shouldShow?'left':preferredHideSide);
   },
