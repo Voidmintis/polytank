@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Circle.io</title>
+<link rel="icon" type="image/svg+xml" href="/circleio-favicon.svg">
+<link rel="stylesheet" href="/src/styles/circleio.css">
+<style>
+body.circleio-standalone {
+  background:#10161e;
+}
+
+body.circleio-standalone #main-menu,
+body.circleio-standalone #pause-screen,
+body.circleio-standalone #status,
+body.circleio-standalone #restart-btn,
+body.circleio-standalone #skins-btn,
+body.circleio-standalone #ops-btn,
+body.circleio-standalone #subtitle {
+  display:none !important;
+}
+</style>
+</head>
+<body class="circleio-standalone">
+
+<div id="stars"><div class="star-layer" id="stars-far"></div><div class="star-layer" id="stars-mid"></div><div class="star-layer" id="stars-near"></div></div>
+<div id="warp"></div>
+<div id="flash"></div>
+<div id="space-distort"></div>
+<div id="supernova-flash"></div>
+<div id="meltdown-overlay">
+  <div id="meltdown-line1"></div>
+  <div id="meltdown-line2"></div>
+</div>
+
+<div id="game-tooltip" aria-hidden="true"></div>
+<div id="discovery-log"></div>
+
+<div id="main-menu" style="display:none"></div>
+<div id="pause-screen" style="display:none"></div>
+<div id="status"></div>
+<button id="restart-btn" type="button">Restart</button>
+<button id="skins-btn" type="button">Skins</button>
+<button id="ops-btn" type="button">Operations</button>
+<div id="subtitle"></div>
+
+<div id="of-victory" style="display:none">
+  <div id="of-victory-icon"></div>
+  <div id="of-victory-title"></div>
+  <div id="of-victory-sub"></div>
+  <button class="of-ctrl-btn" type="button" onclick="CIRCLE_IO.resetRun()">↺ PLAY AGAIN</button>
+</div>
+
+<div id="circleio-overlay">
+  <canvas id="circleio-canvas"></canvas>
+  <div id="circleio-menu" class="open">
+    <div id="circleio-menu-card">
+      <div id="circleio-menu-hero">
+        <div class="circleio-menu-kicker">Circle.io Lobby</div>
+        <div id="circleio-title">circle.io</div>
+        <div id="circleio-copy">Fast arena battles in a live background.</div>
+      </div>
+      <div id="circleio-menu-form">
+        <div>
+          <input id="circleio-name-input" type="text" maxlength="24" autocomplete="nickname" placeholder="Nickname" />
+        </div>
+        <div id="circleio-menu-select-row">
+          <div class="circleio-menu-select-group" id="circleio-mode-select">
+            <div class="circleio-menu-label">Game Mode</div>
+            <button type="button" id="circleio-mode-toggle" onclick="CIRCLE_IO.toggleModeDropdown()">
+              <span id="circleio-mode-toggle-label">FFA</span>
+              <span id="circleio-mode-toggle-icon">⌄</span>
+            </button>
+            <div id="circleio-mode-dropdown" class="open">
+              <button type="button" class="circleio-mode-option active" id="circleio-mode-ffa" data-circleio-mode="ffa" onclick="CIRCLE_IO.setGameVariant('ffa')">FFA</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-2teams" data-circleio-mode="2teams" onclick="CIRCLE_IO.setGameVariant('2teams')">2 Teams</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-4teams" data-circleio-mode="4teams" onclick="CIRCLE_IO.setGameVariant('4teams')">4 Teams</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-maze" data-circleio-mode="maze" onclick="CIRCLE_IO.setGameVariant('maze')">Maze</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-breakout" data-circleio-mode="breakout" onclick="CIRCLE_IO.setGameVariant('breakout')">Breakout</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-sandbox" data-circleio-mode="sandbox" onclick="CIRCLE_IO.setGameVariant('sandbox')">Sandbox</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-domination" data-circleio-mode="domination" onclick="CIRCLE_IO.setGameVariant('domination')">Domination</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-tag" data-circleio-mode="tag" onclick="CIRCLE_IO.setGameVariant('tag')">Tag</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-ctf" data-circleio-mode="ctf" onclick="CIRCLE_IO.setGameVariant('ctf')">Capture Flag</button>
+              <button type="button" class="circleio-mode-option" id="circleio-mode-mothership" data-circleio-mode="mothership" onclick="CIRCLE_IO.setGameVariant('mothership')">Mothership</button>
+            </div>
+          </div>
+        </div>
+        <div id="circleio-team-row-wrap">
+          <div class="circleio-menu-label">Spawn Team</div>
+          <div class="circleio-team-switcher">
+            <button type="button" class="circleio-team-switch blue active" id="circleio-team-blue" onclick="CIRCLE_IO.setPlayerTeam('blue')">Blue</button>
+            <button type="button" class="circleio-team-switch red" id="circleio-team-red" onclick="CIRCLE_IO.setPlayerTeam('red')">Red</button>
+            <button type="button" class="circleio-team-switch green" id="circleio-team-green" onclick="CIRCLE_IO.setPlayerTeam('green')">Green</button>
+            <button type="button" class="circleio-team-switch purple" id="circleio-team-purple" onclick="CIRCLE_IO.setPlayerTeam('purple')">Purple</button>
+          </div>
+        </div>
+        <div id="circleio-main-action-row" class="circleio-menu-actions">
+          <button type="button" id="circleio-play-btn" onclick="CIRCLE_IO.startMatch()">Play</button>
+          <button type="button" id="circleio-party-link-btn" onclick="CIRCLE_IO.copyPartyLink()">Copy Party Link</button>
+          <button type="button" id="circleio-skins-btn" onclick="CIRCLE_IO.openSkinsShop()">Skins</button>
+          <button type="button" id="circleio-settings-btn" onclick="CIRCLE_IO.toggleSettingsPanel()">Settings</button>
+          <button type="button" id="circleio-new-btn" onclick="CIRCLE_IO.startFreshMatch()">Switch Game Mode</button>
+        </div>
+        <div id="circleio-settings-panel">
+          <div class="circleio-menu-label">Map Theme</div>
+          <div id="circleio-theme-switcher">
+            <button type="button" class="circleio-theme-option active" id="circleio-theme-light" onclick="CIRCLE_IO.setMapTheme('light')">Light</button>
+            <button type="button" class="circleio-theme-option" id="circleio-theme-dark" onclick="CIRCLE_IO.setMapTheme('dark')">Dark</button>
+          </div>
+          <div id="circleio-dev-admin-shell">
+            <div class="circleio-menu-label">Developer</div>
+            <div id="circleio-dev-admin-row">
+              <div id="circleio-dev-mode-pill">Dev Mode</div>
+              <button type="button" class="circleio-theme-option" id="circleio-dev-admin-btn" onclick="CIRCLE_IO.toggleDevAdmin()">Admin: Off</button>
+            </div>
+            <div id="circleio-dev-admin-sub">Admin overrides are available only while running in dev mode.</div>
+          </div>
+        </div>
+        <div id="circleio-status-line" class="circleio-menu-label">Press Enter to deploy or resume</div>
+        <div id="circleio-menu-advanced">
+        <div>
+          <div class="circleio-menu-label">Game Mode</div>
+          <div class="circleio-menu-banner">Quick mode controls moved to the top selector.</div>
+        </div>
+        <div id="circleio-menu-preview">
+          <div class="circleio-menu-chip"><span>Mode</span><strong id="circleio-preview-mode">Free For All</strong></div>
+          <div class="circleio-menu-chip"><span>Map</span><strong id="circleio-preview-map">Open Arena</strong></div>
+          <div class="circleio-menu-chip"><span>HUD</span><strong id="circleio-preview-hud">Leaderboard, Minimap, Upgrades</strong></div>
+        </div>
+        <div id="circleio-live-grid" aria-live="polite">
+          <div class="circleio-live-chip"><span>Arena Density</span><strong id="circleio-live-density">65%</strong></div>
+          <div class="circleio-live-chip"><span>Signal Ping</span><strong id="circleio-live-ping">18 ms</strong></div>
+          <div class="circleio-live-chip warning"><span>Threat Index</span><strong id="circleio-live-threat">34%</strong></div>
+        </div>
+        <div id="circleio-local-party-shell">
+          <div class="circleio-perma-head">
+            <div>
+              <div class="circleio-menu-label">Local Party Lobby</div>
+              <div class="circleio-perma-copy">Create a code, invite another tab in this browser, and stage the match in a live waiting room.</div>
+            </div>
+            <div id="circleio-local-party-code">NO CODE</div>
+          </div>
+          <div class="circleio-local-party-actions">
+            <button type="button" id="circleio-local-create-btn" onclick="CIRCLE_IO.createLocalParty()">Create Code</button>
+            <div class="circleio-local-join-box">
+              <input id="circleio-local-code-input" type="text" maxlength="8" autocomplete="off" placeholder="JOIN CODE" />
+              <button type="button" id="circleio-local-join-btn" onclick="CIRCLE_IO.joinLocalParty()">Join</button>
+            </div>
+            <button type="button" id="circleio-local-leave-btn" onclick="CIRCLE_IO.leaveLocalParty()">Leave Lobby</button>
+          </div>
+          <div id="circleio-local-party-status" class="circleio-menu-banner">No local party yet. Create a code or join one from another tab in the same browser.</div>
+          <div id="circleio-local-party-config">
+            <div>
+              <div class="circleio-menu-label">Friend Team Preference</div>
+              <div class="circleio-team-switcher" id="circleio-local-team-pref-switcher">
+                <button type="button" class="circleio-team-switch" id="circleio-local-pref-same" onclick="CIRCLE_IO.setLocalPartyTeamPreference('same')">Same</button>
+                <button type="button" class="circleio-team-switch" id="circleio-local-pref-different" onclick="CIRCLE_IO.setLocalPartyTeamPreference('different')">Different</button>
+                <button type="button" class="circleio-team-switch" id="circleio-local-pref-random" onclick="CIRCLE_IO.setLocalPartyTeamPreference('random')">Random</button>
+              </div>
+            </div>
+            <button type="button" id="circleio-local-ai-btn" onclick="CIRCLE_IO.toggleLocalPartyAi()">AI ON</button>
+          </div>
+          <div class="circleio-local-party-actions secondary">
+            <button type="button" id="circleio-local-add-sim-btn" onclick="CIRCLE_IO.addLocalPartyTestAi()">Add Test Real AI</button>
+            <div class="circleio-menu-label">Host can seed fake real-player bots for match testing.</div>
+            <button type="button" id="circleio-local-remove-sim-btn" onclick="CIRCLE_IO.removeLocalPartyTestAi()">Remove Test AI</button>
+          </div>
+          <div id="circleio-local-party-room">
+            <canvas id="circleio-local-party-canvas" width="320" height="320"></canvas>
+            <div id="circleio-local-party-roster"></div>
+          </div>
+        </div>
+        <div id="circleio-menu-session" class="circleio-menu-banner">Fresh arena ready.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="circleio-scoreboard-shell">
+    <div id="circleio-leaderboard-title">Scoreboard</div>
+    <div id="circleio-leaderboard-list"></div>
+  </div>
+
+  <div id="circleio-upgrade-dock">
+    <div id="circleio-upgrade-points">Upgrade Points <strong id="circleio-points">0</strong></div>
+    <div class="circleio-upgrade-row" data-kind="regen"><div class="circleio-upgrade-label">Health Regen</div><div class="circleio-upgrade-key">[1]</div><div class="circleio-upgrade-level" id="circleio-lvl-regen">x0</div><button class="circleio-upgrade-btn regen" id="circleio-up-regen" onclick="CIRCLE_IO.buyUpgrade('regen')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="maxHealth"><div class="circleio-upgrade-label">Max Health</div><div class="circleio-upgrade-key">[2]</div><div class="circleio-upgrade-level" id="circleio-lvl-maxhealth">x0</div><button class="circleio-upgrade-btn maxHealth" id="circleio-up-maxhealth" onclick="CIRCLE_IO.buyUpgrade('maxHealth')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="bodyDamage"><div class="circleio-upgrade-label">Body Damage</div><div class="circleio-upgrade-key">[3]</div><div class="circleio-upgrade-level" id="circleio-lvl-bodydamage">x0</div><button class="circleio-upgrade-btn bodyDamage" id="circleio-up-bodydamage" onclick="CIRCLE_IO.buyUpgrade('bodyDamage')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="bulletSpeed"><div class="circleio-upgrade-label">Bullet Speed</div><div class="circleio-upgrade-key">[4]</div><div class="circleio-upgrade-level" id="circleio-lvl-bulletspeed">x0</div><button class="circleio-upgrade-btn bulletSpeed" id="circleio-up-bulletspeed" onclick="CIRCLE_IO.buyUpgrade('bulletSpeed')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="bulletPenetration"><div class="circleio-upgrade-label">Bullet Penetration</div><div class="circleio-upgrade-key">[5]</div><div class="circleio-upgrade-level" id="circleio-lvl-bulletpenetration">x0</div><button class="circleio-upgrade-btn bulletPenetration" id="circleio-up-bulletpenetration" onclick="CIRCLE_IO.buyUpgrade('bulletPenetration')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="bulletDamage"><div class="circleio-upgrade-label">Bullet Damage</div><div class="circleio-upgrade-key">[6]</div><div class="circleio-upgrade-level" id="circleio-lvl-bulletdamage">x0</div><button class="circleio-upgrade-btn bulletDamage" id="circleio-up-bulletdamage" onclick="CIRCLE_IO.buyUpgrade('bulletDamage')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="reload"><div class="circleio-upgrade-label">Reload</div><div class="circleio-upgrade-key">[7]</div><div class="circleio-upgrade-level" id="circleio-lvl-reload">x0</div><button class="circleio-upgrade-btn reload" id="circleio-up-reload" onclick="CIRCLE_IO.buyUpgrade('reload')">+</button></div>
+    <div class="circleio-upgrade-row" data-kind="moveSpeed"><div class="circleio-upgrade-label">Movement Speed</div><div class="circleio-upgrade-key">[8]</div><div class="circleio-upgrade-level" id="circleio-lvl-movespeed">x0</div><button class="circleio-upgrade-btn moveSpeed" id="circleio-up-movespeed" onclick="CIRCLE_IO.buyUpgrade('moveSpeed')">+</button></div>
+  </div>
+
+  <button id="circleio-sandbox-toggle" type="button" onclick="CIRCLE_IO.toggleSandboxPanel()">Sandbox Menu</button>
+  <div id="circleio-sandbox-panel">
+    <div id="circleio-sandbox-head">
+      <div>
+        <div id="circleio-sandbox-title">Sandbox Console</div>
+        <div id="circleio-sandbox-copy">Pick your class and level, then spawn bosses, shapes, or AI tanks into the chamber.</div>
+      </div>
+      <button class="circleio-sandbox-close" type="button" onclick="CIRCLE_IO.toggleSandboxPanel(false)">Close</button>
+    </div>
+    <div class="circleio-sandbox-section">
+      <div class="circleio-sandbox-label">Player Loadout</div>
+      <div class="circleio-sandbox-row">
+        <select class="circleio-sandbox-field" id="circleio-sandbox-player-class"></select>
+        <input class="circleio-sandbox-field" id="circleio-sandbox-player-level" type="number" min="1" max="150" value="45" />
+      </div>
+      <div class="circleio-sandbox-row single"><button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.applySandboxPlayerSetup()">Become Tank</button></div>
+    </div>
+    <div class="circleio-sandbox-section">
+      <div class="circleio-sandbox-label">Summon Boss</div>
+      <div class="circleio-sandbox-row single"><select class="circleio-sandbox-field" id="circleio-sandbox-boss"></select></div>
+      <div class="circleio-sandbox-row single"><button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.spawnSandboxBoss()">Spawn Boss</button></div>
+    </div>
+    <div class="circleio-sandbox-section">
+      <div class="circleio-sandbox-label">Summon AI Tank</div>
+      <div class="circleio-sandbox-row">
+        <select class="circleio-sandbox-field" id="circleio-sandbox-ai-class"></select>
+        <input class="circleio-sandbox-field" id="circleio-sandbox-ai-level" type="number" min="1" max="150" value="30" />
+      </div>
+      <div class="circleio-sandbox-row">
+        <select class="circleio-sandbox-field" id="circleio-sandbox-ai-team">
+          <option value="red">Red</option>
+          <option value="blue">Blue</option>
+          <option value="yellow">Yellow</option>
+          <option value="neutral">Neutral</option>
+        </select>
+        <button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.spawnSandboxAiTank()">Spawn AI</button>
+      </div>
+    </div>
+    <div class="circleio-sandbox-section">
+      <div class="circleio-sandbox-label">Summon Shape</div>
+      <div class="circleio-sandbox-row">
+        <select class="circleio-sandbox-field" id="circleio-sandbox-shape"></select>
+        <input class="circleio-sandbox-field" id="circleio-sandbox-shape-count" type="number" min="1" max="24" value="3" />
+      </div>
+      <div class="circleio-sandbox-row single"><button class="circleio-sandbox-action" type="button" onclick="CIRCLE_IO.spawnSandboxShape()">Spawn Shapes</button></div>
+      <div class="circleio-sandbox-note">Sandbox uses a compact chamber. Normal ambient bosses, shapes, and team waves stay off until you summon them.</div>
+    </div>
+  </div>
+
+  <div id="circleio-branch-panel">
+    <div id="circleio-branch-head">
+      <div>
+        <div id="circleio-branch-title">Tank Upgrade</div>
+        <div id="circleio-branch-copy">Every 15 levels you can branch into a stronger tank line.</div>
+      </div>
+      <button id="circleio-branch-close" onclick="CIRCLE_IO.closeClassChoice()">Ignore</button>
+    </div>
+    <div id="circleio-branch-options"></div>
+  </div>
+
+  <div id="circleio-minimap-shell">
+    <canvas id="circleio-minimap" width="220" height="140"></canvas>
+    <div id="circleio-minimap-label">Minimap</div>
+  </div>
+
+  <div id="circleio-bottom-hud">
+    <div id="circleio-level-header">
+      <span id="circleio-level-name">Pilot</span>
+      <span id="circleio-level-next">Score 0</span>
+    </div>
+    <div id="circleio-level-track"><div id="circleio-level-fill"></div></div>
+    <div id="circleio-level-sub">
+      <span id="circleio-level-progress">Basic Tank • Lv 1</span>
+      <span id="circleio-level-percent">HP 100</span>
+    </div>
+  </div>
+
+  <div id="circleio-boss-panel">
+    <div id="circleio-boss-title">Boss Summons</div>
+    <div id="circleio-boss-sub">Admin only. Press H to toggle this panel and summon any boss entry.</div>
+    <div id="circleio-boss-list"></div>
+  </div>
+
+  <!-- ✦ SKINS SHOP ✦ -->
+  <div id="circleio-skins-shop">
+    <div id="circleio-skins-backdrop" onclick="CIRCLE_IO.closeSkinsShop()"></div>
+    <div id="circleio-skins-panel">
+      <div id="circleio-skins-header">
+        <div id="circleio-skins-title-block">
+          <div class="cio-skins-kicker">CUSTOMIZE</div>
+          <div id="circleio-skins-title">✦ Skin Shop</div>
+          <div id="circleio-skins-subtitle">Unlock skins to personalize your tank</div>
+        </div>
+        <div id="circleio-skins-team-badge">
+          <span id="circleio-skins-team-dot"></span>
+          <span id="circleio-skins-team-name">Blue Team</span>
+        </div>
+        <button type="button" id="circleio-skins-close" onclick="CIRCLE_IO.closeSkinsShop()">✕</button>
+      </div>
+      <div id="circleio-skins-tabs">
+        <button type="button" class="cio-skin-tab active" data-cat="body" onclick="CIRCLE_IO.setSkinsTab('body')">Body</button>
+        <button type="button" class="cio-skin-tab" data-cat="cannon" onclick="CIRCLE_IO.setSkinsTab('cannon')">Cannon</button>
+        <button type="button" class="cio-skin-tab" data-cat="bullet" onclick="CIRCLE_IO.setSkinsTab('bullet')">Bullets</button>
+        <button type="button" class="cio-skin-tab" data-cat="frame" onclick="CIRCLE_IO.setSkinsTab('frame')">Frame</button>
+      </div>
+      <div id="circleio-skins-body">
+        <div id="circleio-skins-grid"></div>
+        <div id="circleio-skins-sidebar">
+          <canvas id="circleio-skins-preview" width="190" height="190"></canvas>
+          <div id="circleio-skins-detail">
+            <div id="circleio-skins-detail-name">Select a skin</div>
+            <div id="circleio-skins-detail-rarity"></div>
+            <div id="circleio-skins-detail-desc"></div>
+            <div id="circleio-skins-detail-unlock"></div>
+            <button type="button" id="circleio-skins-equip" onclick="CIRCLE_IO.equipSkin()">Equip Skin</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button id="admin-toggle" onclick="adminToggle()" title="Admin Panel">⬡</button>
+<div id="admin-panel">
+  <div id="admin-header">
+    <div id="admin-title">⬡ ADMIN PANEL</div>
+    <button id="admin-close" onclick="adminToggle()">✕</button>
+  </div>
+  <div id="admin-lock">
+    <div id="admin-lock-icon">🔒</div>
+    <div id="admin-lock-label">ADMIN ACCESS</div>
+    <div id="admin-lock-sub">Enter 4-digit access code</div>
+    <div id="admin-code-row">
+      <input id="admin-code-input" type="password" maxlength="4" placeholder="••••" onkeydown="if(event.key==='Enter')adminCheckCode()" oninput="document.getElementById('admin-code-msg').textContent=''" autocomplete="off" inputmode="numeric" />
+      <button id="admin-fusion-btn" onclick="adminCheckCode()">UNLOCK</button>
+    </div>
+    <div id="admin-code-msg"></div>
+  </div>
+  <div id="admin-content" style="display:none">
+    <div id="admin-granted-label">⬡ ADMIN ACCESS GRANTED</div>
+    <div id="admin-categories">
+      <div class="admin-cat-label">CIRCLE.IO</div>
+      <div class="admin-items">
+        <button class="admin-item admin-item-tool" id="admin-arena-closer-btn" onclick="adminPlayAsArenaCloser()">Play as Arena Closer</button>
+        <button class="admin-item admin-item-tool" id="admin-mothership-btn" onclick="adminPlayAsMothership()">Play as Mothership</button>
+      </div>
+      <div id="admin-scale-shell">
+        <div id="admin-scale-head">
+          <span>Scale</span>
+          <strong id="admin-scale-value">1.00x</strong>
+        </div>
+        <input id="admin-scale-slider" type="range" min="0.35" max="2.60" step="0.01" value="1.00" oninput="adminSetScale(this.value)" />
+      </div>
+    </div>
+    <div id="admin-selected-name"></div>
+    <button id="admin-summon-btn" onclick="adminSummon()" style="display:none">⚡ SUMMON</button>
+  </div>
+</div>
+
+<script>
+window.__CIRCLEIO_STANDALONE__=true;
+</script>
+<script src="/main.js"></script>
+
+</body>
+</html>

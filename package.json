@@ -1,0 +1,28 @@
+{
+  "name": "circleio-standalone",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@playwright/test": "^1.54.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.28.0",
+    "globals": "^16.2.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.1",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.4"
+  }
+}
