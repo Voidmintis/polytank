@@ -9254,7 +9254,7 @@ let adminSelectedKey=null;
 let adminScaleValue=1;
 
 function adminPanelDisabled(){
-  return true;
+  return false;
 }
 
 function adminPanelHasFreePurchases(){
