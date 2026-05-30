@@ -15042,7 +15042,7 @@ const POLYTANK_IO={
   mobileFireDown:false,
   mobileLeftStick:{activeId:null,x:0,y:0,magnitude:0},
   mobileRightStick:{activeId:null,x:0,y:0,magnitude:0},
-  mobileDom:{left:null,right:null,leftThumb:null,rightThumb:null,controls:null,orientationLock:null},
+  mobileDom:{left:null,right:null,leftThumb:null,rightThumb:null,controls:null,orientationLock:null,menuButton:null},
   player:null,
   bots:[],
   bullets:[],
@@ -15330,6 +15330,14 @@ const POLYTANK_IO={
     this.mobileDom.right=document.getElementById('polytank-joystick-right');
     this.mobileDom.leftThumb=document.getElementById('polytank-joystick-left-thumb');
     this.mobileDom.rightThumb=document.getElementById('polytank-joystick-right-thumb');
+    this.mobileDom.menuButton=document.getElementById('polytank-mobile-menu-btn');
+    if(this.mobileDom.menuButton&&this.mobileDom.menuButton.dataset.bound!=='1'){
+      this.mobileDom.menuButton.dataset.bound='1';
+      this.mobileDom.menuButton.addEventListener('click',event=>{
+        event.preventDefault();
+        this.handleMobileMenuToggle();
+      });
+    }
     document.body.classList.toggle('mobile-touch',this.mobileControlsEnabled);
     this.bindMobileStick('left');
     this.bindMobileStick('right');
@@ -15435,6 +15443,18 @@ const POLYTANK_IO={
       this.pointer.down=false;
       this.mobileFireDown=false;
       this.resetMobileSticks();
+    }
+  },
+  handleMobileMenuToggle(){
+    if(!this.mobileControlsEnabled||!this.active) return;
+    if(this.menuOpen&&this.pausedByMenu){
+      this.setPausedByMenu(false);
+      this.toggleMenu(false);
+      return;
+    }
+    if(!this.menuOpen&&this.inMatch){
+      this.setPausedByMenu(true);
+      this.toggleMenu(true);
     }
   },
   normalizePlayerName(value){
@@ -17299,6 +17319,7 @@ const POLYTANK_IO={
     if(instant) this.camera.zoom=next;
   },
   getAutoZoomForTank(tank){
+    const mobileZoomScale=this.mobileControlsEnabled?(1/1.5):1;
     if(!tank) return 1;
     if(tank.specialRole==='mothership'){
       const barrels=this.getMothershipBarrels();
@@ -17306,9 +17327,9 @@ const POLYTANK_IO={
         tank.r*(tank.renderScale||.42)+180,
         ...barrels.map(barrel=>(barrel.orbit||0)+(barrel.isSummonBarrel?180:96))
       );
-      return this.clamp(Math.min(this.W,this.H)/(fitRadius*2.45),this.camera.minZoom||.3,.72);
+      return this.clamp((Math.min(this.W,this.H)/(fitRadius*2.45))*mobileZoomScale,this.camera.minZoom||.3,.72);
     }
-    return 1;
+    return this.clamp(mobileZoomScale,this.camera.minZoom||.3,this.camera.maxZoom||1.85);
   },
   applyAutoZoomForTank(tank,instant=false){
     this.setZoom(this.getAutoZoomForTank(tank),instant);
@@ -18745,6 +18766,37 @@ const POLYTANK_IO={
     const distance=Math.random()*radius;
     return {x:x+Math.cos(angle)*distance,y:y+Math.sin(angle)*distance};
   },
+  getFfaSpawnPoint(options={}){
+    const padding=options.padding??340;
+    const minCenterDistance=options.minCenterDistance??1500;
+    const minPlayerDistance=options.minPlayerDistance??1700;
+    const minBotDistance=options.minBotDistance??560;
+    const center=this.getBase('ffa-center')||{x:this.world.midX,y:this.world.midY};
+    const maxRadius=Math.max(minCenterDistance+240,Math.min(this.world.w,this.world.h)*0.48);
+    let bestPoint={x:this.clamp(center.x+minCenterDistance,padding,this.world.w-padding),y:this.clamp(center.y,padding,this.world.h-padding)};
+    let bestScore=-Infinity;
+    for(let attempt=0;attempt<36;attempt++){
+      const angle=Math.random()*Math.PI*2;
+      const distance=minCenterDistance+Math.random()*Math.max(120,maxRadius-minCenterDistance);
+      const candidate={
+        x:this.clamp(center.x+Math.cos(angle)*distance,padding,this.world.w-padding),
+        y:this.clamp(center.y+Math.sin(angle)*distance,padding,this.world.h-padding),
+      };
+      const playerDistance=this.player?Math.hypot(candidate.x-this.player.x,candidate.y-this.player.y):Infinity;
+      const botDistance=this.bots.reduce((closest,bot)=>{
+        if(!bot||bot.deadTimer>0||bot._remove) return closest;
+        return Math.min(closest,Math.hypot(candidate.x-bot.x,candidate.y-bot.y));
+      },Infinity);
+      const centerDistance=Math.hypot(candidate.x-center.x,candidate.y-center.y);
+      const score=Math.min(playerDistance,botDistance,centerDistance);
+      if(playerDistance>=minPlayerDistance&&botDistance>=minBotDistance&&centerDistance>=minCenterDistance) return candidate;
+      if(score>bestScore){
+        bestScore=score;
+        bestPoint=candidate;
+      }
+    }
+    return bestPoint;
+  },
   isInsideAnySpawn(x,y,pad=0){
     return x<this.spawnLaneWidth+pad||x>this.world.w-this.spawnLaneWidth-pad;
   },
@@ -19257,6 +19309,26 @@ const POLYTANK_IO={
       if(tank.isPlayer) this.playerTeam=tank.tagConvertTeam;
       tank.tagConvertTeam='';
     }
+    if(!tank.isPlayer&&this.isFreeForAllMode()){
+      const point=this.getFfaSpawnPoint();
+      tank.x=this.clamp(point.x,tank.r,this.world.w-tank.r);
+      tank.y=this.clamp(point.y,tank.r,this.world.h-tank.r);
+      tank.ffaAnchor={x:tank.x,y:tank.y};
+      tank.deadTimer=0;
+      tank.invuln=2.4;
+      tank.vx=0;
+      tank.vy=0;
+      tank.xpCreditPaid=0;
+      tank.shotTimer=0;
+      tank.pendingBarrels=[];
+      tank.pendingShotDelay=0;
+      tank.barrelRecoil=[];
+      tank.respawnBaseId=null;
+      tank.raidTimer=0;
+      tank.raidCooldown=28+Math.random()*22;
+      this.updateTankDerivedStats(tank,true);
+      return;
+    }
     const teamBases=this.bases.filter(base=>base.team===tank.team);
     const base=(tank.respawnBaseId?this.getBase(tank.respawnBaseId):null)||teamBases[Math.floor(Math.random()*Math.max(1,teamBases.length))]||teamBases[0]||null;
     const point=base?this.randomAround(base.x,base.y,64):{x:180+Math.random()*(this.world.w-360),y:180+Math.random()*(this.world.h-360)};
@@ -19544,23 +19616,14 @@ const POLYTANK_IO={
     const base=teamBases[index%Math.max(1,teamBases.length)]||null;
     let point;
     if(this.isFreeForAllMode()){
-      const margin=280;
-      point={x:margin+Math.random()*(this.world.w-margin*2),y:margin+Math.random()*(this.world.h-margin*2)};
-      for(let attempt=0;attempt<20;attempt++){
-        const candidate={x:margin+Math.random()*(this.world.w-margin*2),y:margin+Math.random()*(this.world.h-margin*2)};
-        const nearPlayer=this.player&&Math.hypot(candidate.x-this.player.x,candidate.y-this.player.y)<520;
-        const nearBot=this.bots.some(bot=>bot&&bot.deadTimer<=0&&Math.hypot(candidate.x-bot.x,candidate.y-bot.y)<320);
-        if(!nearPlayer&&!nearBot){
-          point=candidate;
-          break;
-        }
-      }
+      point=this.getFfaSpawnPoint({minCenterDistance:1600,minPlayerDistance:1900,minBotDistance:720,padding:360});
     } else {
       point=base
         ?this.randomAround(base.x,base.y,Math.min(base.spawnRadius||320,tier==='elite'?138:tier==='high'?124:tier==='mid'?108:92))
         :{x:180+Math.random()*(this.world.w-360),y:180+Math.random()*(this.world.h-360)};
     }
     const bot=this.createTank(team,{id:`${team}_bot_${++this.tankId}`,x:point.x,y:point.y,isBot:true,baseId:base?.id||null,invuln:1.8,displayName:this.getRandomBotName(team)});
+    if(this.isFreeForAllMode()) bot.ffaAnchor={x:point.x,y:point.y};
     this.applyBotProfile(bot,tier,index);
     this.updateTankDerivedStats(bot,true);
     this.autoSpendUpgrade(bot);
@@ -20783,7 +20846,10 @@ const POLYTANK_IO={
       }
       bot.orbitOwnerId='';
     }
-    const homeBase=this.getBase(bot.respawnBaseId)||this.bases.find(base=>base.team===bot.team)||{x:this.world.midX,y:this.world.midY};
+    const homeBase=this.getBase(bot.respawnBaseId)
+      ||(this.isFreeForAllMode()&&bot.ffaAnchor?{x:bot.ffaAnchor.x,y:bot.ffaAnchor.y}:null)
+      ||this.bases.find(base=>base.team===bot.team)
+      ||{x:this.world.midX,y:this.world.midY};
     const personality=bot.personality||{preferredDistance:0,strafeAmp:0.25,strafeDir:1,flankOffset:0,pathNoise:18,waveRate:0.7,aggression:1,caution:1};
     let targetX=homeBase.x;
     let targetY=homeBase.y;
@@ -20910,7 +20976,7 @@ const POLYTANK_IO={
       r:tank.bulletRadius*barrel.bulletScale*1.08*heavyClassScale,
       damage:tank.bulletDamage*barrel.damageScale,
       penetration:tank.bulletPenetration*barrel.penetrationScale,
-      hp:this.isArenaCloserLike(tank)?3750:(tank.specialRole==='mothership'?999999:(tank.isDominator?28:tank.bulletPenetration)),
+      hp:this.isArenaCloserLike(tank)?3750:(tank.specialRole==='mothership'?999999:(tank.isDominator?28:tank.bulletPenetration*barrel.penetrationScale)),
       ownerId:tank.id,
       ownerTeam:tank.team,
       color:tank.bulletColor,
@@ -20920,6 +20986,8 @@ const POLYTANK_IO={
       homingTurn:tank.specialRole==='mothership'?4.8:0,
       homingTargetKind:'',
       homingTargetId:'',
+      lastHitTargetId:'',
+      lastHitTargetTimer:0,
       massive:this.isArenaCloserLike(tank)||tank.specialRole==='mothership'||tank.isDominator||(tank.isArenaBoss&&tank.bulletRadius>=12),
       shape:barrel.shape,
       curve:Math.random()<0.48?0:(Math.random()-0.5)*(tank.specialRole==='mothership'?0.12:0.28),
@@ -20940,6 +21008,28 @@ const POLYTANK_IO={
     bullet.vx=(bullet.vx||0)*0.24;
     bullet.vy=(bullet.vy||0)*0.24;
     return true;
+  },
+  canBulletHitTarget(bullet,targetId){
+    if(!bullet||!targetId) return true;
+    return !(bullet.lastHitTargetId===targetId&&(bullet.lastHitTargetTimer||0)>0);
+  },
+  registerBulletHitTarget(bullet,targetId){
+    if(!bullet) return;
+    bullet.lastHitTargetId=targetId||'';
+    bullet.lastHitTargetTimer=targetId?0.09:0;
+  },
+  spendBulletDurability(bullet,cost){
+    if(!bullet) return true;
+    const impactCost=Math.max(0.08,Number.isFinite(cost)?cost:0.08);
+    if(Number.isFinite(bullet.hp)) bullet.hp-=impactCost;
+    else bullet.hp=(bullet.penetration||0)-impactCost;
+    bullet.penetration-=impactCost;
+    return bullet.penetration<=0||bullet.hp<=0;
+  },
+  spawnBulletImpactEffect(x,y,color,size=1){
+    const scale=Math.max(0.6,size||1);
+    this.spawnBurst(x,y,color,Math.round(3+scale*3),100+scale*34);
+    this.spawnBurst(x,y,'#fff3d2',Math.round(2+scale*2),72+scale*20);
   },
   getBulletHomingTarget(bullet){
     if(!bullet||!bullet.homing) return null;
@@ -21165,6 +21255,10 @@ const POLYTANK_IO={
         if(bullet.life<=0) this.bullets.splice(bulletIndex,1);
         continue;
       }
+      if((bullet.lastHitTargetTimer||0)>0){
+        bullet.lastHitTargetTimer=Math.max(0,(bullet.lastHitTargetTimer||0)-dt);
+        if(bullet.lastHitTargetTimer<=0) bullet.lastHitTargetId='';
+      }
       if(Math.abs(bullet.curve||0)>0.0001){
         const turn=(bullet.curve||0)*dt;
         const cos=Math.cos(turn);
@@ -21244,6 +21338,7 @@ const POLYTANK_IO={
       let remove=false;
       for(let shapeIndex=this.shapes.length-1;shapeIndex>=0&&!remove;shapeIndex--){
         const shape=this.shapes[shapeIndex];
+        if(!this.canBulletHitTarget(bullet,shape.id)) continue;
         if(Math.hypot(shape.x-bullet.x,shape.y-bullet.y)<shape.r+bullet.r){
           const actualDamage=Math.min(shape.hp,bullet.damage);
           shape.hp-=bullet.damage;
@@ -21253,20 +21348,21 @@ const POLYTANK_IO={
           shape.damageFlash=1;
           shape.hitFade=1;
           this.awardDamageXp(shape,bullet.ownerId,actualDamage,shape.xp);
-          bullet.penetration-=1;
+          this.registerBulletHitTarget(bullet,shape.id);
           this.spawnDamageNumber(bullet.x,bullet.y,bullet.damage,this.darkenColor(shape.color,.88));
-          this.spawnBurst(bullet.x,bullet.y,shape.color,5,170);
+          this.spawnBulletImpactEffect(bullet.x,bullet.y,shape.color,Math.max(0.8,(shape.r||18)/22));
           if(shape.hp<=0) this.destroyShape(shapeIndex,shape,bullet.ownerId,bullet.ownerTeam);
-          remove=bullet.penetration<=0;
+          remove=this.spendBulletDurability(bullet,Math.max(0.8,Math.min(2.6,(shape.r||18)/24)));
         }
       }
       if(remove){ this.startBulletHitFade(bullet); continue; }
       for(const boss of this.getArenaBosses()){
+        if(!this.canBulletHitTarget(bullet,boss.id)) continue;
         if(Math.hypot(boss.x-bullet.x,boss.y-bullet.y)<this.getArenaBossHitRadius(boss)+bullet.r){
-          this.damageArenaBoss(boss,bullet.damage,bullet.ownerId,bullet.ownerTeam);
-          bullet.penetration-=boss.kind==='centerAlpha'||boss.kind==='alpha'?1.8:2.3;
-          this.spawnBurst(bullet.x,bullet.y,boss.bodyColor,7,200);
-          if(bullet.penetration<=0){
+          if(!this.damageArenaBoss(boss,bullet.damage,bullet.ownerId,bullet.ownerTeam)) continue;
+          this.registerBulletHitTarget(bullet,boss.id);
+          this.spawnBulletImpactEffect(bullet.x,bullet.y,boss.bodyColor,1.5);
+          if(this.spendBulletDurability(bullet,boss.kind==='centerAlpha'||boss.kind==='alpha'?1.8:2.3)){
             remove=true;
             break;
           }
@@ -21275,26 +21371,28 @@ const POLYTANK_IO={
       if(remove){ this.startBulletHitFade(bullet); continue; }
       for(const dominator of this.dominators){
         if(bullet.ownerTeam!=='neutral'&&dominator.team===bullet.ownerTeam) continue;
+        if(!this.canBulletHitTarget(bullet,dominator.id)) continue;
         if(Math.hypot(dominator.x-bullet.x,dominator.y-bullet.y)<dominator.r+bullet.r){
-          this.damageDominator(dominator,bullet.damage,bullet.ownerId,bullet.ownerTeam);
-          bullet.penetration-=dominator.team==='neutral'?1.8:2.4;
-          this.spawnBurst(bullet.x,bullet.y,dominator.bodyColor,7,190);
-          remove=bullet.penetration<=0;
+          if(!this.damageDominator(dominator,bullet.damage,bullet.ownerId,bullet.ownerTeam)) continue;
+          this.registerBulletHitTarget(bullet,dominator.id);
+          this.spawnBulletImpactEffect(bullet.x,bullet.y,dominator.bodyColor,1.4);
+          remove=this.spendBulletDurability(bullet,dominator.team==='neutral'?1.8:2.4);
           break;
         }
       }
       if(remove){ this.startBulletHitFade(bullet); continue; }
       for(const tank of this.livingTanks()){
         if(this.isFriendlyOwnerToTank(bullet.ownerId,bullet.ownerTeam,tank)) continue;
+        if(!this.canBulletHitTarget(bullet,tank.id)) continue;
         if(Math.hypot(tank.x-bullet.x,tank.y-bullet.y)<this.getTankHitRadius(tank)+bullet.r){
-          this.damageTank(tank,bullet.damage,bullet.ownerId,bullet.ownerTeam);
-          bullet.penetration-=0.45;
-          this.spawnBurst(bullet.x,bullet.y,tank.bodyColor,6,180);
-          remove=bullet.penetration<=0;
+          if(!this.damageTank(tank,bullet.damage,bullet.ownerId,bullet.ownerTeam)) continue;
+          this.registerBulletHitTarget(bullet,tank.id);
+          this.spawnBulletImpactEffect(bullet.x,bullet.y,tank.bodyColor,1.1);
+          remove=this.spendBulletDurability(bullet,0.45);
           break;
         }
       }
-      if(remove||bullet.penetration<=0) this.startBulletHitFade(bullet);
+      if(remove||bullet.penetration<=0||bullet.hp<=0) this.startBulletHitFade(bullet);
     }
   },
   damageTank(tank,amount,ownerId,ownerTeam){
