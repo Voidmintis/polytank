@@ -15042,7 +15042,7 @@ const POLYTANK_IO={
   mobileFireDown:false,
   mobileLeftStick:{activeId:null,x:0,y:0,magnitude:0},
   mobileRightStick:{activeId:null,x:0,y:0,magnitude:0},
-  mobileDom:{left:null,right:null,leftThumb:null,rightThumb:null,controls:null,orientationLock:null,menuButton:null},
+  mobileDom:{left:null,right:null,leftThumb:null,rightThumb:null,controls:null,orientationLock:null,menuButton:null,upgradeButton:null},
   player:null,
   bots:[],
   bullets:[],
@@ -15331,11 +15331,19 @@ const POLYTANK_IO={
     this.mobileDom.leftThumb=document.getElementById('polytank-joystick-left-thumb');
     this.mobileDom.rightThumb=document.getElementById('polytank-joystick-right-thumb');
     this.mobileDom.menuButton=document.getElementById('polytank-mobile-menu-btn');
+    this.mobileDom.upgradeButton=document.getElementById('polytank-mobile-upgrade-btn');
     if(this.mobileDom.menuButton&&this.mobileDom.menuButton.dataset.bound!=='1'){
       this.mobileDom.menuButton.dataset.bound='1';
       this.mobileDom.menuButton.addEventListener('click',event=>{
         event.preventDefault();
         this.handleMobileMenuToggle();
+      });
+    }
+    if(this.mobileDom.upgradeButton&&this.mobileDom.upgradeButton.dataset.bound!=='1'){
+      this.mobileDom.upgradeButton.dataset.bound='1';
+      this.mobileDom.upgradeButton.addEventListener('click',event=>{
+        event.preventDefault();
+        this.toggleMobileUpgradeDock();
       });
     }
     document.body.classList.toggle('mobile-touch',this.mobileControlsEnabled);
@@ -15456,6 +15464,12 @@ const POLYTANK_IO={
       this.setPausedByMenu(true);
       this.toggleMenu(true);
     }
+  },
+  toggleMobileUpgradeDock(){
+    if(!this.mobileControlsEnabled||!this.active||!this.player) return;
+    this.manualUpgradeDock=!this.manualUpgradeDock;
+    if(this.overlayEl) this.overlayEl.classList.toggle('show-upgrades',this.manualUpgradeDock);
+    this.syncUpgradeDock(this.manualUpgradeDock?'left':'left');
   },
   normalizePlayerName(value){
     const cleaned=String(value||'').replace(/[^a-z0-9 _\-\[\]]/gi,' ').replace(/\s+/g,' ').trim();
