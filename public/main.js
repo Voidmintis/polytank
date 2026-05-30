@@ -17314,14 +17314,14 @@ const POLYTANK_IO={
     return {x:this.camera.x+x/zoom,y:this.camera.y+y/zoom};
   },
   setZoom(value,instant=false){
-    const maxZoom=this.mobileControlsEnabled?2.5:(this.camera.maxZoom||1.85);
+    const maxZoom=this.mobileControlsEnabled?3:(this.camera.maxZoom||1.85);
     const next=this.clamp(value,this.camera.minZoom||.3,maxZoom);
     this.camera.targetZoom=next;
     if(instant) this.camera.zoom=next;
   },
   getAutoZoomForTank(tank){
-    const mobileZoomScale=this.mobileControlsEnabled?2.5:1;
-    const mobileMaxZoom=this.mobileControlsEnabled?2.5:(this.camera.maxZoom||1.85);
+    const mobileZoomScale=this.mobileControlsEnabled?3:1;
+    const mobileMaxZoom=this.mobileControlsEnabled?3:(this.camera.maxZoom||1.85);
     if(!tank) return 1;
     if(tank.specialRole==='mothership'){
       if(this.mobileControlsEnabled) return this.clamp(mobileZoomScale,this.camera.minZoom||.3,mobileMaxZoom);
