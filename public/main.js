@@ -18080,6 +18080,41 @@ const POLYTANK_IO={
       button.classList.add(`mode-depth-${depth}`);
       if(offset<0) button.classList.add('wheel-above');
       if(offset>0) button.classList.add('wheel-below');
+      const sign=offset<0?1:offset>0?-1:0;
+      let rotateX=0;
+      let skewX=0;
+      let translateZ=56;
+      let scale=1.03;
+      let opacity=1;
+      if(depth===1){
+        rotateX=36*sign;
+        skewX=14*sign;
+        translateZ=40;
+        scale=.965;
+        opacity=.84;
+      }else if(depth===2){
+        rotateX=56*sign;
+        skewX=20*sign;
+        translateZ=18;
+        scale=.9;
+        opacity=.56;
+      }else if(depth===3){
+        rotateX=70*sign;
+        skewX=26*sign;
+        translateZ=6;
+        scale=.83;
+        opacity=.32;
+      }else if(depth>=4){
+        rotateX=78*sign;
+        skewX=30*sign;
+        translateZ=0;
+        scale=.76;
+        opacity=.14;
+      }
+      button.style.transform=`translateZ(${translateZ}px) rotateX(${rotateX}deg) skewX(${skewX}deg) scale(${scale})`;
+      button.style.opacity=String(opacity);
+      button.style.fontStyle=depth===0?'normal':'italic';
+      button.style.pointerEvents=depth>=4?'none':'auto';
     });
     const wheelLabel=document.getElementById('polytank-mode-wheel-label');
     if(wheelLabel) wheelLabel.textContent=activeLabel;
