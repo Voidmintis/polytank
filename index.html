@@ -147,12 +147,12 @@ body.polytank-standalone #subtitle {
           <div class="polytank-local-party-actions">
             <button type="button" id="polytank-local-create-btn" onclick="POLYTANK_IO.createLocalParty()">Create Code</button>
             <div class="polytank-local-join-box">
-              <input id="polytank-local-code-input" type="text" maxlength="8" autocomplete="off" placeholder="JOIN CODE" />
-              <button type="button" id="polytank-local-join-btn" onclick="POLYTANK_IO.joinLocalParty()">Join</button>
+              <input id="polytank-local-code-input" type="text" maxlength="8" autocomplete="off" placeholder="CODE OR BLANK FOR QUICK JOIN" oninput="POLYTANK_IO.refreshMenuState()" />
+              <button type="button" id="polytank-local-join-btn" onclick="POLYTANK_IO.joinLocalParty()">Quick Join</button>
             </div>
             <button type="button" id="polytank-local-leave-btn" onclick="POLYTANK_IO.leaveLocalParty()">Leave Lobby</button>
           </div>
-          <div id="polytank-local-party-status" class="polytank-menu-banner">No local party yet. Create a code or join one from another tab in the same browser.</div>
+          <div id="polytank-local-party-status" class="polytank-menu-banner">No local party yet. Create a code, join one directly, or leave the field blank to quick join a public online room when the room server is available.</div>
           <div id="polytank-local-party-config">
             <div>
               <div class="polytank-menu-label">Friend Team Preference</div>

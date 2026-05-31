@@ -16,6 +16,9 @@ Exit criteria:
 
 ## Phase 2: Netcode Hardening
 
+Status:
+- implemented
+
 Deliverables:
 - reconnect grace period
 - reconnect token support
@@ -29,6 +32,9 @@ Exit criteria:
 - invalid actions are rejected cleanly
 
 ## Phase 3: Public FFA
+
+Status:
+- implemented
 
 Deliverables:
 - quick join or matchmaking on top of the same room system

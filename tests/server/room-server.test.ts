@@ -82,6 +82,74 @@ describe('polytank room server', () => {
     expect(error?.payload.code).toBe('BAD_JSON');
   });
 
+  it('rejects oversized client messages', async () => {
+    const app = createPolytankServer(3317);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const client = await openClient(3317);
+    sockets.push(client.socket);
+
+    client.socket.send(
+      JSON.stringify({
+        type: 'connect',
+        version: PROTOCOL_VERSION,
+        timestamp: Date.now(),
+        payload: {
+          nickname: 'X'.repeat(10_000),
+        },
+      }),
+    );
+
+    await waitFor(() => client.messages.some(message => message.type === 'error'));
+
+    const error = client.messages.find(message => message.type === 'error');
+    expect(error?.payload.code).toBe('MESSAGE_TOO_LARGE');
+  });
+
+  it('responds to ping with pong and echoed client time', async () => {
+    const app = createPolytankServer(3316);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const client = await openClient(3316);
+    sockets.push(client.socket);
+
+    const clientTime = Date.now();
+    send(client.socket, 'ping', { clientTime });
+
+    await waitFor(() => client.messages.some(message => message.type === 'pong'));
+
+    const pong = client.messages.find(message => message.type === 'pong');
+    expect(pong?.payload.clientTime).toBe(clientTime);
+    expect(typeof pong?.payload.serverTime).toBe('number');
+    expect((pong?.payload.serverTime || 0) >= clientTime).toBe(true);
+  });
+
+  it('rate limits burst client traffic safely', async () => {
+    const app = createPolytankServer(3318);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const client = await openClient(3318);
+    sockets.push(client.socket);
+
+    for (let index = 0; index < 90; index += 1) {
+      send(client.socket, 'ping', { clientTime: Date.now() + index });
+    }
+
+    await waitFor(() =>
+      client.messages.some(
+        message => message.type === 'error' && message.payload.code === 'RATE_LIMITED',
+      ),
+    );
+
+    const error = client.messages.find(
+      message => message.type === 'error' && message.payload.code === 'RATE_LIMITED',
+    );
+    expect(error).toBeDefined();
+  });
+
   it('creates and joins a room, then starts once everyone is ready', async () => {
     const app = createPolytankServer(3311);
     apps.push(app);
@@ -286,6 +354,131 @@ describe('polytank room server', () => {
     );
   }, 12_000);
 
+  it('quick joins a public FFA room and reuses it after a leave without ghost players', async () => {
+    const app = createPolytankServer(3319);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const alpha = await openClient(3319);
+    const bravo = await openClient(3319);
+    sockets.push(alpha.socket, bravo.socket);
+
+    send(alpha.socket, 'roomQuickJoin', {
+      nickname: 'Alpha Pilot',
+      settings: createRoomSettings({ aiEnabled: true }),
+    });
+
+    await waitFor(() =>
+      alpha.messages.some(message => message.type === 'roomState' && message.payload.access === 'public') &&
+      alpha.messages.some(message => message.type === 'matchStart') &&
+      alpha.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          !!message.payload.players.find(player => player.nickname === 'Alpha Pilot'),
+      ),
+    );
+
+    const alphaRoomState = alpha.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> =>
+        message.type === 'roomState' && message.payload.access === 'public',
+    );
+    const roomId = alphaRoomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(bravo.socket, 'roomQuickJoin', {
+      nickname: 'Bravo Pilot',
+      settings: createRoomSettings({ aiEnabled: true }),
+    });
+
+    await waitFor(() =>
+      alpha.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ) &&
+      bravo.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ) &&
+      bravo.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.players.find(player => player.nickname === 'Alpha Pilot') &&
+          !!message.payload.players.find(player => player.nickname === 'Bravo Pilot'),
+      ),
+    );
+
+    send(bravo.socket, 'roomLeave', { roomId });
+
+    await waitFor(() =>
+      alpha.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 1,
+      ) &&
+      alpha.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.players.find(player => player.nickname === 'Alpha Pilot') &&
+          !message.payload.players.some(player => player.nickname === 'Bravo Pilot'),
+      ),
+    );
+
+    const charlie = await openClient(3319);
+    sockets.push(charlie.socket);
+
+    send(charlie.socket, 'roomQuickJoin', {
+      nickname: 'Charlie Pilot',
+      settings: createRoomSettings({ aiEnabled: true }),
+    });
+
+    await waitFor(() =>
+      charlie.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ) &&
+      charlie.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.players.find(player => player.nickname === 'Alpha Pilot') &&
+          !!message.payload.players.find(player => player.nickname === 'Charlie Pilot') &&
+          !message.payload.players.some(player => player.nickname === 'Bravo Pilot'),
+      ),
+    );
+  }, 10_000);
+
+  it('creates a second public room once the preferred quick-join room reaches its target population', async () => {
+    const app = createPolytankServer(3320);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const clients = [] as Array<Awaited<ReturnType<typeof openClient>>>;
+    for (let index = 0; index < 7; index += 1) {
+      const client = await openClient(3320);
+      clients.push(client);
+      sockets.push(client.socket);
+      send(client.socket, 'roomQuickJoin', {
+        nickname: `Pilot ${index + 1}`,
+        settings: createRoomSettings({ aiEnabled: true }),
+      });
+    }
+
+    await waitFor(() =>
+      clients.every(client => client.messages.some(message => message.type === 'roomState' && message.payload.access === 'public')),
+      6000,
+    );
+
+    const roomIds = clients.map(client => {
+      const latestRoomState = client.messages
+        .filter((message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState' && message.payload.access === 'public')
+        .at(-1);
+      return String(latestRoomState?.payload.roomId || '');
+    });
+
+    const uniqueRoomIds = [...new Set(roomIds.filter(Boolean))];
+    expect(uniqueRoomIds.length).toBe(2);
+
+    const roomCounts = uniqueRoomIds.map(roomId => roomIds.filter(candidate => candidate === roomId).length).sort((left, right) => left - right);
+    expect(roomCounts).toEqual([1, 6]);
+  }, 12_000);
+
   it('rejects join for an unknown room code', async () => {
     const app = createPolytankServer(3312);
     apps.push(app);
@@ -342,6 +535,96 @@ describe('polytank room server', () => {
       5000,
     );
   }, 8_000);
+
+  it('resumes a disconnected live player within the reconnect grace window', async () => {
+    const app = createPolytankServer(3315);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3315);
+    const guest = await openClient(3315);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(message => message.type === 'roomState');
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      host.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2) &&
+      guest.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2),
+    );
+
+    const guestWelcome = guest.messages.find(message => message.type === 'welcome');
+    const reconnectToken = guestWelcome?.payload.reconnectToken;
+    expect(reconnectToken).toBeTruthy();
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      guest.messages.some(message => message.type === 'matchStart') &&
+      guest.messages.some(message => message.type === 'snapshot' && message.payload.players.length === 2),
+    );
+
+    const initialSnapshot = guest.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' && message.payload.players.length === 2,
+    );
+    const guestPlayer = initialSnapshot?.payload.players.find(player => player.nickname === 'Guest Pilot');
+    expect(guestPlayer).toBeDefined();
+
+    guest.socket.close();
+
+    const resumed = await openClient(3315);
+    sockets.push(resumed.socket);
+    send(resumed.socket, 'resume', { roomId, reconnectToken });
+
+    await waitFor(() =>
+      resumed.messages.some(message => message.type === 'roomState' && message.payload.roomId === roomId) &&
+      resumed.messages.some(message => message.type === 'matchStart' && message.payload.roomId === roomId) &&
+      resumed.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          !!message.payload.players.find(player => player.id === guestPlayer?.id && player.nickname === 'Guest Pilot'),
+      ),
+    );
+
+    const resumedSnapshot = resumed.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        !!message.payload.players.find(player => player.id === guestPlayer?.id && player.nickname === 'Guest Pilot'),
+    );
+    const resumedPlayer = resumedSnapshot?.payload.players.find(player => player.id === guestPlayer?.id);
+    expect(resumedPlayer?.id).toBe(guestPlayer?.id);
+
+    send(resumed.socket, 'input', {
+      sequence: 1,
+      moveX: -1,
+      moveY: 0,
+      aimAngle: Math.PI,
+      firing: false,
+    });
+
+    await waitFor(() =>
+      resumed.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          !!message.payload.players.find(
+            player => player.id === guestPlayer?.id && player.x < (resumedPlayer?.x ?? Number.POSITIVE_INFINITY),
+          ),
+      ),
+    );
+  }, 10_000);
 
   it('applies upgrades and class choices authoritatively on the server', async () => {
     const app = createPolytankServer(3313);

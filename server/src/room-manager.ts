@@ -3,6 +3,7 @@ import {
   PROTOCOL_VERSION,
   type EventMessage,
   type MatchStartMessage,
+  type RoomAccess,
   type RoomRosterEntry,
   type RoomSettings,
   type RoomStateMessage,
@@ -12,6 +13,7 @@ import {
   type WorldShapeState,
 } from '../../src/shared/protocol.js';
 import {
+  RECONNECT_GRACE_MS,
   SNAPSHOT_RATE,
   SERVER_TICK_RATE,
   WORLD_HEIGHT,
@@ -26,6 +28,7 @@ export interface ConnectionContext {
   socket: WebSocket;
   playerId: string;
   sessionId: string;
+  reconnectToken: string;
   nickname: string;
   roomId: string | null;
 }
@@ -33,15 +36,18 @@ export interface ConnectionContext {
 interface RoomMember {
   playerId: string;
   sessionId: string;
+  reconnectToken: string;
   nickname: string;
   ready: boolean;
   isHost: boolean;
-  socket: WebSocket;
+  socket: WebSocket | null;
+  disconnectedAt: number | null;
 }
 
 interface Room {
   id: string;
   code: string;
+  access: RoomAccess;
   status: 'lobby' | 'starting' | 'active' | 'ended';
   settings: RoomSettings;
   members: RoomMember[];
@@ -107,6 +113,7 @@ const BASE_BULLET_RADIUS = 8;
 const UPGRADE_UNLOCK_LEVEL = 5;
 const UPGRADE_MAX_LEVEL = 10;
 const BOT_TARGET_PLAYERS = 6;
+const PREFERRED_PUBLIC_ROOM_MEMBERS = BOT_TARGET_PLAYERS;
 const FFA_TEAM_COLORS = ['blue', 'red', 'green', 'purple', 'yellow'] as const;
 const BOT_NAME_PREFIXES = ['Nova', 'Cipher', 'Vector', 'Pulse', 'Drift', 'Ion', 'Shard', 'Orbit'] as const;
 const BOT_NAME_SUFFIXES = ['Wing', 'Core', 'Bolt', 'Trace', 'Flux', 'Drive', 'Hex', 'Ray'] as const;
@@ -214,34 +221,78 @@ export class RoomManager {
 
   constructor(private readonly now: () => number) {}
 
+  private createRoomRecord(access: RoomAccess, settings: RoomSettings): Room {
+    return {
+      id: crypto.randomUUID(),
+      code: this.generateRoomCode(),
+      access,
+      status: 'lobby',
+      settings: { ...settings },
+      members: [],
+      createdAt: this.now(),
+    };
+  }
+
+  private addMemberToRoom(room: Room, connection: ConnectionContext, nickname: string, isHost: boolean): RoomMember {
+    const member: RoomMember = {
+      playerId: connection.playerId,
+      sessionId: connection.sessionId,
+      reconnectToken: connection.reconnectToken,
+      nickname,
+      ready: room.access === 'public',
+      isHost,
+      socket: connection.socket,
+      disconnectedAt: null,
+    };
+    room.members.push(member);
+    connection.nickname = nickname;
+    connection.roomId = room.id;
+    return member;
+  }
+
   createRoom(connection: ConnectionContext, nickname: string, settings: RoomSettings): RoomActionResult {
     if (connection.roomId) {
       this.leaveRoom(connection, connection.roomId);
     }
 
-    const room: Room = {
-      id: crypto.randomUUID(),
-      code: this.generateRoomCode(),
-      status: 'lobby',
-      settings: { ...settings },
-      members: [
-        {
-          playerId: connection.playerId,
-          sessionId: connection.sessionId,
-          nickname,
-          ready: false,
-          isHost: true,
-          socket: connection.socket,
-        },
-      ],
-      createdAt: this.now(),
-    };
+    const room = this.createRoomRecord('private', settings);
+    this.addMemberToRoom(room, connection, nickname, true);
 
     this.roomsById.set(room.id, room);
     this.roomIdByCode.set(room.code, room.id);
-    connection.nickname = nickname;
-    connection.roomId = room.id;
     return { room };
+  }
+
+  quickJoinRoom(connection: ConnectionContext, nickname: string, settings: RoomSettings): RoomActionResult {
+    if (connection.roomId) {
+      this.leaveRoom(connection, connection.roomId);
+    }
+
+    const candidateRoom = this.findQuickJoinRoom(settings);
+    const room = candidateRoom ? (this.pruneExpiredConnections(candidateRoom), this.roomsById.get(candidateRoom.id)) : undefined;
+    if (room) {
+      if (room.members.length >= MAX_ROOM_MEMBERS) {
+        return { error: { code: 'ROOM_FULL', message: 'Public room is already full.' } };
+      }
+      if (room.members.some(member => member.playerId === connection.playerId)) {
+        return { room };
+      }
+
+      const member = this.addMemberToRoom(room, connection, nickname, false);
+      if (room.status === 'active') {
+        this.addActivePlayer(room, member);
+      }
+      return { room };
+    }
+
+    const createdRoom = this.createRoomRecord('public', settings);
+    this.addMemberToRoom(createdRoom, connection, nickname, true);
+    createdRoom.status = 'active';
+
+    this.roomsById.set(createdRoom.id, createdRoom);
+    this.roomIdByCode.set(createdRoom.code, createdRoom.id);
+    this.startActiveRoom(createdRoom);
+    return { room: createdRoom, started: true };
   }
 
   configureRoom(connection: ConnectionContext, roomId: string, settings: RoomSettings): RoomActionResult {
@@ -270,6 +321,10 @@ export class RoomManager {
     if (!room) {
       return { error: { code: 'ROOM_NOT_FOUND', message: 'Room code was not found.' } };
     }
+    if (room.access !== 'private') {
+      return { error: { code: 'ROOM_NOT_JOINABLE', message: 'Public rooms must be joined through quick join.' } };
+    }
+    this.pruneExpiredConnections(room);
     if (room.status !== 'lobby') {
       return { error: { code: 'ROOM_NOT_JOINABLE', message: 'Room is no longer joinable.' } };
     }
@@ -280,16 +335,7 @@ export class RoomManager {
       return { room };
     }
 
-    room.members.push({
-      playerId: connection.playerId,
-      sessionId: connection.sessionId,
-      nickname,
-      ready: false,
-      isHost: false,
-      socket: connection.socket,
-    });
-    connection.nickname = nickname;
-    connection.roomId = room.id;
+    this.addMemberToRoom(room, connection, nickname, false);
     return { room };
   }
 
@@ -299,8 +345,11 @@ export class RoomManager {
       return { error: { code: 'ROOM_NOT_FOUND', message: 'Room was not found.' } };
     }
 
+    this.pruneExpiredConnections(room);
+
     room.members = room.members.filter(member => member.playerId !== connection.playerId);
     this.removeActivePlayer(room.id, connection.playerId);
+    this.rebalanceActiveRoomPopulation(room);
     connection.roomId = null;
 
     if (room.members.length === 0) {
@@ -321,7 +370,56 @@ export class RoomManager {
     if (!connection.roomId) {
       return {};
     }
-    return this.leaveRoom(connection, connection.roomId);
+    const room = this.roomsById.get(connection.roomId);
+    if (!room) {
+      connection.roomId = null;
+      return {};
+    }
+
+    if (room.status !== 'active') {
+      return this.leaveRoom(connection, connection.roomId);
+    }
+
+    const member = room.members.find(entry => entry.playerId === connection.playerId);
+    if (!member) {
+      connection.roomId = null;
+      return {};
+    }
+
+    member.socket = null;
+    member.disconnectedAt = this.now();
+    connection.roomId = null;
+    return { room };
+  }
+
+  resumeConnection(connection: ConnectionContext, roomId: string, reconnectToken: string): RoomActionResult {
+    const room = this.roomsById.get(roomId);
+    if (!room) {
+      return { error: { code: 'ROOM_NOT_FOUND', message: 'Room was not found.' } };
+    }
+
+    this.pruneExpiredConnections(room);
+
+    const member = room.members.find(entry => entry.reconnectToken === reconnectToken);
+    if (!member) {
+      return { error: { code: 'RECONNECT_NOT_FOUND', message: 'Reconnect token is invalid for this room.' } };
+    }
+    if (member.disconnectedAt === null) {
+      return { error: { code: 'RECONNECT_NOT_PENDING', message: 'Player is already connected.' } };
+    }
+    if (this.now() - member.disconnectedAt > RECONNECT_GRACE_MS) {
+      this.pruneExpiredConnections(room);
+      return { error: { code: 'RECONNECT_EXPIRED', message: 'Reconnect window has expired.' } };
+    }
+
+    member.socket = connection.socket;
+    member.disconnectedAt = null;
+    connection.playerId = member.playerId;
+    connection.sessionId = member.sessionId;
+    connection.reconnectToken = member.reconnectToken;
+    connection.nickname = member.nickname;
+    connection.roomId = room.id;
+    return { room };
   }
 
   setReady(connection: ConnectionContext, roomId: string, ready: boolean): RoomActionResult {
@@ -329,6 +427,7 @@ export class RoomManager {
     if (!room) {
       return { error: { code: 'ROOM_NOT_FOUND', message: 'Room was not found.' } };
     }
+    this.pruneExpiredConnections(room);
     const member = room.members.find(entry => entry.playerId === connection.playerId);
     if (!member) {
       return { error: { code: 'NOT_IN_ROOM', message: 'Player is not in the requested room.' } };
@@ -348,6 +447,7 @@ export class RoomManager {
   }
 
   createRoomStateMessage(room: Room): RoomStateMessage {
+    this.pruneExpiredConnections(room);
     return {
       type: 'roomState',
       version: PROTOCOL_VERSION,
@@ -355,6 +455,7 @@ export class RoomManager {
       payload: {
         roomId: room.id,
         roomCode: room.code,
+        access: room.access,
         status: room.status,
         settings: { ...room.settings },
         roster: room.members.map<RoomRosterEntry>(member => ({
@@ -458,6 +559,7 @@ export class RoomManager {
     if (!room) {
       return { error: { code: 'ROOM_NOT_FOUND', message: 'Room was not found.' } };
     }
+    this.pruneExpiredConnections(room);
     if (room.status !== 'active') {
       return { error: { code: 'ROOM_NOT_ACTIVE', message: 'Room is not active yet.' } };
     }
@@ -487,6 +589,7 @@ export class RoomManager {
     if (!room) {
       return { error: { code: 'ROOM_NOT_FOUND', message: 'Room was not found.' } };
     }
+    this.pruneExpiredConnections(room);
     if (connection.roomId !== roomId || room.status !== 'active') {
       return { error: { code: 'ROOM_NOT_ACTIVE', message: 'Room is not active yet.' } };
     }
@@ -533,6 +636,7 @@ export class RoomManager {
     if (!room) {
       return { error: { code: 'ROOM_NOT_FOUND', message: 'Room was not found.' } };
     }
+    this.pruneExpiredConnections(room);
     if (connection.roomId !== roomId || room.status !== 'active') {
       return { error: { code: 'ROOM_NOT_ACTIVE', message: 'Room is not active yet.' } };
     }
@@ -560,6 +664,9 @@ export class RoomManager {
   broadcastRoom(room: Room, message: ServerMessage): void {
     const serialized = JSON.stringify(message);
     for (const member of room.members) {
+      if (!member.socket || member.socket.readyState !== 1) {
+        continue;
+      }
       member.socket.send(serialized);
     }
   }
@@ -787,6 +894,12 @@ export class RoomManager {
       return;
     }
 
+    this.pruneExpiredConnections(room);
+    if (!this.roomsById.has(roomId)) {
+      this.stopActiveRoom(roomId);
+      return;
+    }
+
     runtime.tick += 1;
     const snapshot = this.createSnapshotMessage(room);
     if (snapshot) {
@@ -806,71 +919,165 @@ export class RoomManager {
     runtime.respawnTimers.delete(playerId);
   }
 
-  private createActivePlayers(room: Room): PlayerState[] {
-    const humans = room.members.map((member, index) => {
-      const spawn = this.getSpawnPointByIndex(index, Math.max(room.members.length, 1));
-      const player: PlayerState = {
-        id: member.playerId,
-        nickname: member.nickname,
-        team: this.getAssignedTeam(room, index),
-        classId: 'basic',
-        x: spawn.x,
-        y: spawn.y,
-        angle: spawn.angle,
-        hp: BASE_TANK_HEALTH,
-        maxHp: BASE_TANK_HEALTH,
-        level: 1,
-        xp: 0,
-        xpNext: this.getXpNextForLevel(1),
-        points: 0,
-        score: 0,
-        upgrades: createDefaultUpgrades(),
-        moveSpeed: BASE_MOVE_SPEED,
-        bulletSpeed: BASE_BULLET_SPEED,
-        bulletDamage: BASE_BULLET_DAMAGE,
-        reload: BASE_RELOAD,
-        bulletRadius: BASE_BULLET_RADIUS,
-        isBot: false,
-      };
-      return this.applyPlayerDerivedStats(player, true);
+  private pruneExpiredConnections(room: Room): void {
+    if (room.status !== 'active') {
+      return;
+    }
+
+    const expiredPlayerIds: string[] = [];
+    room.members = room.members.filter(member => {
+      if (member.disconnectedAt === null) {
+        return true;
+      }
+      if (this.now() - member.disconnectedAt <= RECONNECT_GRACE_MS) {
+        return true;
+      }
+      expiredPlayerIds.push(member.playerId);
+      return false;
     });
+
+    for (const playerId of expiredPlayerIds) {
+      this.removeActivePlayer(room.id, playerId);
+    }
+    this.rebalanceActiveRoomPopulation(room);
+
+    if (room.members.length === 0) {
+      this.stopActiveRoom(room.id);
+      this.roomsById.delete(room.id);
+      this.roomIdByCode.delete(room.code);
+      return;
+    }
+
+    if (!room.members.some(member => member.isHost)) {
+      room.members[0].isHost = true;
+    }
+  }
+
+  private createActivePlayers(room: Room): PlayerState[] {
+    const humans = room.members.map(member => this.createActiveHumanPlayer(room, member));
 
     if (room.settings.aiEnabled === false) {
       return humans;
     }
 
     const botsToCreate = Math.max(0, BOT_TARGET_PLAYERS - humans.length);
-    const totalSlots = humans.length + botsToCreate;
     const bots = Array.from({ length: botsToCreate }, (_unused, offset) => {
-      const index = humans.length + offset;
-      const spawn = this.getSpawnPointByIndex(index, Math.max(totalSlots, 1));
-      const bot: PlayerState = {
-        id: `bot_${crypto.randomUUID()}`,
-        nickname: this.createBotName(index),
-        team: this.getAssignedTeam(room, index),
-        classId: 'basic',
-        x: spawn.x,
-        y: spawn.y,
-        angle: spawn.angle,
-        hp: BASE_TANK_HEALTH,
-        maxHp: BASE_TANK_HEALTH,
-        level: 1,
-        xp: 0,
-        xpNext: this.getXpNextForLevel(1),
-        points: 0,
-        score: 0,
-        upgrades: createDefaultUpgrades(),
-        moveSpeed: BASE_MOVE_SPEED,
-        bulletSpeed: BASE_BULLET_SPEED,
-        bulletDamage: BASE_BULLET_DAMAGE,
-        reload: BASE_RELOAD,
-        bulletRadius: BASE_BULLET_RADIUS,
-        isBot: true,
-      };
-      return this.applyPlayerDerivedStats(bot, true);
+      const slotIndex = humans.length + offset;
+      return this.createActiveBotPlayer(room, slotIndex, humans.length + botsToCreate);
     });
 
     return [...humans, ...bots];
+  }
+
+  private createActiveHumanPlayer(room: Room, member: RoomMember): PlayerState {
+    const slotIndex = Math.max(0, room.members.findIndex(entry => entry.playerId === member.playerId));
+    const spawn = this.getSpawnPointByIndex(slotIndex, Math.max(room.members.length, 1));
+    const player: PlayerState = {
+      id: member.playerId,
+      nickname: member.nickname,
+      team: this.getAssignedTeam(room, slotIndex),
+      classId: 'basic',
+      x: spawn.x,
+      y: spawn.y,
+      angle: spawn.angle,
+      hp: BASE_TANK_HEALTH,
+      maxHp: BASE_TANK_HEALTH,
+      level: 1,
+      xp: 0,
+      xpNext: this.getXpNextForLevel(1),
+      points: 0,
+      score: 0,
+      upgrades: createDefaultUpgrades(),
+      moveSpeed: BASE_MOVE_SPEED,
+      bulletSpeed: BASE_BULLET_SPEED,
+      bulletDamage: BASE_BULLET_DAMAGE,
+      reload: BASE_RELOAD,
+      bulletRadius: BASE_BULLET_RADIUS,
+      isBot: false,
+    };
+    return this.applyPlayerDerivedStats(player, true);
+  }
+
+  private createActiveBotPlayer(room: Room, slotIndex: number, totalSlots: number): PlayerState {
+    const spawn = this.getSpawnPointByIndex(slotIndex, Math.max(totalSlots, 1));
+    const bot: PlayerState = {
+      id: `bot_${crypto.randomUUID()}`,
+      nickname: this.createBotName(slotIndex),
+      team: this.getAssignedTeam(room, slotIndex),
+      classId: 'basic',
+      x: spawn.x,
+      y: spawn.y,
+      angle: spawn.angle,
+      hp: BASE_TANK_HEALTH,
+      maxHp: BASE_TANK_HEALTH,
+      level: 1,
+      xp: 0,
+      xpNext: this.getXpNextForLevel(1),
+      points: 0,
+      score: 0,
+      upgrades: createDefaultUpgrades(),
+      moveSpeed: BASE_MOVE_SPEED,
+      bulletSpeed: BASE_BULLET_SPEED,
+      bulletDamage: BASE_BULLET_DAMAGE,
+      reload: BASE_RELOAD,
+      bulletRadius: BASE_BULLET_RADIUS,
+      isBot: true,
+    };
+    return this.applyPlayerDerivedStats(bot, true);
+  }
+
+  private addActivePlayer(room: Room, member: RoomMember): void {
+    const runtime = this.activeRooms.get(room.id);
+    if (!runtime) {
+      return;
+    }
+    if (runtime.players.some(player => player.id === member.playerId)) {
+      return;
+    }
+
+    runtime.players.push(this.createActiveHumanPlayer(room, member));
+    this.rebalanceActiveRoomPopulation(room);
+  }
+
+  private rebalanceActiveRoomPopulation(room: Room): void {
+    const runtime = this.activeRooms.get(room.id);
+    if (!runtime) {
+      return;
+    }
+
+    if (room.settings.aiEnabled === false) {
+      const removedBotIds = runtime.players.filter(player => player.isBot).map(player => player.id);
+      runtime.players = runtime.players.filter(player => !player.isBot);
+      for (const playerId of removedBotIds) {
+        runtime.inputs.delete(playerId);
+        runtime.fireCooldowns.delete(playerId);
+        runtime.respawnTimers.delete(playerId);
+      }
+      return;
+    }
+
+    const humans = runtime.players.filter(player => !player.isBot);
+    const bots = runtime.players.filter(player => player.isBot);
+    const desiredBotCount = Math.max(0, BOT_TARGET_PLAYERS - room.members.length);
+
+    if (bots.length > desiredBotCount) {
+      const keptBots = bots.slice(0, desiredBotCount);
+      const removedBotIds = bots.slice(desiredBotCount).map(player => player.id);
+      runtime.players = [...humans, ...keptBots];
+      for (const playerId of removedBotIds) {
+        runtime.inputs.delete(playerId);
+        runtime.fireCooldowns.delete(playerId);
+        runtime.respawnTimers.delete(playerId);
+      }
+      return;
+    }
+
+    let nextPlayers = [...humans, ...bots];
+    while (nextPlayers.filter(player => player.isBot).length < desiredBotCount) {
+      const bot = this.createActiveBotPlayer(room, nextPlayers.length, room.members.length + desiredBotCount);
+      nextPlayers = [...nextPlayers, bot];
+    }
+    runtime.players = nextPlayers;
   }
 
   private createInitialShapes(runtime: ActiveRoomRuntime): ActiveShape[] {
@@ -1198,6 +1405,33 @@ export class RoomManager {
 
   private clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
+  }
+
+  private findQuickJoinRoom(settings: RoomSettings): Room | undefined {
+    const candidates = [...this.roomsById.values()]
+      .filter(room => room.access === 'public')
+      .filter(room => room.settings.gameVariant === settings.gameVariant)
+      .filter(room => room.settings.aiEnabled === settings.aiEnabled)
+      .filter(room => room.settings.hostTeam === settings.hostTeam)
+      .filter(room => room.members.length < MAX_ROOM_MEMBERS);
+
+    const preferredActiveRoom = candidates
+      .filter(room => room.status === 'active')
+      .filter(room => room.members.length < PREFERRED_PUBLIC_ROOM_MEMBERS)
+      .sort((left, right) => {
+        if (right.members.length !== left.members.length) {
+          return right.members.length - left.members.length;
+        }
+        return left.createdAt - right.createdAt;
+      })[0];
+
+    if (preferredActiveRoom) {
+      return preferredActiveRoom;
+    }
+
+    return candidates
+      .filter(room => room.status === 'lobby')
+      .sort((left, right) => left.createdAt - right.createdAt)[0];
   }
 
   private getRoomByCode(code: string): Room | undefined {

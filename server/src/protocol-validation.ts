@@ -85,6 +85,11 @@ export function parseClientMessage(raw: string):
         return invalidPayload('Room create payload requires a nickname and room settings.');
       }
       break;
+    case 'roomQuickJoin':
+      if (!isString(payload.nickname) || !isRoomSettings(payload.settings)) {
+        return invalidPayload('Room quick join payload requires a nickname and room settings.');
+      }
+      break;
     case 'roomJoin':
       if (!isString(payload.roomCode) || !isString(payload.nickname)) {
         return invalidPayload('Room join payload requires roomCode and nickname.');

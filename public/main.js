@@ -56,6 +56,7 @@
 
     const cap=window.innerHeight*0.36;  // safe buffer (star layers are 180% tall)
     layers.forEach((layer,i)=>{
+    const input=this.getServerRoomInputState();
       cur[i].x+=(targetX*layer.speed-cur[i].x)*EASE_IN;
       cur[i].y+=(targetY*layer.speed-cur[i].y)*EASE_IN;
       // Accumulate upward travel offset
@@ -65,9 +66,11 @@
       // When velocity has decayed, smoothly return offset to zero
       if(Math.abs(tVel)<0.12) tOff[i]+=(0-tOff[i])*T_RET;
       // Menu-parallax drift — Lissajous sinusoid, each depth layer moves at its own rate
+      this.updateSmoothedSnapshotTank(this.player,dt,{isSelf:true,input});
       const mDX=isMenu?Math.sin(now_ms*0.00028*(0.50+i*0.32))*22*layer.speed:0;
       const mDY=isMenu?Math.cos(now_ms*0.00021*(0.50+i*0.28))*16*layer.speed:0;
       if(!animating) layer.el.style.transform=`translate(${(cur[i].x+mDX).toFixed(1)}px,${(cur[i].y+tOff[i]+mDY).toFixed(1)}px)`;
+      this.updateSmoothedSnapshotTank(bot,dt);
     });
     requestAnimationFrame(tick);
   }
@@ -15115,12 +15118,25 @@ const POLYTANK_IO={
   localPartyServerUrl:'',
   localPartyServerPlayerId:'',
   localPartyServerSessionId:'',
+  localPartyReconnectToken:'',
+  localPartyResumePending:null,
+  localPartyResumeTimer:0,
   networkRoomActive:false,
   networkRoomId:'',
   networkSnapshotTick:-1,
   networkSnapshotReceivedAt:0,
   networkInputSequence:0,
   networkInputTimer:0,
+  networkCorrectionSnapDistance:280,
+  networkRemoteSmoothingRate:12,
+  networkCorrectionSmoothingRate:10,
+  networkPingMs:0,
+  networkJitterMs:0,
+  networkClockOffsetMs:0,
+  networkLastPongAt:0,
+  networkLastPingClientTime:0,
+  networkPingTimer:0,
+  networkSnapshotAgeMs:0,
   fallenBossClaim:null,
   lastServerEvent:'',
   serverEventTimer:0,
@@ -16103,9 +16119,11 @@ const POLYTANK_IO={
     const localAiEnabled=localRoom?.settings?.aiEnabled!==false;
     const testSimCount=(localRoom?.members||[]).filter(member=>member.isSimulated).length;
     const usingPartyServer=this.isUsingPartyServer();
+    const localRoomAccess=String(localRoom?.access||'private');
+    const pendingJoinCode=this.normalizeLocalPartyCode(localInput?.value||'');
     if(summary){
       summary.textContent=localPartyActive
-        ?`${this.localPartyRole==='host'?'Hosting':'Joined'} ${usingPartyServer?'online room':'local party'} ${this.localPartyCode}.${usingPartyServer?' Lobby sync is live through the server.':' Waiting room sync is live in this browser.'}`
+        ?`${this.localPartyRole==='host'?'Hosting':'Joined'} ${usingPartyServer?(localRoomAccess==='public'?'public online room':'online room'):'local party'} ${this.localPartyCode}.${usingPartyServer?' Lobby sync is live through the server.':' Waiting room sync is live in this browser.'}`
         :(pausedSession
           ?'Match paused. Resume to continue from the current frame, or start a fresh arena.'
           :(hasResume
@@ -16127,20 +16145,26 @@ const POLYTANK_IO={
     }
     if(localCode) localCode.textContent=localPartyActive?this.localPartyCode:'NO CODE';
     if(localStatus){
-      if(!localPartyActive) localStatus.textContent='No party room yet. Create a code or join one. When the room server is available, this uses the backend; otherwise it falls back to same-browser tabs.';
+      if(!localPartyActive) localStatus.textContent='No party room yet. Create a code, join one directly, or leave the field blank to quick join a public online room. When the room server is unavailable, the flow falls back to same-browser tabs.';
       else if(usingPartyServer&&localRoom?.status==='active') localStatus.textContent=`Room ${this.localPartyCode} is active on the server. Gameplay sync is the next multiplayer slice.`;
       else if(this.localPartyRole==='host') localStatus.textContent=usingPartyServer
-        ?`Online room ${this.localPartyCode} is live. Share the code, then have everyone press Ready Up. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`
+        ?(localRoomAccess==='public'
+          ?`Public room ${this.localPartyCode} is live on the server. New pilots can quick join automatically while capacity lasts. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`
+          :`Online room ${this.localPartyCode} is live. Share the code, then have everyone press Ready Up. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`)
         :`Lobby ${this.localPartyCode} is live. Open another tab, join the code, and use WASD or arrows after clicking the waiting room. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`;
       else localStatus.textContent=usingPartyServer
-        ?`Connected to ${this.localPartyCode}. Host settings are locked here. Press Ready Up when you want the room to launch.`
+        ?(localRoomAccess==='public'
+          ?`Connected to public room ${this.localPartyCode}. The server can place more pilots here automatically while capacity remains.`
+          :`Connected to ${this.localPartyCode}. Host settings are locked here. Press Ready Up when you want the room to launch.`)
         :(localRoomAge>5000?`Lobby ${this.localPartyCode} looks stale. Keep the host tab open.`:`Connected to ${this.localPartyCode}. Host settings are locked here. Your team preference controls whether you land on the same, different, or random team later.`);
     }
     if(localCreate) localCreate.disabled=localPartyActive;
     if(localJoin) localJoin.disabled=localPartyActive;
+    if(localJoin) localJoin.textContent=!localPartyActive&&usingPartyServer&&!pendingJoinCode?'Quick Join':'Join';
     if(localLeave) localLeave.style.display=localPartyActive?'inline-flex':'none';
     if(localInput){
       localInput.disabled=localPartyActive;
+      localInput.placeholder=usingPartyServer?'CODE OR BLANK FOR QUICK JOIN':'JOIN CODE';
       if(localPartyActive&&this.localPartyCode) localInput.value=this.localPartyCode;
     }
     if(localAi){
@@ -16175,11 +16199,14 @@ const POLYTANK_IO={
     const t=this.menuFxTime;
     const modeBias=this.isFreeForAllMode()?5:this.isMothershipMode()?12:this.isSandboxMode()?-8:this.isMazeMode()?9:0;
     const density=this.clamp(Math.round(63+Math.sin(t*0.8)*8+Math.sin(t*0.23)*4+modeBias),18,98);
-    const ping=this.clamp(Math.round(16+Math.abs(Math.sin(t*0.62))*11+(this.localPartyCode?4:0)),8,64);
+    const hasLivePing=(this.networkRoomActive||this.isUsingPartyServer()||!!this.localPartyResumePending)&&this.networkLastPongAt>0;
+    const ping=hasLivePing
+      ?Math.max(1,Math.round(this.networkPingMs||0))
+      :this.clamp(Math.round(16+Math.abs(Math.sin(t*0.62))*11+(this.localPartyCode?4:0)),8,64);
     const threatBias=this.isMothershipMode()?12:this.isBreakoutMode()?7:this.isCtfMode()?4:0;
     const threat=this.clamp(Math.round(29+Math.cos(t*1.04)*10+Math.sin(t*1.92)*6+threatBias),9,87);
     if(densityEl) densityEl.textContent=`${density}%`;
-    if(pingEl) pingEl.textContent=`${ping} ms`;
+    if(pingEl) pingEl.textContent=hasLivePing?`${ping} ms`:`${ping} ms`;
     if(threatEl) threatEl.textContent=`${threat}%`;
   },
   updateCircleMenuInteractivity(dt){
@@ -16282,6 +16309,113 @@ const POLYTANK_IO={
       hostTeam:this.playerTeam,
     };
   },
+  resetNetworkTelemetry(){
+    this.networkPingMs=0;
+    this.networkJitterMs=0;
+    this.networkClockOffsetMs=0;
+    this.networkLastPongAt=0;
+    this.networkLastPingClientTime=0;
+    this.networkPingTimer=0;
+    this.networkSnapshotAgeMs=0;
+  },
+  sendPartyServerPing(){
+    const clientTime=Date.now();
+    const sent=this.sendPartyServerMessage('ping',{clientTime});
+    if(sent) this.networkLastPingClientTime=clientTime;
+    return sent;
+  },
+  applyPartyServerPong(payload){
+    if(!payload||typeof payload!=='object') return;
+    const clientTime=Number(payload.clientTime)||0;
+    const serverTime=Number(payload.serverTime)||0;
+    if(!clientTime||!serverTime) return;
+    const now=Date.now();
+    const rtt=Math.max(0,now-clientTime);
+    const nextOffset=serverTime-(clientTime+rtt*0.5);
+    if(this.networkPingMs>0){
+      const delta=Math.abs(rtt-this.networkPingMs);
+      this.networkJitterMs=this.networkJitterMs>0
+        ?this.networkJitterMs*0.72+delta*0.28
+        :delta;
+      this.networkPingMs=this.networkPingMs*0.68+rtt*0.32;
+      this.networkClockOffsetMs=this.networkClockOffsetMs*0.7+nextOffset*0.3;
+    }else{
+      this.networkPingMs=rtt;
+      this.networkJitterMs=0;
+      this.networkClockOffsetMs=nextOffset;
+    }
+    this.networkLastPongAt=performance.now();
+  },
+  canResumePartyServer(){
+    return !!(this.localPartyState?.roomId&&this.localPartyReconnectToken&&this.localPartyState?.status==='active');
+  },
+  clearPartyServerResumeTimer(){
+    if(this.localPartyResumeTimer){
+      clearTimeout(this.localPartyResumeTimer);
+      this.localPartyResumeTimer=0;
+    }
+  },
+  clearPartyServerResumeState(){
+    this.clearPartyServerResumeTimer();
+    this.localPartyResumePending=null;
+  },
+  failPartyServerResume(message){
+    this.clearPartyServerResumeState();
+    this.disconnectPartyServer();
+    this.localPartyReconnectToken='';
+    this.localPartyCode='';
+    this.localPartyRole='';
+    this.localPartyState=null;
+    this.localPartyMember=null;
+    this.stopLocalPartyLoop();
+    if(this.overlayEl){
+      this.overlayEl.classList.remove('waiting-room');
+      this.overlayEl.classList.remove('wait-transition');
+    }
+    this.refreshMenuState();
+    toast(message||'Online room disconnected.', '#ffb584');
+  },
+  queuePartyServerResume(initialDelay=900){
+    if(!this.canResumePartyServer()) return false;
+    const roomId=String(this.localPartyState?.roomId||'');
+    const reconnectToken=String(this.localPartyReconnectToken||'');
+    if(!roomId||!reconnectToken) return false;
+    const pending=this.localPartyResumePending||{
+      roomId,
+      reconnectToken,
+      playerId:this.localPartyServerPlayerId,
+      attempts:0,
+    };
+    pending.roomId=roomId;
+    pending.reconnectToken=reconnectToken;
+    pending.playerId=pending.playerId||this.localPartyServerPlayerId;
+    this.localPartyResumePending=pending;
+    this.clearPartyServerResumeTimer();
+    this.localPartyResumeTimer=setTimeout(async()=>{
+      this.localPartyResumeTimer=0;
+      if(!this.localPartyResumePending) return;
+      const connected=await this.connectPartyServer();
+      if(!connected){
+        this.localPartyResumePending.attempts=(this.localPartyResumePending.attempts||0)+1;
+        if(this.localPartyResumePending.attempts>=5){
+          this.failPartyServerResume('Could not reconnect to the online room.');
+          return;
+        }
+        this.queuePartyServerResume(Math.min(5000,900*this.localPartyResumePending.attempts));
+      }
+    },Math.max(0,initialDelay));
+    return true;
+  },
+  sendPartyServerResume(){
+    const pending=this.localPartyResumePending;
+    if(!pending) return false;
+    const sent=this.sendPartyServerMessage('resume',{
+      roomId:pending.roomId,
+      reconnectToken:pending.reconnectToken,
+    });
+    if(sent) pending.attempts=(pending.attempts||0)+1;
+    return sent;
+  },
   connectPartyServer(){
     if(!this.canUsePartyServer()) return Promise.resolve(false);
     if(this.localPartySocket&&this.localPartySocket.readyState===WebSocket.OPEN) return Promise.resolve(true);
@@ -16301,6 +16435,7 @@ const POLYTANK_IO={
         socket.addEventListener('open',()=>{
           this.localPartySocket=socket;
           this.localPartyTransport='server';
+          if(this.localPartyResumePending) this.sendPartyServerResume();
           finish(true);
         },{once:true});
         socket.addEventListener('error',()=>{
@@ -16313,11 +16448,13 @@ const POLYTANK_IO={
           if(this.localPartySocket===socket) this.localPartySocket=null;
           this.localPartySocketPending=null;
           this.localPartyTransport='';
-          this.localPartyServerPlayerId='';
-          this.localPartyServerSessionId='';
           this.localPartyReady=false;
-          if(!intentional&&this.localPartyCode){
+          if(!intentional&&this.canResumePartyServer()){
+            this.queuePartyServerResume();
+            toast(`Connection lost for room ${this.localPartyCode}. Attempting to resume...`, '#ffb584');
+          }else if(!intentional&&this.localPartyCode){
             const code=this.localPartyCode;
+            this.localPartyReconnectToken='';
             this.localPartyCode='';
             this.localPartyRole='';
             this.localPartyState=null;
@@ -16344,6 +16481,7 @@ const POLYTANK_IO={
     this.localPartyTransport='';
     this.localPartyServerPlayerId='';
     this.localPartyServerSessionId='';
+    this.clearPartyServerResumeState();
     this.localPartyReady=false;
     this.networkRoomActive=false;
     this.networkRoomId='';
@@ -16351,6 +16489,7 @@ const POLYTANK_IO={
     this.networkSnapshotReceivedAt=0;
     this.networkInputSequence=0;
     this.networkInputTimer=0;
+    this.resetNetworkTelemetry();
     const socket=this.localPartySocket;
     this.localPartySocket=null;
     if(socket&&socket.readyState<WebSocket.CLOSING){
@@ -16401,6 +16540,7 @@ const POLYTANK_IO={
     this.localPartyState={
       roomId:String(payload.roomId||''),
       code:this.localPartyCode,
+      access:String(payload.access||'private'),
       hostId:hostEntry?.id||'',
       updatedAt:Date.now(),
       status:payload.status||'lobby',
@@ -16420,10 +16560,16 @@ const POLYTANK_IO={
     if(message.type==='welcome'){
       this.localPartyServerPlayerId=String(message.payload?.playerId||'');
       this.localPartyServerSessionId=String(message.payload?.sessionId||'');
+      this.localPartyReconnectToken=String(message.payload?.reconnectToken||this.localPartyReconnectToken||'');
+      return;
+    }
+    if(message.type==='pong'){
+      this.applyPartyServerPong(message.payload||null);
       return;
     }
     if(message.type==='roomState'){
       this.applyServerRoomState(message.payload||null);
+      if(this.localPartyResumePending&&String(message.payload?.roomId||'')===String(this.localPartyResumePending.roomId||'')) this.clearPartyServerResumeState();
       return;
     }
     if(message.type==='matchStart'){
@@ -16444,9 +16590,14 @@ const POLYTANK_IO={
       return;
     }
     if(message.type==='error'){
+      if(this.localPartyResumePending){
+        this.failPartyServerResume(message.payload?.message||'Could not resume the online room.');
+        return;
+      }
       toast(message.payload?.message||'Room request failed.', '#ff9f7f');
       if(!this.localPartyState?.roomId){
         this.disconnectPartyServer();
+        this.localPartyReconnectToken='';
         this.localPartyCode='';
         this.localPartyRole='';
         this.localPartyState=null;
@@ -16508,6 +16659,7 @@ const POLYTANK_IO={
       this.networkSnapshotReceivedAt=performance.now();
       this.networkInputSequence=0;
       this.networkInputTimer=0;
+      this.resetNetworkTelemetry();
       this.bullets=[];
       this.shapes=[];
       this.dyingShapes=[];
@@ -16587,11 +16739,17 @@ const POLYTANK_IO={
         moveSpeed:Math.max(0,Math.round(Number(entry.upgrades?.moveSpeed)||0)),
       };
       this.updateTankDerivedStats(tank,false);
-      tank.x=Number(entry.x)||0;
-      tank.y=Number(entry.y)||0;
-      tank.aimAngle=Number(entry.angle)||0;
-      tank.vx=0;
-      tank.vy=0;
+      this.applySnapshotTankTransform(
+        tank,
+        Number(entry.x)||0,
+        Number(entry.y)||0,
+        Number(entry.angle)||0,
+        {isSelf}
+      );
+      if(!isSelf){
+        tank.vx=0;
+        tank.vy=0;
+      }
       tank.hp=Math.max(0,Number(entry.hp)||0);
       tank.maxHp=Math.max(1,Number(entry.maxHp)||tank.maxHp||100);
       tank.xp=Math.max(0,Number(entry.xp)||0);
@@ -16660,6 +16818,7 @@ const POLYTANK_IO={
     this.matchClock=Math.max(this.matchClock,Math.max(0,Number(payload.tick)||0)/15);
     this.networkSnapshotTick=Math.max(this.networkSnapshotTick,Math.floor(Number(payload.tick)||0));
     this.networkSnapshotReceivedAt=performance.now();
+    this.networkSnapshotAgeMs=0;
     this.updateCamera();
   },
   supportsLocalParty(){
@@ -16910,23 +17069,31 @@ const POLYTANK_IO={
   async joinLocalParty(){
     const input=document.getElementById('polytank-local-code-input');
     const serverCode=this.normalizeLocalPartyCode(input?.value||'');
-    if(this.canUsePartyServer()&&serverCode){
+    if(this.canUsePartyServer()){
       if(this.localPartyCode&&this.localPartyCode!==serverCode) this.leaveLocalParty(true);
       this.ensureLocalPartyClient();
       this.localPartyMember=this.createLocalPartyMember({teamPref:'same'});
       const connected=await this.connectPartyServer();
       if(connected){
-        this.localPartyCode=serverCode;
         this.localPartyRole='guest';
         this.sendPartyServerMessage('connect',{nickname:this.localPartyMember.name});
-        this.sendPartyServerMessage('roomJoin',{
-          roomCode:serverCode,
-          nickname:this.localPartyMember.name,
-        });
+        if(serverCode){
+          this.localPartyCode=serverCode;
+          this.sendPartyServerMessage('roomJoin',{
+            roomCode:serverCode,
+            nickname:this.localPartyMember.name,
+          });
+        } else {
+          this.localPartyCode='';
+          this.sendPartyServerMessage('roomQuickJoin',{
+            nickname:this.localPartyMember.name,
+            settings:this.createPartySettingsPayload(),
+          });
+        }
         this.startLocalPartyLoop();
         if(this.overlayEl&&this.menuOpen) this.overlayEl.classList.add('waiting-room');
         this.refreshMenuState();
-        toast(`Joining online room ${serverCode}...`, '#92ecff');
+        toast(serverCode?`Joining online room ${serverCode}...`:'Quick joining public online room...', '#92ecff');
         return true;
       }
       toast(`Online room server unavailable at ${this.getPartyServerUrl()}. Falling back to local tabs only.`, '#ffb584');
@@ -19507,6 +19674,12 @@ const POLYTANK_IO={
       laserActive:false,
       laserTick:0,
       laserEnd:null,
+      networkTargetX:opts.x||0,
+      networkTargetY:opts.y||0,
+      networkTargetAngle:0,
+      networkCorrectionX:0,
+      networkCorrectionY:0,
+      networkSmoothingReady:false,
       decisionSeed:Math.random()*Math.PI*2,
       jinkAngle:Math.random()*Math.PI*2,
       jinkTimer:0.2+Math.random()*0.4,
@@ -19523,6 +19696,94 @@ const POLYTANK_IO={
     }
     this.updateTankDerivedStats(tank,true);
     return tank;
+  },
+  wrapAngle(angle){
+    if(!Number.isFinite(angle)) return 0;
+    let next=angle;
+    while(next<=-Math.PI) next+=Math.PI*2;
+    while(next>Math.PI) next-=Math.PI*2;
+    return next;
+  },
+  angleDelta(from,to){
+    return this.wrapAngle((Number.isFinite(to)?to:0)-(Number.isFinite(from)?from:0));
+  },
+  resetTankNetworkSmoothing(tank,x=tank?.x||0,y=tank?.y||0,angle=tank?.aimAngle||0){
+    if(!tank) return;
+    tank.networkTargetX=x;
+    tank.networkTargetY=y;
+    tank.networkTargetAngle=angle;
+    tank.networkCorrectionX=0;
+    tank.networkCorrectionY=0;
+    tank.networkSmoothingReady=true;
+  },
+  applySnapshotTankTransform(tank,nextX,nextY,nextAngle,{isSelf=false}={}){
+    if(!tank) return;
+    const resolvedX=Number.isFinite(nextX)?nextX:0;
+    const resolvedY=Number.isFinite(nextY)?nextY:0;
+    const resolvedAngle=Number.isFinite(nextAngle)?nextAngle:0;
+    if(!tank.networkSmoothingReady){
+      tank.x=resolvedX;
+      tank.y=resolvedY;
+      tank.aimAngle=resolvedAngle;
+      this.resetTankNetworkSmoothing(tank,resolvedX,resolvedY,resolvedAngle);
+      return;
+    }
+    if(isSelf){
+      const errorX=resolvedX-(Number.isFinite(tank.x)?tank.x:resolvedX);
+      const errorY=resolvedY-(Number.isFinite(tank.y)?tank.y:resolvedY);
+      if(Math.hypot(errorX,errorY)>=this.networkCorrectionSnapDistance){
+        tank.x=resolvedX;
+        tank.y=resolvedY;
+        tank.aimAngle=resolvedAngle;
+        this.resetTankNetworkSmoothing(tank,resolvedX,resolvedY,resolvedAngle);
+        return;
+      }
+      tank.networkCorrectionX=this.clamp((tank.networkCorrectionX||0)+errorX,-this.networkCorrectionSnapDistance,this.networkCorrectionSnapDistance);
+      tank.networkCorrectionY=this.clamp((tank.networkCorrectionY||0)+errorY,-this.networkCorrectionSnapDistance,this.networkCorrectionSnapDistance);
+      tank.networkTargetX=resolvedX;
+      tank.networkTargetY=resolvedY;
+      tank.networkTargetAngle=resolvedAngle;
+      return;
+    }
+    tank.networkTargetX=resolvedX;
+    tank.networkTargetY=resolvedY;
+    tank.networkTargetAngle=resolvedAngle;
+    const errorX=resolvedX-(Number.isFinite(tank.x)?tank.x:resolvedX);
+    const errorY=resolvedY-(Number.isFinite(tank.y)?tank.y:resolvedY);
+    if(Math.hypot(errorX,errorY)>=this.networkCorrectionSnapDistance){
+      tank.x=resolvedX;
+      tank.y=resolvedY;
+      tank.aimAngle=resolvedAngle;
+    }
+  },
+  updateSmoothedSnapshotTank(tank,dt,{isSelf=false,input=null}={}){
+    if(!tank||tank.deadTimer>0||tank.hp<=0) return;
+    const blend=1-Math.exp(-dt*(isSelf?this.networkCorrectionSmoothingRate:this.networkRemoteSmoothingRate));
+    if(isSelf&&input){
+      const magnitude=Math.hypot(input.moveX,input.moveY);
+      const moveScale=magnitude>1?1/magnitude:1;
+      const moveX=input.moveX*moveScale;
+      const moveY=input.moveY*moveScale;
+      tank.vx=moveX*tank.moveSpeed;
+      tank.vy=moveY*tank.moveSpeed;
+      tank.x=this.clamp(tank.x+tank.vx*dt,tank.r,this.world.w-tank.r);
+      tank.y=this.clamp(tank.y+tank.vy*dt,tank.r,this.world.h-tank.r);
+      tank.aimAngle=Number.isFinite(input.aimAngle)?input.aimAngle:tank.aimAngle;
+      const correctionX=(tank.networkCorrectionX||0)*blend;
+      const correctionY=(tank.networkCorrectionY||0)*blend;
+      tank.x+=correctionX;
+      tank.y+=correctionY;
+      tank.networkCorrectionX=(tank.networkCorrectionX||0)-correctionX;
+      tank.networkCorrectionY=(tank.networkCorrectionY||0)-correctionY;
+      if(Math.abs(tank.networkCorrectionX||0)<0.01) tank.networkCorrectionX=0;
+      if(Math.abs(tank.networkCorrectionY||0)<0.01) tank.networkCorrectionY=0;
+      return;
+    }
+    tank.x+=(tank.networkTargetX-tank.x)*blend;
+    tank.y+=(tank.networkTargetY-tank.y)*blend;
+    tank.aimAngle+=this.angleDelta(tank.aimAngle,tank.networkTargetAngle)*blend;
+    tank.vx=(tank.networkTargetX-tank.x)*Math.max(0,1/dt);
+    tank.vy=(tank.networkTargetY-tank.y)*Math.max(0,1/dt);
   },
   updateTankDerivedStats(tank,refillHealth=false){
     if(tank.adminMorphProfile){
@@ -20788,13 +21049,24 @@ const POLYTANK_IO={
     this.matchClock+=dt;
     this.serverEventTimer=Math.max(0,(this.serverEventTimer||0)-dt);
     this.networkInputTimer=Math.max(0,(this.networkInputTimer||0)-dt);
+    this.networkPingTimer=Math.max(0,(this.networkPingTimer||0)-dt);
+    const input=this.getServerRoomInputState();
     if(this.networkInputTimer<=0) this.sendServerRoomInput();
+    if(this.networkPingTimer<=0){
+      if(this.sendPartyServerPing()) this.networkPingTimer=2;
+      else this.networkPingTimer=0.5;
+    }
+    this.networkSnapshotAgeMs=this.networkSnapshotReceivedAt>0?Math.max(0,performance.now()-this.networkSnapshotReceivedAt):0;
     if(this.player){
       this.player.deadTimer=Math.max(0,(this.player.deadTimer||0)-dt);
       this.player.barTimer=Math.max(0,(this.player.barTimer||0)-dt);
       this.player.damageFlash=Math.max(0,(this.player.damageFlash||0)-dt*1.08);
+      this.updateSmoothedSnapshotTank(this.player,dt,{isSelf:true,input});
     }
-    for(const bot of this.bots) bot.damageFlash=Math.max(0,(bot.damageFlash||0)-dt*1.08);
+    for(const bot of this.bots){
+      bot.damageFlash=Math.max(0,(bot.damageFlash||0)-dt*1.08);
+      this.updateSmoothedSnapshotTank(bot,dt);
+    }
     this.updateParticles(dt);
     this.updateDamageNumbers(dt);
     this.updateCamera();

@@ -10,7 +10,13 @@
 
 The repository already deploys the static client through `.github/workflows/deploy-pages.yml`.
 
-The backend does not exist yet. Fly.io should target a future `server/` service in this repo, not the repository root.
+The backend now has a Fly.io deployment path through `.github/workflows/deploy-server.yml`.
+
+Backend deploy automation currently expects:
+- `server/fly.toml`
+- `server/Dockerfile`
+- a Fly app created to match the app name in `server/fly.toml`
+- a repository secret named `FLY_API_TOKEN`
 
 ## Planned Backend Layout
 
@@ -18,6 +24,8 @@ The backend does not exist yet. Fly.io should target a future `server/` service 
 - `server/tsconfig.json`
 - `server/src/index.ts`
 - `server/fly.toml`
+
+The current backend runtime serves HTTP health/status on `/` and listens on `PORT`, which Fly maps to internal port `3000`.
 
 ## CI Responsibilities
 
@@ -30,11 +38,18 @@ Fly workflow:
 - install backend dependencies
 - typecheck or build backend
 - deploy from `server/`
+- build the backend container from `server/Dockerfile`
 
 ## Required Secrets
 
 - `FLY_API_TOKEN`
 - backend environment variables such as room limits, reconnect timeout, and origin allow-list
+
+## Fly Setup Notes
+
+- create the Fly app once before the first GitHub Actions deploy
+- replace the placeholder app name in `server/fly.toml` if the chosen Fly app name differs
+- set runtime secrets with `fly secrets set ...` before exposing the service publicly
 
 ## Rollback Expectations
 

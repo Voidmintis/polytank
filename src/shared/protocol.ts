@@ -6,6 +6,7 @@ export type ClientMessage =
   | ConnectMessage
   | ResumeMessage
   | RoomCreateMessage
+  | RoomQuickJoinMessage
   | RoomJoinMessage
   | RoomConfigureMessage
   | RoomLeaveMessage
@@ -52,6 +53,13 @@ export interface RoomCreatePayload {
 }
 
 export type RoomCreateMessage = ProtocolEnvelope<'roomCreate', RoomCreatePayload>;
+
+export interface RoomQuickJoinPayload {
+  nickname: string;
+  settings: RoomSettings;
+}
+
+export type RoomQuickJoinMessage = ProtocolEnvelope<'roomQuickJoin', RoomQuickJoinPayload>;
 
 export interface RoomJoinPayload {
   roomCode: string;
@@ -113,6 +121,7 @@ export type PingMessage = ProtocolEnvelope<'ping', PingPayload>;
 export interface WelcomePayload {
   playerId: string;
   sessionId: string;
+  reconnectToken: string;
 }
 
 export type WelcomeMessage = ProtocolEnvelope<'welcome', WelcomePayload>;
@@ -130,9 +139,12 @@ export interface RoomSettings {
   hostTeam: string;
 }
 
+export type RoomAccess = 'private' | 'public';
+
 export interface RoomStatePayload {
   roomId: string;
   roomCode: string;
+  access: RoomAccess;
   status: 'lobby' | 'starting' | 'active' | 'ended';
   settings: RoomSettings;
   roster: RoomRosterEntry[];
