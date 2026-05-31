@@ -71,21 +71,23 @@ body.polytank-standalone #subtitle {
         <div id="polytank-menu-select-row">
           <div class="polytank-menu-select-group" id="polytank-mode-select">
             <div class="polytank-menu-label">Game Mode</div>
-            <button type="button" id="polytank-mode-toggle" onclick="POLYTANK_IO.toggleModeDropdown()">
-              <span id="polytank-mode-toggle-label">FFA</span>
-              <span id="polytank-mode-toggle-icon">⌄</span>
-            </button>
-            <div id="polytank-mode-dropdown" class="open">
-              <button type="button" class="polytank-mode-option active" id="polytank-mode-ffa" data-polytank-mode="ffa" onclick="POLYTANK_IO.setGameVariant('ffa')">FFA</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-2teams" data-polytank-mode="2teams" onclick="POLYTANK_IO.setGameVariant('2teams')">2 Teams</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-4teams" data-polytank-mode="4teams" onclick="POLYTANK_IO.setGameVariant('4teams')">4 Teams</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-maze" data-polytank-mode="maze" onclick="POLYTANK_IO.setGameVariant('maze')">Maze</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-breakout" data-polytank-mode="breakout" onclick="POLYTANK_IO.setGameVariant('breakout')">Breakout</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-sandbox" data-polytank-mode="sandbox" onclick="POLYTANK_IO.setGameVariant('sandbox')">Sandbox</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-domination" data-polytank-mode="domination" onclick="POLYTANK_IO.setGameVariant('domination')">Domination</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-tag" data-polytank-mode="tag" onclick="POLYTANK_IO.setGameVariant('tag')">Tag</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-ctf" data-polytank-mode="ctf" onclick="POLYTANK_IO.setGameVariant('ctf')">Capture Flag</button>
-              <button type="button" class="polytank-mode-option" id="polytank-mode-mothership" data-polytank-mode="mothership" onclick="POLYTANK_IO.setGameVariant('mothership')">Mothership</button>
+            <div id="polytank-mode-wheel" tabindex="0" role="listbox" aria-label="Game mode selector">
+              <div id="polytank-mode-wheel-viewport">
+                <div id="polytank-mode-wheel-track">
+                  <button type="button" class="polytank-mode-option active" id="polytank-mode-ffa" data-polytank-mode="ffa" onclick="POLYTANK_IO.setGameVariant('ffa')">FFA</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-2teams" data-polytank-mode="2teams" onclick="POLYTANK_IO.setGameVariant('2teams')">2 Teams</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-4teams" data-polytank-mode="4teams" onclick="POLYTANK_IO.setGameVariant('4teams')">4 Teams</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-maze" data-polytank-mode="maze" onclick="POLYTANK_IO.setGameVariant('maze')">Maze</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-breakout" data-polytank-mode="breakout" onclick="POLYTANK_IO.setGameVariant('breakout')">Breakout</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-sandbox" data-polytank-mode="sandbox" onclick="POLYTANK_IO.setGameVariant('sandbox')">Sandbox</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-domination" data-polytank-mode="domination" onclick="POLYTANK_IO.setGameVariant('domination')">Domination</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-tag" data-polytank-mode="tag" onclick="POLYTANK_IO.setGameVariant('tag')">Tag</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-ctf" data-polytank-mode="ctf" onclick="POLYTANK_IO.setGameVariant('ctf')">Capture Flag</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-mothership" data-polytank-mode="mothership" onclick="POLYTANK_IO.setGameVariant('mothership')">Mothership</button>
+                </div>
+                <div id="polytank-mode-wheel-center" aria-hidden="true"></div>
+              </div>
+              <div id="polytank-mode-wheel-label">Free For All</div>
             </div>
           </div>
         </div>

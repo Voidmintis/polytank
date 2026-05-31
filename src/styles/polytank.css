@@ -479,48 +479,82 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-name-input::placeholder{color:rgba(76,83,93,.45)}
 #polytank-menu-select-row{display:grid;grid-template-columns:1fr;gap:12px}
 .polytank-menu-select-group{display:grid;gap:6px}
-#polytank-mode-toggle{
-  height:70px;
-  border-radius:8px;
+#polytank-mode-wheel{
+  --polytank-mode-step:54px;
+  --polytank-mode-center-shift:108px;
+  border-radius:12px;
   border:3px solid rgba(63,69,78,.35);
-  background:linear-gradient(180deg,#84de66,#75d85a);
-  color:#283425;
-  text-shadow:none;
-  -webkit-text-stroke:0;
-  padding:0 14px;
-  font-family:'Orbitron',monospace;
-  font-size:1.15rem;
-  font-weight:700;
-  letter-spacing:.04em;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  cursor:pointer;
-  transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;
+  background:linear-gradient(180deg,rgba(245,249,255,.92),rgba(227,236,246,.9));
+  box-shadow:0 14px 24px rgba(18,23,33,.2);
+  padding:8px 8px 9px;
+  outline:none;
 }
-#polytank-mode-toggle:hover{transform:translateY(-1px);filter:brightness(1.03);box-shadow:0 8px 16px rgba(34,42,54,.2)}
-#polytank-mode-toggle:active{transform:translateY(0);filter:brightness(.98)}
-#polytank-mode-toggle.open #polytank-mode-toggle-icon{transform:rotate(180deg)}
-#polytank-mode-toggle-icon{transition:transform .16s ease}
-#polytank-mode-dropdown{display:none;border-radius:8px;overflow:hidden;border:3px solid rgba(48,54,63,.4);box-shadow:0 14px 28px rgba(18,23,33,.22);max-height:min(34vh,240px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-#polytank-mode-dropdown.open{display:grid}
+#polytank-mode-wheel:focus-visible{box-shadow:0 0 0 3px rgba(255,255,255,.72),0 14px 24px rgba(18,23,33,.2)}
+#polytank-mode-wheel-viewport{
+  position:relative;
+  height:calc(var(--polytank-mode-step) * 5);
+  overflow:hidden;
+  border-radius:10px;
+  background:linear-gradient(180deg,rgba(24,31,42,.2),rgba(24,31,42,.06));
+  touch-action:none;
+}
+#polytank-mode-wheel-viewport::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg,rgba(16,22,32,.42),rgba(16,22,32,0) 24%,rgba(16,22,32,0) 76%,rgba(16,22,32,.42));
+  pointer-events:none;
+  z-index:2;
+}
+#polytank-mode-wheel-track{
+  position:relative;
+  display:grid;
+  gap:0;
+  transform:translateY(var(--polytank-mode-center-shift));
+  transition:transform .2s cubic-bezier(.2,.82,.26,1.08);
+  will-change:transform;
+}
+#polytank-mode-wheel-center{
+  position:absolute;
+  left:6px;
+  right:6px;
+  top:50%;
+  height:var(--polytank-mode-step);
+  transform:translateY(-50%);
+  border-radius:8px;
+  border:2px solid rgba(255,255,255,.68);
+  background:rgba(255,255,255,.12);
+  box-shadow:inset 0 0 0 1px rgba(39,46,57,.25);
+  pointer-events:none;
+  z-index:3;
+}
+#polytank-mode-wheel-label{
+  margin-top:8px;
+  min-height:18px;
+  text-align:center;
+  font-family:'Orbitron',monospace;
+  font-size:.72rem;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#324154;
+}
 .polytank-mode-option{
   border:0;
   border-top:1px solid rgba(18,23,33,.2);
   min-height:54px;
   padding:0 16px;
-  text-align:left;
+  text-align:center;
   font-family:'Rajdhani',sans-serif;
-  font-size:2rem;
+  font-size:1.16rem;
   font-weight:700;
   color:#fff;
   text-shadow:none;
   -webkit-text-stroke:0;
   cursor:pointer;
-  transition:transform .12s ease,filter .12s ease;
+  transition:transform .14s ease,filter .14s ease,opacity .14s ease;
 }
-.polytank-mode-option:hover{transform:translateX(2px);filter:brightness(1.04)}
-.polytank-mode-option:active{transform:translateX(0);filter:brightness(.96)}
+.polytank-mode-option:hover{filter:brightness(1.04)}
+.polytank-mode-option:active{filter:brightness(.96)}
 .polytank-mode-option:first-child{border-top:0}
 .polytank-mode-option:nth-child(1){background:#4ed0d4}
 .polytank-mode-option:nth-child(2){background:#6ddd45}
@@ -532,7 +566,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 .polytank-mode-option:nth-child(8){background:#d67d4f}
 .polytank-mode-option:nth-child(9){background:#5f8d5e}
 .polytank-mode-option:nth-child(10){background:#b45fd1}
-.polytank-mode-option.active{box-shadow:inset 0 0 0 3px rgba(255,255,255,.42)}
+.polytank-mode-option.active{box-shadow:inset 0 0 0 3px rgba(255,255,255,.54);transform:scale(1.03);filter:saturate(1.12) brightness(1.06);z-index:1}
 #polytank-team-row-wrap{display:none}
 #polytank-main-action-row{display:grid;grid-template-columns:1fr;gap:10px;align-items:stretch;margin-top:6px}
 #polytank-play-btn{
@@ -565,7 +599,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-play-btn:active{transform:translateY(1px);box-shadow:0 6px 0 rgba(9,99,131,.35),0 10px 16px rgba(18,27,39,.2)}
 #polytank-play-btn:disabled{opacity:.58;cursor:not-allowed;filter:saturate(.7)}
 @keyframes polytank-btn-sheen{0%,18%{left:-42%}44%{left:112%}100%{left:112%}}
-#polytank-play-btn:focus-visible,#polytank-party-link-btn:focus-visible,#polytank-mode-toggle:focus-visible,.polytank-mode-option:focus-visible{
+#polytank-play-btn:focus-visible,#polytank-party-link-btn:focus-visible,#polytank-mode-wheel:focus-visible,.polytank-mode-option:focus-visible{
   outline:3px solid rgba(255,255,255,.75);
   outline-offset:2px;
 }
@@ -672,8 +706,8 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   #polytank-main-action-row{grid-template-columns:1fr}
   #polytank-play-btn,#polytank-party-link-btn,#polytank-new-btn{grid-column:1;grid-row:auto;min-height:40px;font-size:.92rem}
   #polytank-settings-btn{min-height:36px;font-size:.66rem}
-  #polytank-mode-toggle{height:56px;font-size:.92rem}
-  .polytank-mode-option{min-height:36px;font-size:1.18rem}
+  #polytank-mode-wheel{--polytank-mode-step:44px;--polytank-mode-center-shift:88px}
+  .polytank-mode-option{min-height:44px;font-size:1rem}
 }
 
 @media (max-width:920px) and (orientation:landscape) and (pointer:coarse){
@@ -684,9 +718,10 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   body.mobile-touch #polytank-name-input{padding:10px 12px;font-size:1.2rem}
   body.mobile-touch #polytank-menu-form{gap:5px}
   body.mobile-touch #polytank-menu-select-row{gap:6px}
-  body.mobile-touch #polytank-mode-toggle{height:38px;font-size:var(--ui-mobile-min-text)}
-  body.mobile-touch #polytank-mode-dropdown{max-height:none;overflow:visible;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
-  body.mobile-touch .polytank-mode-option{min-height:28px;font-size:var(--ui-mobile-min-text);padding:0 8px}
+  body.mobile-touch #polytank-mode-wheel{--polytank-mode-step:32px;--polytank-mode-center-shift:64px;padding:5px;border-width:2px}
+  body.mobile-touch #polytank-mode-wheel-viewport{height:calc(var(--polytank-mode-step) * 5)}
+  body.mobile-touch #polytank-mode-wheel-label{margin-top:6px;font-size:var(--ui-mobile-min-text)}
+  body.mobile-touch .polytank-mode-option{min-height:32px;font-size:var(--ui-mobile-min-text);padding:0 8px}
   body.mobile-touch #polytank-main-action-row{gap:6px;row-gap:6px}
   body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn,body.mobile-touch #polytank-skins-btn{min-height:34px;font-size:var(--ui-mobile-min-text);border-width:1px}
   body.mobile-touch #polytank-settings-panel{padding:6px 8px 8px}
@@ -696,18 +731,17 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 }
 
 #polytank-menu-card.bounce-in{animation:polytankMenuBounce .48s cubic-bezier(.12,.84,.24,1.12)}
-#polytank-mode-dropdown.open{animation:polytankDropdownIn .2s ease-out}
-#polytank-mode-dropdown.open .polytank-mode-option{animation:polytankOptionIn .24s ease both}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(1){animation-delay:.015s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(2){animation-delay:.03s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(3){animation-delay:.045s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(4){animation-delay:.06s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(5){animation-delay:.075s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(6){animation-delay:.09s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(7){animation-delay:.105s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(8){animation-delay:.12s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(9){animation-delay:.135s}
-#polytank-mode-dropdown.open .polytank-mode-option:nth-child(10){animation-delay:.15s}
+#polytank-mode-wheel-track .polytank-mode-option{animation:polytankOptionIn .24s ease both}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(1){animation-delay:.015s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(2){animation-delay:.03s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(3){animation-delay:.045s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(4){animation-delay:.06s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(5){animation-delay:.075s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(6){animation-delay:.09s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(7){animation-delay:.105s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(8){animation-delay:.12s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(9){animation-delay:.135s}
+#polytank-mode-wheel-track .polytank-mode-option:nth-child(10){animation-delay:.15s}
 #polytank-branch-panel.open,#polytank-sandbox-panel.open,#polytank-boss-panel.open{animation:polytankPanelIn .32s cubic-bezier(.18,.82,.22,1.06)}
 .polytank-popup-anim{animation:polytankPopupBurst .42s cubic-bezier(.18,.84,.2,1.08)}
 

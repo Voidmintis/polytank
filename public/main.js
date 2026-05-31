@@ -15070,7 +15070,11 @@ const POLYTANK_IO={
   inMatch:false,
   menuOpen:false,
   pausedByMenu:false,
-  modeDropdownOpen:true,
+  modeDropdownOpen:false,
+  modeWheelStepPx:54,
+  modeWheelPointerId:null,
+  modeWheelStartY:0,
+  modeWheelLastY:0,
   sandboxPanelOpen:true,
   gameVariant:'ffa',
   playerTeam:'blue',
@@ -15298,6 +15302,7 @@ const POLYTANK_IO={
     this.ctx=this.canvas.getContext('2d');
     this.minimapCtx=this.minimapCanvas?this.minimapCanvas.getContext('2d'):null;
     this.setupMobileControls();
+    this.bindModeWheel();
     window.addEventListener('resize',()=>{ if(this.active) this.resize(); });
     window.addEventListener('orientationchange',()=>this.refreshMobileUiState());
     document.addEventListener('keydown',event=>this.onKeyDown(event));
@@ -17708,6 +17713,7 @@ const POLYTANK_IO={
   syncGameModeButtons(){
     const buttons=[...document.querySelectorAll('[data-polytank-mode]')];
     let activeLabel='FFA';
+    let activeIndex=0;
     buttons.forEach(button=>{
       const variant=this.normalizeGameVariant(button.getAttribute('data-polytank-mode'));
       button.classList.toggle('active',variant===this.gameVariant);
@@ -17715,19 +17721,82 @@ const POLYTANK_IO={
       if(variant===this.gameVariant){
         const def=this.getGameVariantDef(variant);
         activeLabel=def?.label||button.textContent||'FFA';
+        activeIndex=Math.max(0,buttons.indexOf(button));
       }
     });
-    const toggleLabel=document.getElementById('polytank-mode-toggle-label');
-    if(toggleLabel) toggleLabel.textContent=activeLabel;
+    const wheelLabel=document.getElementById('polytank-mode-wheel-label');
+    if(wheelLabel) wheelLabel.textContent=activeLabel;
+    const track=document.getElementById('polytank-mode-wheel-track');
+    if(track){
+      track.style.setProperty('--polytank-mode-index',String(activeIndex));
+      track.style.transform=`translateY(calc(var(--polytank-mode-center-shift, 0px) - (${activeIndex} * var(--polytank-mode-step, 54px))))`;
+    }
+  },
+  bindModeWheel(){
+    const wheel=document.getElementById('polytank-mode-wheel');
+    const viewport=document.getElementById('polytank-mode-wheel-viewport');
+    if(!wheel||!viewport||wheel.dataset.bound==='1') return;
+    wheel.dataset.bound='1';
+    const spinByDelta=delta=>{
+      this.spinModeWheelByDelta(delta);
+    };
+    wheel.addEventListener('wheel',event=>{
+      if(!this.menuOpen) return;
+      event.preventDefault();
+      spinByDelta(event.deltaY>0?1:-1);
+    },{passive:false});
+    wheel.addEventListener('keydown',event=>{
+      if(event.key==='ArrowDown'){
+        event.preventDefault();
+        spinByDelta(1);
+      } else if(event.key==='ArrowUp'){
+        event.preventDefault();
+        spinByDelta(-1);
+      } else if(event.key==='Enter'){
+        event.preventDefault();
+        const active=[...document.querySelectorAll('#polytank-mode-wheel [data-polytank-mode].active')][0];
+        if(active) this.setGameVariant(active.getAttribute('data-polytank-mode')||'ffa');
+      }
+    });
+    viewport.addEventListener('pointerdown',event=>{
+      if(!this.menuOpen||this.isLocalPartyGuest()) return;
+      this.modeWheelPointerId=event.pointerId;
+      this.modeWheelStartY=event.clientY;
+      this.modeWheelLastY=event.clientY;
+      if(viewport.setPointerCapture){
+        try{ viewport.setPointerCapture(event.pointerId); }catch(_err){}
+      }
+    });
+    viewport.addEventListener('pointermove',event=>{
+      if(this.modeWheelPointerId!==event.pointerId||this.isLocalPartyGuest()) return;
+      const delta=this.modeWheelLastY-event.clientY;
+      const threshold=24;
+      if(Math.abs(delta)>=threshold){
+        const steps=Math.trunc(delta/threshold);
+        this.modeWheelLastY=event.clientY;
+        if(steps!==0) spinByDelta(steps);
+      }
+    });
+    const release=event=>{
+      if(this.modeWheelPointerId!==event.pointerId) return;
+      this.modeWheelPointerId=null;
+    };
+    viewport.addEventListener('pointerup',release);
+    viewport.addEventListener('pointercancel',release);
+  },
+  spinModeWheelByDelta(delta){
+    if(!this.menuOpen||this.isLocalPartyGuest()) return;
+    const buttons=[...document.querySelectorAll('#polytank-mode-wheel [data-polytank-mode]')];
+    if(!buttons.length) return;
+    const currentIndex=Math.max(0,buttons.findIndex(button=>this.normalizeGameVariant(button.getAttribute('data-polytank-mode'))===this.gameVariant));
+    const count=buttons.length;
+    const rawNext=currentIndex+Math.trunc(delta);
+    const nextIndex=((rawNext%count)+count)%count;
+    const nextVariant=this.normalizeGameVariant(buttons[nextIndex].getAttribute('data-polytank-mode'));
+    if(nextVariant&&nextVariant!==this.gameVariant) this.setGameVariant(nextVariant);
   },
   toggleModeDropdown(force){
-    const dropdown=document.getElementById('polytank-mode-dropdown');
-    const toggle=document.getElementById('polytank-mode-toggle');
-    if(!dropdown||!toggle) return;
-    this.modeDropdownOpen=typeof force==='boolean'?force:!this.modeDropdownOpen;
-    dropdown.classList.toggle('open',this.modeDropdownOpen);
-    toggle.classList.toggle('open',this.modeDropdownOpen);
-    if(this.modeDropdownOpen) this.animatePopup(dropdown);
+    this.modeDropdownOpen=typeof force==='boolean'?force:false;
   },
   showAchievementsTeaser(){
     const total=Array.isArray(ACHIEVEMENT_DEFS)?ACHIEVEMENT_DEFS.length:0;
