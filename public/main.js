@@ -16340,8 +16340,13 @@ const POLYTANK_IO={
       this.localPartyServerUrl=stored.trim();
       return this.localPartyServerUrl;
     }
+    const hostname=(window.location.hostname||'').toLowerCase();
+    if(hostname==='polytank.io'||hostname==='www.polytank.io'){
+      this.localPartyServerUrl='wss://polytank.fly.dev';
+      return this.localPartyServerUrl;
+    }
     const protocol=window.location.protocol==='https:'?'wss':'ws';
-    const fallback=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
+    const fallback=(hostname==='localhost'||hostname==='127.0.0.1')
       ?`${protocol}://127.0.0.1:3000`
       :`${protocol}://${window.location.host}`;
     this.localPartyServerUrl=fallback;
