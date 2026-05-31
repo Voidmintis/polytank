@@ -56,7 +56,6 @@
 
     const cap=window.innerHeight*0.36;  // safe buffer (star layers are 180% tall)
     layers.forEach((layer,i)=>{
-    const input=this.getServerRoomInputState();
       cur[i].x+=(targetX*layer.speed-cur[i].x)*EASE_IN;
       cur[i].y+=(targetY*layer.speed-cur[i].y)*EASE_IN;
       // Accumulate upward travel offset
@@ -66,11 +65,9 @@
       // When velocity has decayed, smoothly return offset to zero
       if(Math.abs(tVel)<0.12) tOff[i]+=(0-tOff[i])*T_RET;
       // Menu-parallax drift — Lissajous sinusoid, each depth layer moves at its own rate
-      this.updateSmoothedSnapshotTank(this.player,dt,{isSelf:true,input});
       const mDX=isMenu?Math.sin(now_ms*0.00028*(0.50+i*0.32))*22*layer.speed:0;
       const mDY=isMenu?Math.cos(now_ms*0.00021*(0.50+i*0.28))*16*layer.speed:0;
       if(!animating) layer.el.style.transform=`translate(${(cur[i].x+mDX).toFixed(1)}px,${(cur[i].y+tOff[i]+mDY).toFixed(1)}px)`;
-      this.updateSmoothedSnapshotTank(bot,dt);
     });
     requestAnimationFrame(tick);
   }
@@ -15134,6 +15131,10 @@ const POLYTANK_IO={
   networkCorrectionSnapDistance:280,
   networkRemoteSmoothingRate:12,
   networkCorrectionSmoothingRate:10,
+  networkSnapshotBuffer:[],
+  networkSnapshotBufferSize:8,
+  networkInterpolationBaseDelayMs:120,
+  networkMaxExtrapolationMs:90,
   networkPingMs:0,
   networkJitterMs:0,
   networkClockOffsetMs:0,
@@ -16361,6 +16362,161 @@ const POLYTANK_IO={
     this.networkLastPingClientTime=0;
     this.networkPingTimer=0;
     this.networkSnapshotAgeMs=0;
+    this.networkSnapshotBuffer=[];
+  },
+  getNetworkInterpolationDelayMs(){
+    const baseDelay=Math.max(90,Math.round(Number(this.networkInterpolationBaseDelayMs)||120));
+    const snapshotInterval=1000/15;
+    const jitter=Math.max(0,Number(this.networkJitterMs)||0);
+    const adaptiveDelay=Math.round(snapshotInterval*1.5+jitter*2);
+    return this.clamp(adaptiveDelay,baseDelay,220);
+  },
+  createBufferedServerSnapshotFrame(payload,serverTimestamp=0){
+    if(!payload||typeof payload!=='object') return null;
+    const players=(Array.isArray(payload.players)?payload.players:[]).map((entry,index)=>({
+      id:String(entry?.id||`snapshot_${index}`),
+      x:Number(entry?.x)||0,
+      y:Number(entry?.y)||0,
+      angle:Number(entry?.angle)||0,
+    }));
+    const projectiles=(Array.isArray(payload.projectiles)?payload.projectiles:[]).map((entry,index)=>({
+      id:String(entry?.id||`snapshot_projectile_${index}`),
+      x:Number(entry?.x)||0,
+      y:Number(entry?.y)||0,
+      angle:Number(entry?.angle)||0,
+      speed:Math.max(0,Number(entry?.speed)||0),
+      radius:Math.max(2,Number(entry?.radius)||6),
+      ownerId:String(entry?.ownerId||''),
+      ownerTeam:String(entry?.ownerTeam||'blue'),
+    }));
+    return {
+      tick:Math.max(0,Math.floor(Number(payload.tick)||0)),
+      serverTimeMs:serverTimestamp>0?serverTimestamp:(Date.now()+Number(this.networkClockOffsetMs||0)),
+      playerMap:new Map(players.map(entry=>[entry.id,entry])),
+      projectileMap:new Map(projectiles.map(entry=>[entry.id,entry])),
+    };
+  },
+  bufferServerSnapshot(payload,serverTimestamp=0){
+    const frame=this.createBufferedServerSnapshotFrame(payload,serverTimestamp);
+    if(!frame) return false;
+    const nextBuffer=(this.networkSnapshotBuffer||[]).filter(entry=>entry&&entry.tick!==frame.tick);
+    nextBuffer.push(frame);
+    nextBuffer.sort((left,right)=>(left.serverTimeMs-right.serverTimeMs)||(left.tick-right.tick));
+    const maxFrames=Math.max(3,Math.round(Number(this.networkSnapshotBufferSize)||8));
+    while(nextBuffer.length>maxFrames) nextBuffer.shift();
+    this.networkSnapshotBuffer=nextBuffer;
+    return true;
+  },
+  getBufferedServerSnapshotWindow(renderServerTimeMs){
+    const buffer=this.networkSnapshotBuffer||[];
+    if(!buffer.length) return null;
+    if(buffer.length===1) return {previous:buffer[0],next:buffer[0],alpha:1};
+    const first=buffer[0];
+    if(renderServerTimeMs<=first.serverTimeMs) return {previous:first,next:first,alpha:1};
+    const last=buffer[buffer.length-1];
+    if(renderServerTimeMs>=last.serverTimeMs){
+      const prior=buffer[buffer.length-2]||last;
+      const span=Math.max(1,last.serverTimeMs-prior.serverTimeMs);
+      const extra=this.clamp(renderServerTimeMs-last.serverTimeMs,0,Math.max(0,Number(this.networkMaxExtrapolationMs)||90));
+      return {previous:prior,next:last,alpha:1+extra/span};
+    }
+    for(let index=1;index<buffer.length;index++){
+      const previous=buffer[index-1];
+      const next=buffer[index];
+      if(renderServerTimeMs>next.serverTimeMs) continue;
+      const span=Math.max(1,next.serverTimeMs-previous.serverTimeMs);
+      return {
+        previous,
+        next,
+        alpha:this.clamp((renderServerTimeMs-previous.serverTimeMs)/span,0,1),
+      };
+    }
+    return {previous:last,next:last,alpha:1};
+  },
+  interpolateBufferedValue(from,to,alpha){
+    const start=Number.isFinite(from)?from:0;
+    const end=Number.isFinite(to)?to:start;
+    return start+(end-start)*alpha;
+  },
+  interpolateBufferedAngle(from,to,alpha){
+    const start=Number.isFinite(from)?from:0;
+    const end=Number.isFinite(to)?to:start;
+    return start+this.angleDelta(start,end)*alpha;
+  },
+  applyBufferedRemoteTankState(tank,window){
+    if(!tank||!window?.previous||!window?.next) return false;
+    const previous=window.previous.playerMap.get(String(tank.id||''))||null;
+    const next=window.next.playerMap.get(String(tank.id||''))||null;
+    if(!previous&&!next) return false;
+    const from=previous||next;
+    const to=next||previous;
+    const alpha=Number.isFinite(window.alpha)?window.alpha:1;
+    const nextX=this.interpolateBufferedValue(from?.x,to?.x,alpha);
+    const nextY=this.interpolateBufferedValue(from?.y,to?.y,alpha);
+    const nextAngle=this.interpolateBufferedAngle(from?.angle,to?.angle,alpha);
+    const frameSpan=Math.max(1,(window.next.serverTimeMs||0)-(window.previous.serverTimeMs||0));
+    const velocityScale=1000/frameSpan;
+    tank.x=nextX;
+    tank.y=nextY;
+    tank.aimAngle=nextAngle;
+    tank.networkTargetX=nextX;
+    tank.networkTargetY=nextY;
+    tank.networkTargetAngle=nextAngle;
+    tank.vx=(Number(to?.x)-Number(from?.x))*velocityScale;
+    tank.vy=(Number(to?.y)-Number(from?.y))*velocityScale;
+    return true;
+  },
+  createBufferedProjectileRenderState(window){
+    if(!window?.previous||!window?.next) return this.bullets;
+    const bullets=[];
+    const projectileIds=new Set([
+      ...window.previous.projectileMap.keys(),
+      ...window.next.projectileMap.keys(),
+    ]);
+    projectileIds.forEach((id,index)=>{
+      const previous=window.previous.projectileMap.get(id)||null;
+      const next=window.next.projectileMap.get(id)||null;
+      if(!previous&&!next) return;
+      const from=previous||next;
+      const to=next||previous;
+      const alpha=Number.isFinite(window.alpha)?window.alpha:1;
+      const ownerTeam=String(to?.ownerTeam||from?.ownerTeam||'blue');
+      const style=this.teamStyles[ownerTeam]||this.teamStyles.blue;
+      const angle=this.interpolateBufferedAngle(from?.angle,to?.angle,alpha);
+      const speed=this.interpolateBufferedValue(from?.speed,to?.speed,alpha);
+      bullets.push({
+        id:String(id||`snapshot_projectile_${index}`),
+        x:this.interpolateBufferedValue(from?.x,to?.x,alpha),
+        y:this.interpolateBufferedValue(from?.y,to?.y,alpha),
+        vx:Math.cos(angle)*speed,
+        vy:Math.sin(angle)*speed,
+        speed,
+        r:Math.max(2,this.interpolateBufferedValue(from?.radius,to?.radius,alpha)),
+        ownerId:String(to?.ownerId||from?.ownerId||''),
+        ownerTeam,
+        color:style.bullet,
+        angle,
+        life:1,
+        maxLife:1,
+        massive:false,
+        shape:'circle',
+        hitFading:false,
+      });
+    });
+    return bullets;
+  },
+  applyBufferedNetworkRender(){
+    if(!this.networkRoomActive) return false;
+    const window=this.getBufferedServerSnapshotWindow(
+      Date.now()+Number(this.networkClockOffsetMs||0)-this.getNetworkInterpolationDelayMs()
+    );
+    if(!window) return false;
+    let applied=false;
+    for(const bot of this.bots){
+      applied=this.applyBufferedRemoteTankState(bot,window)||applied;
+    }
+    this.bullets=this.createBufferedProjectileRenderState(window);
+    return applied;
   },
   sendPartyServerPing(){
     const clientTime=Date.now();
@@ -16626,7 +16782,7 @@ const POLYTANK_IO={
       return;
     }
     if(message.type==='snapshot'){
-      this.applyServerSnapshot(message.payload||null);
+      this.applyServerSnapshot(message.payload||null,Number(message.timestamp)||0);
       return;
     }
     if(message.type==='event'){
@@ -16743,12 +16899,13 @@ const POLYTANK_IO={
     if(playerId===this.localPartyState?.hostId) return fallbackTeam;
     return orderedTeams[index%Math.max(1,orderedTeams.length)]||fallbackTeam;
   },
-  applyServerSnapshot(payload){
+  applyServerSnapshot(payload,serverTimestamp=0){
     if(!payload||typeof payload!=='object') return;
     const roomId=String(payload.roomId||'');
     if(!roomId) return;
     if(!this.networkRoomActive||this.networkRoomId!==roomId) this.startServerRoomMatch(payload);
     if(!this.networkRoomActive||this.networkRoomId!==roomId) return;
+    this.bufferServerSnapshot(payload,serverTimestamp);
     const players=Array.isArray(payload.players)?payload.players:[];
     const currentBots=new Map((this.bots||[]).map(bot=>[bot.id,bot]));
     const nextBots=[];
@@ -16789,13 +16946,20 @@ const POLYTANK_IO={
         moveSpeed:Math.max(0,Math.round(Number(entry.upgrades?.moveSpeed)||0)),
       };
       this.updateTankDerivedStats(tank,false);
-      this.applySnapshotTankTransform(
-        tank,
-        Number(entry.x)||0,
-        Number(entry.y)||0,
-        Number(entry.angle)||0,
-        {isSelf}
-      );
+      if(isSelf){
+        this.applySnapshotTankTransform(
+          tank,
+          Number(entry.x)||0,
+          Number(entry.y)||0,
+          Number(entry.angle)||0,
+          {isSelf:true}
+        );
+      }else if(!tank.networkSmoothingReady){
+        tank.x=Number(entry.x)||0;
+        tank.y=Number(entry.y)||0;
+        tank.aimAngle=Number(entry.angle)||0;
+        this.resetTankNetworkSmoothing(tank,tank.x,tank.y,tank.aimAngle);
+      }
       if(!isSelf){
         tank.vx=0;
         tank.vy=0;
@@ -16854,30 +17018,32 @@ const POLYTANK_IO={
       hitFade:0,
     }));
     const projectiles=Array.isArray(payload.projectiles)?payload.projectiles:[];
-    this.bullets=projectiles.map((entry,index)=>{
-      const angle=Number(entry?.angle)||0;
-      const speed=Math.max(0,Number(entry?.speed)||0);
-      const ownerTeam=String(entry?.ownerTeam||'blue');
-      const style=this.teamStyles[ownerTeam]||this.teamStyles.blue;
-      return {
-        id:String(entry?.id||`snapshot_projectile_${index}`),
-        x:Number(entry?.x)||0,
-        y:Number(entry?.y)||0,
-        vx:Math.cos(angle)*speed,
-        vy:Math.sin(angle)*speed,
-        speed,
-        r:Math.max(2,Number(entry?.radius)||6),
-        ownerId:String(entry?.ownerId||''),
-        ownerTeam,
-        color:style.bullet,
-        angle,
-        life:1,
-        maxLife:1,
-        massive:false,
-        shape:'circle',
-        hitFading:false,
-      };
-    });
+    if((this.networkSnapshotBuffer||[]).length<=1){
+      this.bullets=projectiles.map((entry,index)=>{
+        const angle=Number(entry?.angle)||0;
+        const speed=Math.max(0,Number(entry?.speed)||0);
+        const ownerTeam=String(entry?.ownerTeam||'blue');
+        const style=this.teamStyles[ownerTeam]||this.teamStyles.blue;
+        return {
+          id:String(entry?.id||`snapshot_projectile_${index}`),
+          x:Number(entry?.x)||0,
+          y:Number(entry?.y)||0,
+          vx:Math.cos(angle)*speed,
+          vy:Math.sin(angle)*speed,
+          speed,
+          r:Math.max(2,Number(entry?.radius)||6),
+          ownerId:String(entry?.ownerId||''),
+          ownerTeam,
+          color:style.bullet,
+          angle,
+          life:1,
+          maxLife:1,
+          massive:false,
+          shape:'circle',
+          hitFading:false,
+        };
+      });
+    }
     const currentDominators=new Map((this.dominators||[]).map(dominator=>[dominator.id,dominator]));
     const dominators=Array.isArray(payload.dominators)?payload.dominators:[];
     this.dominators=dominators.map((entry,index)=>{
@@ -21307,6 +21473,7 @@ const POLYTANK_IO={
     this.networkInputTimer=Math.max(0,(this.networkInputTimer||0)-dt);
     this.networkPingTimer=Math.max(0,(this.networkPingTimer||0)-dt);
     const input=this.getServerRoomInputState();
+    const hasBufferedRender=this.applyBufferedNetworkRender();
     if(this.networkInputTimer<=0) this.sendServerRoomInput();
     if(this.networkPingTimer<=0){
       if(this.sendPartyServerPing()) this.networkPingTimer=2;
@@ -21321,7 +21488,7 @@ const POLYTANK_IO={
     }
     for(const bot of this.bots){
       bot.damageFlash=Math.max(0,(bot.damageFlash||0)-dt*1.08);
-      this.updateSmoothedSnapshotTank(bot,dt);
+      if(!hasBufferedRender) this.updateSmoothedSnapshotTank(bot,dt);
     }
     this.updateParticles(dt);
     this.updateDamageNumbers(dt);
