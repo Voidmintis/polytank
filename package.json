@@ -2,11 +2,19 @@
   "name": "polytank-standalone",
   "private": true,
   "version": "0.1.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "server:dev": "npm --prefix server run dev",
+    "server:build": "npm --prefix server run build",
+    "server:typecheck": "npm --prefix server run typecheck",
+    "server:start": "npm --prefix server run start",
+    "server:soak": "npm --prefix server run soak",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --passWithNoTests",
@@ -22,7 +30,8 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.33.1",
-    "vite": "^7.0.0",
-    "vitest": "^3.2.4"
+    "vite": "^4.5.14",
+    "vitest": "^0.34.6",
+    "ws": "^8.18.3"
   }
 }
