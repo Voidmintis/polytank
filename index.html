@@ -102,6 +102,7 @@ body.polytank-standalone #subtitle {
         </div>
         <div id="polytank-main-action-row" class="polytank-menu-actions">
           <button type="button" id="polytank-play-btn" onclick="POLYTANK_IO.startMatch()">Play</button>
+          <button type="button" id="polytank-online-btn" onclick="POLYTANK_IO.openPartyLobby()">Online</button>
           <button type="button" id="polytank-party-link-btn" onclick="POLYTANK_IO.copyPartyLink()">Copy Party Link</button>
           <button type="button" id="polytank-skins-btn" onclick="POLYTANK_IO.openSkinsShop()">Skins</button>
           <button type="button" id="polytank-settings-btn" onclick="POLYTANK_IO.toggleSettingsPanel()">Settings</button>
@@ -141,12 +142,13 @@ body.polytank-standalone #subtitle {
         <div id="polytank-local-party-shell">
           <div class="polytank-perma-head">
             <div>
-              <div class="polytank-menu-label">Local Party Lobby</div>
-              <div class="polytank-perma-copy">Create a code, invite another tab in this browser, and stage the match in a live waiting room.</div>
+              <div class="polytank-menu-label">Online Multiplayer</div>
+              <div class="polytank-perma-copy">Create a private room, join with a code, or leave the field blank to quick join a public online room.</div>
             </div>
             <div id="polytank-local-party-code">NO CODE</div>
           </div>
           <div class="polytank-local-party-actions">
+            <button type="button" id="polytank-local-back-btn" onclick="POLYTANK_IO.closePartyLobby()">Back</button>
             <button type="button" id="polytank-local-create-btn" onclick="POLYTANK_IO.createLocalParty()">Create Code</button>
             <div class="polytank-local-join-box">
               <input id="polytank-local-code-input" type="text" maxlength="8" autocomplete="off" placeholder="CODE OR BLANK FOR QUICK JOIN" oninput="POLYTANK_IO.refreshMenuState()" />

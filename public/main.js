@@ -16101,11 +16101,14 @@ const POLYTANK_IO={
   },
   refreshMenuState(){
     const summary=document.getElementById('polytank-menu-session');
+    const statusLine=document.getElementById('polytank-status-line');
     const playButton=document.getElementById('polytank-play-btn');
+    const onlineButton=document.getElementById('polytank-online-btn');
     const newButton=document.getElementById('polytank-new-btn');
     const partyLinkButton=document.getElementById('polytank-party-link-btn');
     const localCode=document.getElementById('polytank-local-party-code');
     const localStatus=document.getElementById('polytank-local-party-status');
+    const localBack=document.getElementById('polytank-local-back-btn');
     const localCreate=document.getElementById('polytank-local-create-btn');
     const localJoin=document.getElementById('polytank-local-join-btn');
     const localLeave=document.getElementById('polytank-local-leave-btn');
@@ -16121,55 +16124,80 @@ const POLYTANK_IO={
     const localPartyActive=!!this.localPartyCode;
     const localRoom=this.localPartyState;
     const localRoomAge=localRoom?Date.now()-Number(localRoom.updatedAt||0):0;
-    const localAiEnabled=localRoom?.settings?.aiEnabled!==false;
+    const localAiEnabled=true;
     const testSimCount=(localRoom?.members||[]).filter(member=>member.isSimulated).length;
     const usingPartyServer=this.isUsingPartyServer();
+    const onlineCapable=this.canUsePartyServer();
+    const onlineMode=usingPartyServer||(!localPartyActive&&onlineCapable);
+    const connecting=!!this.localPartySocketPending;
     const localRoomAccess=String(localRoom?.access||'private');
     const pendingJoinCode=this.normalizeLocalPartyCode(localInput?.value||'');
+    const lobbyOpen=!!this.overlayEl?.classList.contains('waiting-room');
     if(summary){
       summary.textContent=localPartyActive
         ?`${this.localPartyRole==='host'?'Hosting':'Joined'} ${usingPartyServer?(localRoomAccess==='public'?'public online room':'online room'):'local party'} ${this.localPartyCode}.${usingPartyServer?' Lobby sync is live through the server.':' Waiting room sync is live in this browser.'}`
+        :(lobbyOpen
+          ?(onlineMode
+            ?'Start a room to get a shareable code, or enter a room code to join one. Open slots are always filled by AI bots.'
+            :'Start a same-browser room, or enter a room code from another tab. Open slots are always filled by AI bots.')
         :(pausedSession
           ?'Match paused. Resume to continue from the current frame, or start a fresh arena.'
           :(hasResume
             ?'Saved arena ready. Resume your last Polytank.io run or start a fresh arena.'
-            :'Fresh arena ready. No permanent upgrades are active.'));
+            :'Fresh arena ready. No permanent upgrades are active.')));
     }
+    if(statusLine) statusLine.textContent=lobbyOpen
+      ?(connecting
+        ?'Connecting to the room server...'
+        :'Start a room or join by code')
+      :(pausedSession?'Press Esc to resume the match':'Press Enter to deploy or resume');
     if(playButton) playButton.textContent=pausedSession
       ?'Resume Match'
       :(localPartyActive&&usingPartyServer
-        ?(localRoom?.status==='active'?'Server Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
-        :(this.localPartyRole==='host'?'Launch Test Match':(hasResume?'Resume Saved Run':'Play')));
+        ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
+        :(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play')));
     if(newButton) newButton.textContent=pausedSession?'Create New Match':'Start New Game';
     if(newButton) newButton.style.display='';
+    if(onlineButton) onlineButton.style.display=lobbyOpen?'none':'';
     if(playButton) playButton.disabled=usingPartyServer?(!localPartyActive||!localRoom?.roomId||localRoom?.status==='active'):this.isLocalPartyGuest();
     if(newButton) newButton.disabled=this.isLocalPartyGuest();
     if(partyLinkButton){
       partyLinkButton.textContent=pausedSession?'Leave Match':'Copy Party Link';
       partyLinkButton.setAttribute('onclick',pausedSession?'POLYTANK_IO.leaveToLobby()':'POLYTANK_IO.copyPartyLink()');
+      partyLinkButton.style.display=pausedSession||localPartyActive?'':'none';
     }
     if(localCode) localCode.textContent=localPartyActive?this.localPartyCode:'NO CODE';
-    if(localStatus){
-      if(!localPartyActive) localStatus.textContent='No party room yet. Create a code, join one directly, or leave the field blank to quick join a public online room. When the room server is unavailable, the flow falls back to same-browser tabs.';
-      else if(usingPartyServer&&localRoom?.status==='active') localStatus.textContent=`Room ${this.localPartyCode} is active on the server. Gameplay sync is the next multiplayer slice.`;
-      else if(this.localPartyRole==='host') localStatus.textContent=usingPartyServer
-        ?(localRoomAccess==='public'
-          ?`Public room ${this.localPartyCode} is live on the server. New pilots can quick join automatically while capacity lasts. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`
-          :`Online room ${this.localPartyCode} is live. Share the code, then have everyone press Ready Up. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`)
-        :`Lobby ${this.localPartyCode} is live. Open another tab, join the code, and use WASD or arrows after clicking the waiting room. Mode: ${(localRoom?.settings?.gameVariant||this.gameVariant).toUpperCase()} • AI ${localAiEnabled?'ON':'OFF'}.`;
-      else localStatus.textContent=usingPartyServer
-        ?(localRoomAccess==='public'
-          ?`Connected to public room ${this.localPartyCode}. The server can place more pilots here automatically while capacity remains.`
-          :`Connected to ${this.localPartyCode}. Host settings are locked here. Press Ready Up when you want the room to launch.`)
-        :(localRoomAge>5000?`Lobby ${this.localPartyCode} looks stale. Keep the host tab open.`:`Connected to ${this.localPartyCode}. Host settings are locked here. Your team preference controls whether you land on the same, different, or random team later.`);
+    if(localBack){
+      localBack.style.display=localPartyActive?'none':'inline-flex';
+      localBack.disabled=connecting;
     }
-    if(localCreate) localCreate.disabled=localPartyActive;
-    if(localJoin) localJoin.disabled=localPartyActive;
-    if(localJoin) localJoin.textContent=!localPartyActive&&usingPartyServer&&!pendingJoinCode?'Quick Join':'Join';
+    if(localStatus){
+      if(connecting&&!localPartyActive) localStatus.textContent=`Connecting to online room server at ${this.getPartyServerUrl()}...`;
+      else if(!localPartyActive) localStatus.textContent=onlineMode
+        ?'No room yet. Start a room to create a shareable code, or enter a room code to join a friend. AI bots always fill open slots.'
+        :'No room yet. Start a room to create a shareable code, or enter a room code from another tab. AI bots always fill open slots.';
+      else if(usingPartyServer&&localRoom?.status==='active') localStatus.textContent=`Room ${this.localPartyCode} is live. AI bots will backfill open slots as players join and leave.`;
+      else if(this.localPartyRole==='host') localStatus.textContent=usingPartyServer
+        ?`Room ${this.localPartyCode} is ready. Share the code, then press Ready Up when you want to enter the match. AI bots will fill the remaining slots.`
+        :`Room ${this.localPartyCode} is ready in this browser. Open another tab and join with the code. AI bots will fill the remaining slots.`;
+      else localStatus.textContent=usingPartyServer
+        ?`Connected to ${this.localPartyCode}. Press Ready Up when you are ready. AI bots will fill the rest of the room.`
+        :(localRoomAge>5000?`Room ${this.localPartyCode} looks stale. Keep the host tab open.`:`Connected to ${this.localPartyCode}. Press Ready Up when you are ready. AI bots will fill the rest of the room.`);
+    }
+    if(localCreate){
+      localCreate.disabled=localPartyActive||connecting;
+      localCreate.textContent=connecting?'Connecting...':'Start New Room';
+    }
+    if(localJoin) localJoin.disabled=localPartyActive||connecting||!pendingJoinCode;
+    if(localJoin) localJoin.textContent=!localPartyActive
+      ?(connecting
+        ?'Connecting...'
+        :'Join Room')
+      :'Join';
     if(localLeave) localLeave.style.display=localPartyActive?'inline-flex':'none';
     if(localInput){
-      localInput.disabled=localPartyActive;
-      localInput.placeholder=usingPartyServer?'CODE OR BLANK FOR QUICK JOIN':'JOIN CODE';
+      localInput.disabled=localPartyActive||connecting;
+      localInput.placeholder='ENTER ROOM CODE';
       if(localPartyActive&&this.localPartyCode) localInput.value=this.localPartyCode;
     }
     if(localAi){
@@ -16191,6 +16219,17 @@ const POLYTANK_IO={
     this.renderLocalPartyRoster();
     this.renderLocalPartyPreview();
     this.updateCircleMenuLiveReadouts(0);
+  },
+  openPartyLobby(){
+    if(this.overlayEl&&this.menuOpen) this.overlayEl.classList.add('waiting-room');
+    this.refreshMenuState();
+    const localInput=document.getElementById('polytank-local-code-input');
+    if(localInput&&!this.localPartyCode) setTimeout(()=>localInput.focus(),0);
+  },
+  closePartyLobby(){
+    if(this.localPartyCode) return;
+    if(this.overlayEl) this.overlayEl.classList.remove('waiting-room');
+    this.refreshMenuState();
   },
   updateCircleMenuLiveReadouts(dt){
     this.menuFxTime+=Math.max(0,dt);
@@ -16310,7 +16349,7 @@ const POLYTANK_IO={
   createPartySettingsPayload(){
     return {
       gameVariant:this.normalizeGameVariant(this.gameVariant),
-      aiEnabled:this.localPartyState?.settings?.aiEnabled!==false,
+      aiEnabled:true,
       hostTeam:this.playerTeam,
     };
   },
@@ -17173,7 +17212,9 @@ const POLYTANK_IO={
       if(this.localPartyCode) this.leaveLocalParty(true);
       this.ensureLocalPartyClient();
       this.localPartyMember=this.createLocalPartyMember({isHost:true,teamPref:'host'});
-      const connected=await this.connectPartyServer();
+      const connectAttempt=this.connectPartyServer();
+      this.refreshMenuState();
+      const connected=await connectAttempt;
       if(connected){
         this.sendPartyServerMessage('connect',{nickname:this.localPartyMember.name});
         this.sendPartyServerMessage('roomCreate',{
@@ -17214,31 +17255,29 @@ const POLYTANK_IO={
   async joinLocalParty(){
     const input=document.getElementById('polytank-local-code-input');
     const serverCode=this.normalizeLocalPartyCode(input?.value||'');
+    if(!serverCode){
+      toast('Enter a room code first.', '#ffb584');
+      return false;
+    }
     if(this.canUsePartyServer()){
       if(this.localPartyCode&&this.localPartyCode!==serverCode) this.leaveLocalParty(true);
       this.ensureLocalPartyClient();
       this.localPartyMember=this.createLocalPartyMember({teamPref:'same'});
-      const connected=await this.connectPartyServer();
+      const connectAttempt=this.connectPartyServer();
+      this.refreshMenuState();
+      const connected=await connectAttempt;
       if(connected){
         this.localPartyRole='guest';
         this.sendPartyServerMessage('connect',{nickname:this.localPartyMember.name});
-        if(serverCode){
-          this.localPartyCode=serverCode;
-          this.sendPartyServerMessage('roomJoin',{
-            roomCode:serverCode,
-            nickname:this.localPartyMember.name,
-          });
-        } else {
-          this.localPartyCode='';
-          this.sendPartyServerMessage('roomQuickJoin',{
-            nickname:this.localPartyMember.name,
-            settings:this.createPartySettingsPayload(),
-          });
-        }
+        this.localPartyCode=serverCode;
+        this.sendPartyServerMessage('roomJoin',{
+          roomCode:serverCode,
+          nickname:this.localPartyMember.name,
+        });
         this.startLocalPartyLoop();
         if(this.overlayEl&&this.menuOpen) this.overlayEl.classList.add('waiting-room');
         this.refreshMenuState();
-        toast(serverCode?`Joining online room ${serverCode}...`:'Quick joining public online room...', '#92ecff');
+        toast(`Joining online room ${serverCode}...`, '#92ecff');
         return true;
       }
       toast(`Online room server unavailable at ${this.getPartyServerUrl()}. Falling back to local tabs only.`, '#ffb584');
@@ -18051,7 +18090,8 @@ const POLYTANK_IO={
     const menuCard=document.getElementById('polytank-menu-card');
     const input=document.getElementById('polytank-name-input');
     if(this.overlayEl) this.overlayEl.classList.toggle('menu-open',this.menuOpen);
-    if(this.overlayEl) this.overlayEl.classList.toggle('waiting-room',this.menuOpen&&!!this.localPartyCode);
+    if(this.overlayEl&&!this.menuOpen) this.overlayEl.classList.remove('waiting-room');
+    else if(this.overlayEl&&this.localPartyCode) this.overlayEl.classList.add('waiting-room');
     if(menu) menu.classList.toggle('open',this.menuOpen);
     if(menu) menu.classList.toggle('paused',this.menuOpen&&this.pausedByMenu);
     if(this.menuOpen&&menuCard){
