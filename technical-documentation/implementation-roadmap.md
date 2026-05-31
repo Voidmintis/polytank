@@ -47,9 +47,26 @@ Exit criteria:
 
 ## Phase 4+: Expanded Modes
 
+Status:
+- implemented
+
 Recommended order:
 1. 2 teams
 2. 4 teams
 3. objective-driven arena modes
 
 These should reuse the same authoritative core rather than fork simulation logic.
+
+Current objective-mode status:
+- domination snapshot transport is implemented
+- domination capture transitions and hold-lock progress are now server-authoritative
+- CTF snapshot transport is implemented for authoritative flag/base state hydration
+- CTF pickup, return, scoring, and winner state are now server-authoritative
+- breakout core state, damage, and winner state are now server-authoritative
+- maze wall state and wall collision are now server-authoritative
+- tag elimination-based team conversion is now server-authoritative
+- mothership cage-wall state and release trigger are now server-authoritative
+- mothership post-release volley fire is now server-authoritative
+- mothership destruction from authoritative projectile damage is now server-authoritative
+- mothership homing volleys, summon spawns, laser sweep state, and post-destruction endgame closers are now server-authoritative
+- Phase 4 expanded-mode authority is complete across team modes, objective modes, and the full mothership encounter loop

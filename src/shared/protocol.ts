@@ -202,12 +202,114 @@ export interface WorldShapeState {
   rotation: number;
 }
 
+export interface WorldDominatorState {
+  id: string;
+  side: string;
+  kind: string;
+  label: string;
+  team: string;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+}
+
+export interface WorldCtfFlagState {
+  team: string;
+  x: number;
+  y: number;
+  homeX: number;
+  homeY: number;
+  carrierId: string;
+  atBase: boolean;
+  returnTimer: number;
+}
+
+export interface WorldBreakoutCoreState {
+  team: string;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  radius: number;
+}
+
+export interface WorldMazeWallState {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface WorldMothershipCageState {
+  id: string;
+  x1: number;
+  x2: number;
+  y: number;
+  topY: number;
+  thickness: number;
+  hp: number;
+  maxHp: number;
+  released: boolean;
+}
+
+export interface WorldMothershipState {
+  id: string;
+  label: string;
+  team: string;
+  x: number;
+  y: number;
+  radius: number;
+  renderScale: number;
+  hp: number;
+  maxHp: number;
+  aimAngle: number;
+  released: boolean;
+  releaseProgress: number;
+  releaseStartX: number;
+  releaseStartY: number;
+  releaseTargetX: number;
+  releaseTargetY: number;
+  barTimer: number;
+  spinAngle: number;
+  bodyColor: string;
+  barrelColor: string;
+  bulletColor: string;
+  laserWindup: number;
+  laserActive: number;
+  laserAngle: number;
+  laserWidth: number;
+  laserRange: number;
+}
+
+export interface WorldObjectiveState {
+  dominationTeam: string;
+  dominationHold: number;
+  dominationLocked: boolean;
+  breakoutWinner: string;
+  ctfWinner: string;
+  mothershipEndgame: boolean;
+  endgameSpectateId: string;
+  ctfScores: {
+    blue: number;
+    red: number;
+  };
+}
+
 export interface SnapshotPayload {
   roomId: string;
   tick: number;
   players: WorldPlayerState[];
   projectiles: WorldProjectileState[];
   shapes: WorldShapeState[];
+  dominators: WorldDominatorState[];
+  breakoutCores: WorldBreakoutCoreState[];
+  mazeWalls: WorldMazeWallState[];
+  cageWall: WorldMothershipCageState | null;
+  enemyMothership: WorldMothershipState | null;
+  ctfFlags: WorldCtfFlagState[];
+  objective: WorldObjectiveState;
 }
 
 export type SnapshotMessage = ProtocolEnvelope<'snapshot', SnapshotPayload>;

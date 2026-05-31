@@ -24,6 +24,22 @@ Current coverage now includes:
 - quick joining a public FFA room, leaving it, and reusing that same room without ghost players in later snapshots
 - creating a second public room once quick join reaches the preferred live population target for the first room
 - pruning an expired disconnected public-room member before the next quick join so a fresh room is created instead of reviving stale occupancy
+- normalizing non-canonical two-team room settings on the server and assigning opposing host/guest teams authoritatively in snapshots
+- rejecting friendly-fire outcomes in authoritative `2teams` projectile simulation while still allowing opposing-team damage
+- assigning four distinct authoritative teams in `4teams` rooms, including non-default host-team rotation
+- rejecting friendly-fire outcomes in authoritative `4teams` projectile simulation for same-team players that share the rotated team assignment
+- streaming initial neutral domination-point state and objective payloads in authoritative snapshots for domination rooms
+- capturing a domination point authoritatively on the server and advancing domination lock state from snapshot-owned objective progress
+- streaming initial authoritative CTF flag state and zeroed flag scores in snapshots for CTF rooms
+- applying authoritative CTF pickup and score progression in snapshots, including winner-state publication at the score cap
+- streaming authoritative breakout core state and winner progression in snapshots after server projectile damage resolves against enemy cores
+- streaming authoritative maze wall state in snapshots and rejecting player/projectile movement through those walls in server simulation
+- applying authoritative tag-team conversion in snapshots after a defeating player eliminates an opposing player in tag mode
+- streaming authoritative mothership cage/boss state and validating server-owned cage release after a blue-team projectile breaks the wall
+- validating that a released authoritative mothership emits hostile volley projectiles into snapshots from server simulation
+- validating that blue-team projectiles can destroy the authoritative released mothership and remove it from subsequent snapshots
+- validating that the released authoritative mothership also emits homing projectiles, laser-state snapshots, and summoned red assault tanks from server simulation
+- validating that destroying the authoritative mothership starts the no-respawn endgame closer flow on the server
 
 Manual smoke target for the client slice:
 - blank room code plus Join should quick join a public online room when the room server is reachable

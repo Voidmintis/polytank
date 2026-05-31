@@ -354,6 +354,1334 @@ describe('polytank room server', () => {
     );
   }, 12_000);
 
+  it('normalizes 2-team room settings and assigns opposing teams authoritatively', async () => {
+    const app = createPolytankServer(3322);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3322);
+    const guest = await openClient(3322);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'standard', hostTeam: 'green', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    expect(createdRoom?.payload.settings.gameVariant).toBe('2teams');
+    expect(createdRoom?.payload.settings.hostTeam).toBe('blue');
+
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      host.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2) &&
+      guest.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.length === 2,
+      ),
+    );
+
+    const snapshot = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.players.length === 2,
+    );
+
+    const hostPlayer = snapshot?.payload.players.find(player => player.nickname === 'Host Pilot');
+    const guestPlayer = snapshot?.payload.players.find(player => player.nickname === 'Guest Pilot');
+    expect(hostPlayer?.team).toBe('blue');
+    expect(guestPlayer?.team).toBe('red');
+  }, 10_000);
+
+  it('does not apply friendly fire in 2-team rooms', async () => {
+    const app = createPolytankServer(3323);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3323);
+    const guest = await openClient(3323);
+    const wing = await openClient(3323);
+    sockets.push(host.socket, guest.socket, wing.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: '2teams', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+    send(wing.socket, 'roomJoin', { roomCode, nickname: 'Wing Pilot' });
+
+    await waitFor(() =>
+      host.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 3) &&
+      guest.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 3) &&
+      wing.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 3),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(wing.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.length === 3,
+      ),
+    );
+
+    const initialSnapshot = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.players.length === 3,
+    );
+
+    const hostPlayer = initialSnapshot?.payload.players.find(player => player.nickname === 'Host Pilot');
+    const guestPlayer = initialSnapshot?.payload.players.find(player => player.nickname === 'Guest Pilot');
+    const wingPlayer = initialSnapshot?.payload.players.find(player => player.nickname === 'Wing Pilot');
+    expect(hostPlayer?.team).toBe('blue');
+    expect(guestPlayer?.team).toBe('red');
+    expect(wingPlayer?.team).toBe('blue');
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<string, { players: Array<{ id: string; x: number; y: number; hp: number; maxHp: number }> }>;
+    };
+    const liveRuntime = liveManager.activeRooms.get(String(roomId));
+    const liveHost = liveRuntime?.players.find(player => player.id === hostPlayer?.id);
+    const liveGuest = liveRuntime?.players.find(player => player.id === guestPlayer?.id);
+    const liveWing = liveRuntime?.players.find(player => player.id === wingPlayer?.id);
+
+    if (liveHost && liveGuest && liveWing) {
+      liveGuest.x = liveHost.x - 96;
+      liveGuest.y = liveHost.y;
+      liveGuest.hp = liveGuest.maxHp;
+      liveWing.x = liveHost.x + 96;
+      liveWing.y = liveHost.y;
+      liveWing.hp = liveWing.maxHp;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 1,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: false,
+    });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          !!message.payload.players.find(player => player.id === hostPlayer?.id && Math.abs(player.angle) < 0.2),
+      ),
+    );
+
+    send(host.socket, 'input', {
+      sequence: 2,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: true,
+    });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.projectiles.some(projectile => projectile.ownerId === hostPlayer?.id),
+      ),
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const latestSnapshot = host.messages
+      .filter((message): message is Extract<ServerMessage, { type: 'snapshot' }> => message.type === 'snapshot' && message.payload.roomId === roomId)
+      .at(-1);
+
+    const latestGuest = latestSnapshot?.payload.players.find(player => player.id === guestPlayer?.id);
+    const latestWing = latestSnapshot?.payload.players.find(player => player.id === wingPlayer?.id);
+
+    expect(latestGuest?.hp).toBe(guestPlayer?.hp);
+    expect(latestWing?.hp).toBe(wingPlayer?.hp);
+    expect(
+      host.messages.some(
+        message =>
+          message.type === 'event' &&
+          message.payload.event === 'player-eliminated' &&
+          (message.payload.data.victimId === guestPlayer?.id || message.payload.data.victimId === wingPlayer?.id),
+      ),
+    ).toBe(false);
+  }, 10_000);
+
+  it('assigns four distinct teams authoritatively in 4-team rooms', async () => {
+    const app = createPolytankServer(3324);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const alpha = await openClient(3324);
+    const bravo = await openClient(3324);
+    const charlie = await openClient(3324);
+    const delta = await openClient(3324);
+    sockets.push(alpha.socket, bravo.socket, charlie.socket, delta.socket);
+
+    send(alpha.socket, 'roomCreate', {
+      nickname: 'Alpha Pilot',
+      settings: createRoomSettings({ gameVariant: '4teams', hostTeam: 'purple', aiEnabled: false }),
+    });
+
+    await waitFor(() => alpha.messages.some(message => message.type === 'roomState'));
+
+    const createdRoom = alpha.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    expect(createdRoom?.payload.settings.gameVariant).toBe('4teams');
+    expect(createdRoom?.payload.settings.hostTeam).toBe('purple');
+
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(bravo.socket, 'roomJoin', { roomCode, nickname: 'Bravo Pilot' });
+    send(charlie.socket, 'roomJoin', { roomCode, nickname: 'Charlie Pilot' });
+    send(delta.socket, 'roomJoin', { roomCode, nickname: 'Delta Pilot' });
+
+    await waitFor(() =>
+      alpha.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 4) &&
+      bravo.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 4) &&
+      charlie.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 4) &&
+      delta.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 4),
+    );
+
+    send(bravo.socket, 'roomReady', { roomId, ready: true });
+    send(charlie.socket, 'roomReady', { roomId, ready: true });
+    send(delta.socket, 'roomReady', { roomId, ready: true });
+    send(alpha.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      alpha.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.length === 4,
+      ),
+    );
+
+    const snapshot = alpha.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.players.length === 4,
+    );
+
+    const teams = snapshot?.payload.players.map(player => player.team).sort() || [];
+    expect(teams).toEqual(['blue', 'green', 'purple', 'red']);
+  }, 10_000);
+
+  it('does not apply friendly fire in 4-team rooms', async () => {
+    const app = createPolytankServer(3325);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const alpha = await openClient(3325);
+    const bravo = await openClient(3325);
+    const charlie = await openClient(3325);
+    const delta = await openClient(3325);
+    const echo = await openClient(3325);
+    sockets.push(alpha.socket, bravo.socket, charlie.socket, delta.socket, echo.socket);
+
+    send(alpha.socket, 'roomCreate', {
+      nickname: 'Alpha Pilot',
+      settings: createRoomSettings({ gameVariant: '4teams', hostTeam: 'purple', aiEnabled: false }),
+    });
+
+    await waitFor(() => alpha.messages.some(message => message.type === 'roomState'));
+
+    const createdRoom = alpha.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(bravo.socket, 'roomJoin', { roomCode, nickname: 'Bravo Pilot' });
+    send(charlie.socket, 'roomJoin', { roomCode, nickname: 'Charlie Pilot' });
+    send(delta.socket, 'roomJoin', { roomCode, nickname: 'Delta Pilot' });
+    send(echo.socket, 'roomJoin', { roomCode, nickname: 'Echo Pilot' });
+
+    await waitFor(() =>
+      alpha.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 5) &&
+      echo.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 5),
+    );
+
+    send(bravo.socket, 'roomReady', { roomId, ready: true });
+    send(charlie.socket, 'roomReady', { roomId, ready: true });
+    send(delta.socket, 'roomReady', { roomId, ready: true });
+    send(echo.socket, 'roomReady', { roomId, ready: true });
+    send(alpha.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      alpha.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.length === 5,
+      ),
+    );
+
+    const initialSnapshot = alpha.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.players.length === 5,
+    );
+
+    const alphaPlayer = initialSnapshot?.payload.players.find(player => player.nickname === 'Alpha Pilot');
+    const echoPlayer = initialSnapshot?.payload.players.find(player => player.nickname === 'Echo Pilot');
+    expect(alphaPlayer?.team).toBe('purple');
+    expect(echoPlayer?.team).toBe('purple');
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<string, { players: Array<{ id: string; x: number; y: number; hp: number; maxHp: number }> }>;
+    };
+    const liveRuntime = liveManager.activeRooms.get(String(roomId));
+    const liveAlpha = liveRuntime?.players.find(player => player.id === alphaPlayer?.id);
+    const liveEcho = liveRuntime?.players.find(player => player.id === echoPlayer?.id);
+
+    if (liveAlpha && liveEcho) {
+      liveEcho.x = liveAlpha.x + 96;
+      liveEcho.y = liveAlpha.y;
+      liveEcho.hp = liveEcho.maxHp;
+    }
+
+    send(alpha.socket, 'input', {
+      sequence: 1,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: false,
+    });
+
+    await waitFor(() =>
+      alpha.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          !!message.payload.players.find(player => player.id === alphaPlayer?.id && Math.abs(player.angle) < 0.2),
+      ),
+    );
+
+    send(alpha.socket, 'input', {
+      sequence: 2,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: true,
+    });
+
+    await waitFor(() =>
+      alpha.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.projectiles.some(projectile => projectile.ownerId === alphaPlayer?.id),
+      ),
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const latestSnapshot = alpha.messages
+      .filter((message): message is Extract<ServerMessage, { type: 'snapshot' }> => message.type === 'snapshot' && message.payload.roomId === roomId)
+      .at(-1);
+    const latestEcho = latestSnapshot?.payload.players.find(player => player.id === echoPlayer?.id);
+
+    expect(latestEcho?.hp).toBe(echoPlayer?.hp);
+    expect(
+      alpha.messages.some(
+        message =>
+          message.type === 'event' &&
+          message.payload.event === 'player-eliminated' &&
+          message.payload.data.victimId === echoPlayer?.id,
+      ),
+    ).toBe(false);
+  }, 10_000);
+
+  it('includes authoritative domination objective state in snapshots', async () => {
+    const app = createPolytankServer(3326);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3326);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'domination', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.dominators.length === 4,
+      ),
+      6000,
+    );
+
+    const snapshot = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.dominators.length === 4,
+    );
+
+    expect(snapshot?.payload.objective.dominationTeam).toBe('');
+    expect(snapshot?.payload.objective.dominationHold).toBe(0);
+    expect(snapshot?.payload.objective.dominationLocked).toBe(false);
+    expect(snapshot?.payload.dominators.every(dominator => dominator.team === 'neutral')).toBe(true);
+    expect(snapshot?.payload.dominators.map(dominator => dominator.kind).sort()).toEqual(['destroyer', 'gun', 'gun', 'trapper']);
+  }, 10_000);
+
+  it('captures dominators authoritatively and locks domination progress from snapshots', async () => {
+    const app = createPolytankServer(3327);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3327);
+    const guest = await openClient(3327);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'domination', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      guest.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.some(player => player.nickname === 'Host Pilot') &&
+          message.payload.dominators.length === 4,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; x: number; y: number; angle: number; team: string }>;
+          dominators: Array<{ id: string; x: number; y: number; hp: number; maxHp: number; team: string }>;
+          objective: { dominationTeam: string; dominationHold: number; dominationLocked: boolean };
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostSnapshot = host.messages
+      .filter((message): message is Extract<ServerMessage, { type: 'snapshot' }> => message.type === 'snapshot' && message.payload.roomId === roomId)
+      .at(-1);
+    const hostPlayer = runtime?.players.find(player => player.id === hostSnapshot?.payload.players.find(entry => entry.nickname === 'Host Pilot')?.id);
+    const targetDominator = runtime?.dominators[0];
+    expect(hostPlayer).toBeDefined();
+    expect(targetDominator).toBeDefined();
+
+    if (hostPlayer && targetDominator && runtime) {
+      hostPlayer.x = targetDominator.x - 260;
+      hostPlayer.y = targetDominator.y;
+      hostPlayer.angle = 0;
+      targetDominator.hp = 1;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 1,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: true,
+    });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.dominators.some(dominator => dominator.id === targetDominator?.id && dominator.team === 'blue'),
+      ),
+      6000,
+    );
+
+    if (runtime) {
+      for (const dominator of runtime.dominators) {
+        dominator.team = 'blue';
+      }
+      runtime.objective.dominationTeam = 'blue';
+      runtime.objective.dominationHold = 11.95;
+      runtime.objective.dominationLocked = false;
+    }
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.objective.dominationTeam === 'blue' &&
+          message.payload.objective.dominationLocked === true &&
+          message.payload.objective.dominationHold === 12,
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('includes authoritative CTF flag state in snapshots', async () => {
+    const app = createPolytankServer(3328);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3328);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'ctf', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.ctfFlags.length === 2,
+      ),
+      6000,
+    );
+
+    const snapshot = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.ctfFlags.length === 2,
+    );
+
+    expect(snapshot?.payload.objective.ctfScores.blue).toBe(0);
+    expect(snapshot?.payload.objective.ctfScores.red).toBe(0);
+    expect(snapshot?.payload.ctfFlags.map(flag => flag.team).sort()).toEqual(['blue', 'red']);
+    expect(snapshot?.payload.ctfFlags.every(flag => flag.atBase && !flag.carrierId && flag.returnTimer === 0)).toBe(true);
+  }, 10_000);
+
+  it('applies authoritative CTF pickup and score progress in snapshots', async () => {
+    const app = createPolytankServer(3329);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3329);
+    const guest = await openClient(3329);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'ctf', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      guest.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.length === 2 &&
+          message.payload.ctfFlags.length === 2,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; team: string }>;
+          ctfFlags: Array<{ team: string; x: number; y: number; homeX: number; homeY: number; carrierId: string; atBase: boolean; returnTimer: number }>;
+          objective: { ctfScores: { blue: number; red: number }; ctfWinner: string };
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const redFlag = runtime?.ctfFlags.find(flag => flag.team === 'red');
+    const blueFlag = runtime?.ctfFlags.find(flag => flag.team === 'blue');
+    expect(hostPlayer).toBeDefined();
+    expect(redFlag).toBeDefined();
+    expect(blueFlag).toBeDefined();
+
+    if (hostPlayer && redFlag && blueFlag) {
+      hostPlayer.x = redFlag.x;
+      hostPlayer.y = redFlag.y;
+    }
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.ctfFlags.some(flag => flag.team === 'red' && flag.carrierId === hostPlayer?.id && !flag.atBase),
+      ),
+      6000,
+    );
+
+    if (hostPlayer && blueFlag && runtime) {
+      runtime.objective.ctfScores.blue = 2;
+      hostPlayer.x = blueFlag.homeX;
+      hostPlayer.y = blueFlag.homeY;
+    }
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.objective.ctfScores.blue === 3 &&
+          message.payload.objective.ctfWinner === 'blue' &&
+          message.payload.ctfFlags.some(flag => flag.team === 'red' && flag.atBase && flag.carrierId === ''),
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('streams authoritative breakout core state and winner progression in snapshots', async () => {
+    const app = createPolytankServer(3330);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3330);
+    const guest = await openClient(3330);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'breakout', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      guest.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.breakoutCores.length === 2,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; angle: number }>;
+          breakoutCores: Array<{ team: string; x: number; y: number; hp: number; maxHp: number; radius: number }>;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const redCore = runtime?.breakoutCores.find(core => core.team === 'red');
+    expect(hostPlayer).toBeDefined();
+    expect(redCore).toBeDefined();
+
+    if (hostPlayer && redCore) {
+      hostPlayer.x = redCore.x - 220;
+      hostPlayer.y = redCore.y;
+      hostPlayer.angle = 0;
+      redCore.hp = 1;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 1,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: true,
+    });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.objective.breakoutWinner === 'blue' &&
+          message.payload.breakoutCores.some(core => core.team === 'red' && core.hp === 0),
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('streams authoritative maze walls and blocks movement/projectiles against them', async () => {
+    const app = createPolytankServer(3331);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3331);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'maze', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.mazeWalls.length === 10,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; angle: number }>;
+          mazeWalls: Array<{ x: number; y: number; w: number; h: number }>;
+          projectiles: Array<{ id: string }>;
+          projectileSequence: number;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const wall = runtime?.mazeWalls[0];
+    expect(hostPlayer).toBeDefined();
+    expect(wall).toBeDefined();
+
+    if (hostPlayer && wall) {
+      hostPlayer.x = wall.x - 12;
+      hostPlayer.y = wall.y + wall.h * 0.5;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 1,
+      moveX: 1,
+      moveY: 0,
+      aimAngle: 0,
+      firing: false,
+    });
+
+    await waitFor(() => !!(hostPlayer && wall && hostPlayer.x <= wall.x - 20), 6000);
+
+    if (hostPlayer && wall) {
+      hostPlayer.x = wall.x - 80;
+      hostPlayer.y = wall.y + wall.h * 0.5;
+      hostPlayer.angle = 0;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 2,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      firing: true,
+    });
+
+    await waitFor(() => !!(runtime && runtime.projectileSequence >= 1 && runtime.projectiles.length === 0), 6000);
+  }, 10_000);
+
+  it('applies authoritative team conversion after a tag elimination', async () => {
+    const app = createPolytankServer(3332);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3332);
+    const guest = await openClient(3332);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'tag', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      guest.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.length === 2,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<string, { players: Array<{ id: string; nickname: string; x: number; y: number; angle: number; hp: number; team: string; maxHp: number }> }>;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const guestPlayer = runtime?.players.find(player => player.nickname === 'Guest Pilot');
+    expect(hostPlayer?.team).toBe('blue');
+    expect(guestPlayer?.team).toBe('red');
+
+    if (hostPlayer && guestPlayer) {
+      guestPlayer.x = hostPlayer.x - 96;
+      guestPlayer.y = hostPlayer.y;
+      guestPlayer.hp = 1;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 1,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: Math.PI,
+      firing: true,
+    });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.players.find(player => player.nickname === 'Guest Pilot' && player.team === 'blue'),
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('streams authoritative mothership cage state and releases the encounter from server damage', async () => {
+    const app = createPolytankServer(3333);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3333);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'mothership', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.cageWall &&
+          !!message.payload.enemyMothership &&
+          message.payload.enemyMothership.released === false,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; angle: number }>;
+          cageWall: { x1: number; x2: number; y: number; hp: number; released: boolean } | null;
+          enemyMothership: { released: boolean; releaseProgress: number } | null;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    expect(hostPlayer).toBeDefined();
+    expect(runtime?.cageWall).toBeDefined();
+    expect(runtime?.enemyMothership).toBeDefined();
+
+    if (hostPlayer && runtime?.cageWall) {
+      hostPlayer.x = (runtime.cageWall.x1 + runtime.cageWall.x2) * 0.5;
+      hostPlayer.y = runtime.cageWall.y + 80;
+      hostPlayer.angle = -Math.PI * 0.5;
+      runtime.cageWall.hp = 1;
+    }
+
+    send(host.socket, 'input', {
+      sequence: 1,
+      moveX: 0,
+      moveY: 0,
+      aimAngle: -Math.PI * 0.5,
+      firing: true,
+    });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.cageWall?.released &&
+          !!message.payload.enemyMothership?.released,
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('fires authoritative mothership volleys after release', async () => {
+    const app = createPolytankServer(3334);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3334);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'mothership', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.enemyMothership,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ nickname: string; x: number; y: number }>;
+          enemyMothership: { released: boolean; releaseProgress: number; shotTimer: number; x: number; y: number } | null;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const enemyMothership = runtime?.enemyMothership;
+    expect(hostPlayer).toBeDefined();
+    expect(enemyMothership).toBeDefined();
+
+    if (hostPlayer && enemyMothership) {
+      enemyMothership.released = true;
+      enemyMothership.releaseProgress = 1;
+      enemyMothership.shotTimer = 0;
+      hostPlayer.x = enemyMothership.x;
+      hostPlayer.y = enemyMothership.y + 900;
+    }
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.projectiles.some(projectile => projectile.ownerId === 'encounter_mothership' && projectile.ownerTeam === 'red'),
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('applies authoritative damage and destruction to the released mothership', async () => {
+    const app = createPolytankServer(3335);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3335);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'mothership', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.enemyMothership,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; angle: number }>;
+          projectileSequence: number;
+          projectiles: Array<{ id: string; x: number; y: number; angle: number; speed: number; radius: number; ownerId: string; ownerTeam: string; life: number; damage: number }>;
+          enemyMothership: { released: boolean; releaseProgress: number; hp: number; x: number; y: number; radius: number; renderScale: number } | null;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const enemyMothership = runtime?.enemyMothership;
+    expect(hostPlayer).toBeDefined();
+    expect(enemyMothership).toBeDefined();
+
+    if (hostPlayer && enemyMothership) {
+      enemyMothership.released = true;
+      enemyMothership.releaseProgress = 1;
+      enemyMothership.hp = 1;
+      enemyMothership.x = 3000;
+      enemyMothership.y = 1120;
+      runtime.projectileSequence += 1;
+      runtime.projectiles.push({
+        id: `test_mothership_hit_${runtime.projectileSequence}`,
+        x: enemyMothership.x,
+        y: enemyMothership.y,
+        angle: -Math.PI * 0.5,
+        speed: 0,
+        radius: 10,
+        ownerId: hostPlayer.id,
+        ownerTeam: 'blue',
+        life: 0.5,
+        damage: 5,
+      });
+    }
+
+    await waitFor(() => liveManager.activeRooms.get(String(roomId))?.enemyMothership === null, 6000);
+  }, 10_000);
+
+  it('runs authoritative mothership homing, laser, and summon behaviors after release', async () => {
+    const app = createPolytankServer(3336);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3336);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'mothership', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.enemyMothership,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ nickname: string; x: number; y: number }>;
+          enemyMothership: {
+            released: boolean;
+            releaseProgress: number;
+            homingTimer: number;
+            summonTimer: number;
+            laserCooldown: number;
+            x: number;
+            y: number;
+          } | null;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const enemyMothership = runtime?.enemyMothership;
+    expect(hostPlayer).toBeDefined();
+    expect(enemyMothership).toBeDefined();
+
+    if (hostPlayer && enemyMothership) {
+      enemyMothership.released = true;
+      enemyMothership.releaseProgress = 1;
+      enemyMothership.homingTimer = 0;
+      enemyMothership.summonTimer = 0;
+      enemyMothership.laserCooldown = 0;
+      hostPlayer.x = enemyMothership.x;
+      hostPlayer.y = enemyMothership.y + 900;
+    }
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.projectiles.some(projectile => projectile.ownerId === 'encounter_mothership' && projectile.radius === 8) &&
+          !!message.payload.enemyMothership &&
+          (message.payload.enemyMothership.laserWindup > 0 || message.payload.enemyMothership.laserActive > 0) &&
+          message.payload.players.some(player => player.id.startsWith('mothership_minion_')),
+      ),
+      6000,
+    );
+  }, 10_000);
+
+  it('starts authoritative mothership endgame closers with no respawns after boss destruction', async () => {
+    const app = createPolytankServer(3337);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3337);
+    sockets.push(host.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'mothership', hostTeam: 'blue', aiEnabled: true }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomId = roomState?.payload.roomId;
+    expect(roomId).toBeTruthy();
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          !!message.payload.enemyMothership,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; angle: number; hp: number }>;
+          projectileSequence: number;
+          projectiles: Array<{ id: string; x: number; y: number; angle: number; speed: number; radius: number; ownerId: string; ownerTeam: string; life: number; damage: number }>;
+          enemyMothership: { released: boolean; releaseProgress: number; hp: number; x: number; y: number; radius: number; renderScale: number } | null;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const enemyMothership = runtime?.enemyMothership;
+    expect(hostPlayer).toBeDefined();
+    expect(enemyMothership).toBeDefined();
+
+    if (hostPlayer && enemyMothership) {
+      enemyMothership.released = true;
+      enemyMothership.releaseProgress = 1;
+      enemyMothership.hp = 1;
+      enemyMothership.x = 3000;
+      enemyMothership.y = 1120;
+      runtime.projectileSequence += 1;
+      runtime.projectiles.push({
+        id: `test_mothership_endgame_${runtime.projectileSequence}`,
+        x: enemyMothership.x,
+        y: enemyMothership.y,
+        angle: -Math.PI * 0.5,
+        speed: 0,
+        radius: 10,
+        ownerId: hostPlayer.id,
+        ownerTeam: 'blue',
+        life: 0.5,
+        damage: 5,
+      });
+    }
+
+    await waitFor(() => {
+      const activeRuntime = liveManager.activeRooms.get(String(roomId));
+      return activeRuntime?.enemyMothership === null
+        && activeRuntime.players.some(player => player.id === 'mothership_closer_left')
+        && activeRuntime.players.some(player => player.id === 'mothership_closer_right');
+    }, 6000);
+
+    if (hostPlayer) {
+      hostPlayer.hp = 100;
+      hostPlayer.x = -160;
+      hostPlayer.y = 3000;
+    }
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'event' &&
+          message.payload.event === 'player-eliminated' &&
+          message.payload.data.victimNickname === 'Host Pilot' &&
+          message.payload.data.attackerNickname === 'Arena Closer' &&
+          message.payload.data.respawnDelaySeconds === 0,
+      ),
+      6000,
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 3200));
+
+    expect(
+      host.messages.some(
+        message =>
+          message.type === 'event' &&
+          message.payload.event === 'player-respawned' &&
+          message.payload.data.nickname === 'Host Pilot',
+      ),
+    ).toBe(false);
+  }, 14_000);
+
   it('quick joins a public FFA room and reuses it after a leave without ghost players', async () => {
     const app = createPolytankServer(3319);
     apps.push(app);

@@ -15098,7 +15098,7 @@ const POLYTANK_IO={
   breakoutCores:[],
   ctfFlags:[],
   ctfScores:{blue:0,red:0},
-  modeObjective:{dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:''},
+  modeObjective:{dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:'',mothershipEndgame:false,endgameSpectateId:''},
   waitingTransitionTimer:0,
   launchTransitionTimer:0,
   localPartyChannelName:'circle_alchemy_polytank_local_party_v1',
@@ -16630,7 +16630,7 @@ const POLYTANK_IO={
       const respawnDelay=Math.max(0,Number(data.respawnDelaySeconds)||0);
       if(victimId===this.localPartyServerPlayerId&&this.player){
         this.player.hp=0;
-        this.player.deadTimer=respawnDelay;
+        this.player.deadTimer=respawnDelay>0?respawnDelay:(this.mothershipEndgame?999999:0);
         this.player.lastHitId=attackerId;
       }
       this.announceServerEvent(`${victimNickname} was destroyed by ${attackerNickname}.`, '#ffb8bf');
@@ -16691,12 +16691,18 @@ const POLYTANK_IO={
     return true;
   },
   getServerSnapshotTeam(playerId,index){
-    const hostTeam=this.localPartyState?.settings?.hostTeam||'blue';
-    const fallbackHostTeam=this.teamStyles[hostTeam]?hostTeam:'blue';
-    const altTeam=fallbackHostTeam==='red'?'blue':'red';
-    if(playerId===this.localPartyServerPlayerId) return fallbackHostTeam;
-    if(playerId===this.localPartyState?.hostId) return fallbackHostTeam;
-    return index%2===1?altTeam:fallbackHostTeam;
+    const gameVariant=this.normalizeGameVariant(this.localPartyState?.settings?.gameVariant||'ffa');
+    const selectable=this.getSelectableTeamsForVariant(gameVariant).filter(team=>this.teamStyles[team]);
+    const hostTeam=String(this.localPartyState?.settings?.hostTeam||'blue');
+    const fallbackHostTeam=selectable.includes(hostTeam)?hostTeam:(selectable[0]||'blue');
+    const hostIndex=selectable.indexOf(fallbackHostTeam);
+    const orderedTeams=hostIndex<=0
+      ?selectable
+      :[...selectable.slice(hostIndex),...selectable.slice(0,hostIndex)];
+    const fallbackTeam=orderedTeams[0]||'blue';
+    if(playerId===this.localPartyServerPlayerId) return fallbackTeam;
+    if(playerId===this.localPartyState?.hostId) return fallbackTeam;
+    return orderedTeams[index%Math.max(1,orderedTeams.length)]||fallbackTeam;
   },
   applyServerSnapshot(payload){
     if(!payload||typeof payload!=='object') return;
@@ -16766,11 +16772,24 @@ const POLYTANK_IO={
       tank.bodyColor=style.body;
       tank.barrelColor=style.barrel;
       tank.bulletColor=style.bullet;
+      tank.isWipeCloser=tank.id==='mothership_closer_left'||tank.id==='mothership_closer_right';
+      if(tank.isWipeCloser){
+        tank.specialRole='arenaCloser';
+        tank.bodyColor='#ffe777';
+        tank.barrelColor='#fff1b3';
+        tank.bulletColor='#ffe777';
+      }else if(String(tank.id||'').startsWith('mothership_minion_')){
+        tank.specialRole='mothershipAssault';
+      }else if(tank.specialRole==='arenaCloser'||tank.specialRole==='mothershipAssault'){
+        tank.specialRole='';
+        tank.isWipeCloser=false;
+      }
       if(isSelf){
         selfFound=true;
         this.player=tank;
         this.playerName=tank.displayName;
         if(tank.hp>0&&tank.deadTimer>0) tank.deadTimer=0;
+        if(tank.hp<=0&&tank.deadTimer<=0) tank.deadTimer=this.mothershipEndgame?999999:2.5;
       } else {
         nextBots.push(tank);
       }
@@ -16820,6 +16839,127 @@ const POLYTANK_IO={
         hitFading:false,
       };
     });
+    const currentDominators=new Map((this.dominators||[]).map(dominator=>[dominator.id,dominator]));
+    const dominators=Array.isArray(payload.dominators)?payload.dominators:[];
+    this.dominators=dominators.map((entry,index)=>{
+      if(!entry||typeof entry!=='object') return null;
+      let dominator=currentDominators.get(String(entry.id||''));
+      if(!dominator){
+        dominator=this.createDominator({
+          id:String(entry.side||`snapshot_dominator_${index}`),
+          kind:String(entry.kind||'gun'),
+          label:String(entry.label||'Dominator'),
+          x:Number(entry.x)||this.world.midX,
+          y:Number(entry.y)||this.world.midY,
+        });
+      }
+      dominator.id=String(entry.id||dominator.id||`snapshot_dominator_${index}`);
+      dominator.side=String(entry.side||dominator.side||'dominator');
+      dominator.kind=String(entry.kind||dominator.kind||'gun');
+      dominator.label=String(entry.label||dominator.label||'Dominator');
+      dominator.team=String(entry.team||dominator.team||'neutral');
+      dominator.x=Number(entry.x)||0;
+      dominator.y=Number(entry.y)||0;
+      dominator.r=Math.max(1,Number(entry.radius)||dominator.r||198);
+      dominator.hp=Math.max(0,Number(entry.hp)||0);
+      dominator.maxHp=Math.max(1,Number(entry.maxHp)||dominator.maxHp||1);
+      dominator.barTimer=Math.max(0,Number(dominator.barTimer)||0);
+      dominator.shotTimer=Math.max(0,Number(dominator.shotTimer)||0);
+      dominator.damageFlash=Math.max(0,Number(dominator.damageFlash)||0);
+      dominator.controlledBy='ai';
+      this.applyDominatorStyle(dominator);
+      return dominator;
+    }).filter(Boolean);
+    const breakoutCores=Array.isArray(payload.breakoutCores)?payload.breakoutCores:[];
+    this.breakoutCores=breakoutCores.map(entry=>({
+      team:String(entry?.team||'blue'),
+      x:Number(entry?.x)||0,
+      y:Number(entry?.y)||0,
+      hp:Math.max(0,Number(entry?.hp)||0),
+      maxHp:Math.max(1,Number(entry?.maxHp)||1),
+      r:Math.max(1,Number(entry?.radius)||92),
+      barTimer:0,
+    }));
+    const mazeWalls=Array.isArray(payload.mazeWalls)?payload.mazeWalls:[];
+    this.mazeWalls=mazeWalls.map(entry=>({
+      x:Number(entry?.x)||0,
+      y:Number(entry?.y)||0,
+      w:Math.max(0,Number(entry?.w)||0),
+      h:Math.max(0,Number(entry?.h)||0),
+    }));
+    this.cageWall=payload.cageWall&&typeof payload.cageWall==='object'
+      ? {
+          id:String(payload.cageWall.id||'mothership_cage_wall'),
+          x1:Number(payload.cageWall.x1)||0,
+          x2:Number(payload.cageWall.x2)||0,
+          y:Number(payload.cageWall.y)||0,
+          topY:Number(payload.cageWall.topY)||0,
+          thickness:Math.max(0,Number(payload.cageWall.thickness)||0),
+          hp:Math.max(0,Number(payload.cageWall.hp)||0),
+          maxHp:Math.max(1,Number(payload.cageWall.maxHp)||1),
+          barTimer:0,
+          released:!!payload.cageWall.released,
+        }
+      : null;
+    this.enemyMothership=payload.enemyMothership&&typeof payload.enemyMothership==='object'
+      ? {
+          ...(this.enemyMothership||{}),
+          id:String(payload.enemyMothership.id||'encounter_mothership'),
+          label:String(payload.enemyMothership.label||'Mothership'),
+          team:String(payload.enemyMothership.team||'red'),
+          x:Number(payload.enemyMothership.x)||this.world.midX,
+          y:Number(payload.enemyMothership.y)||0,
+          r:Math.max(1,Number(payload.enemyMothership.radius)||1360),
+          renderScale:Number(payload.enemyMothership.renderScale)||0.415,
+          hp:Math.max(0,Number(payload.enemyMothership.hp)||0),
+          maxHp:Math.max(1,Number(payload.enemyMothership.maxHp)||1),
+          aimAngle:Number(payload.enemyMothership.aimAngle)||0,
+          released:!!payload.enemyMothership.released,
+          releaseProgress:Math.max(0,Number(payload.enemyMothership.releaseProgress)||0),
+          releaseStartX:Number(payload.enemyMothership.releaseStartX)||this.world.midX,
+          releaseStartY:Number(payload.enemyMothership.releaseStartY)||0,
+          releaseTargetX:Number(payload.enemyMothership.releaseTargetX)||this.world.midX,
+          releaseTargetY:Number(payload.enemyMothership.releaseTargetY)||0,
+          barTimer:Math.max(0,Number(payload.enemyMothership.barTimer)||0),
+          spinAngle:Number(payload.enemyMothership.spinAngle)||0,
+          bodyColor:String(payload.enemyMothership.bodyColor||'#7f858d'),
+          barrelColor:String(payload.enemyMothership.barrelColor||'#b8bec6'),
+          bulletColor:String(payload.enemyMothership.bulletColor||'#d5d9de'),
+          laserWindup:Math.max(0,Number(payload.enemyMothership.laserWindup)||0),
+          laserActive:Math.max(0,Number(payload.enemyMothership.laserActive)||0),
+          laserAngle:Number(payload.enemyMothership.laserAngle)||0,
+          laserWidth:Math.max(0,Number(payload.enemyMothership.laserWidth)||92),
+          laserRange:Math.max(0,Number(payload.enemyMothership.laserRange)||3600),
+        }
+      : null;
+    const ctfFlags=Array.isArray(payload.ctfFlags)?payload.ctfFlags:[];
+    this.ctfFlags=ctfFlags.map((entry,index)=>({
+      team:String(entry?.team||'blue'),
+      x:Number(entry?.x)||0,
+      y:Number(entry?.y)||0,
+      homeX:Number(entry?.homeX)||0,
+      homeY:Number(entry?.homeY)||0,
+      carrierId:String(entry?.carrierId||''),
+      atBase:entry?.atBase!==false,
+      returnTimer:Math.max(0,Number(entry?.returnTimer)||0),
+      id:`snapshot_flag_${index}`,
+    }));
+    const objective=payload.objective&&typeof payload.objective==='object'?payload.objective:null;
+    this.modeObjective={
+      dominationTeam:String(objective?.dominationTeam||''),
+      dominationHold:Math.max(0,Number(objective?.dominationHold)||0),
+      dominationLocked:!!objective?.dominationLocked,
+      breakoutWinner:String(objective?.breakoutWinner||''),
+      ctfWinner:String(objective?.ctfWinner||''),
+      mothershipEndgame:!!objective?.mothershipEndgame,
+      endgameSpectateId:String(objective?.endgameSpectateId||''),
+    };
+    this.ctfScores={
+      blue:Math.max(0,Math.round(Number(objective?.ctfScores?.blue)||0)),
+      red:Math.max(0,Math.round(Number(objective?.ctfScores?.red)||0)),
+    };
+    this.mothershipEndgame=!!objective?.mothershipEndgame;
+    this.endgameSpectateId=String(objective?.endgameSpectateId||'');
     this.matchClock=Math.max(this.matchClock,Math.max(0,Number(payload.tick)||0)/15);
     this.networkSnapshotTick=Math.max(this.networkSnapshotTick,Math.floor(Number(payload.tick)||0));
     this.networkSnapshotReceivedAt=performance.now();
@@ -17621,7 +17761,7 @@ const POLYTANK_IO={
     ];
   },
   setupModeObjectives(){
-    this.modeObjective={dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:''};
+    this.modeObjective={dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:'',mothershipEndgame:false,endgameSpectateId:''};
     this.mazeWalls=this.isMazeMode()?this.createMazeWalls():[];
     this.breakoutCores=[];
     this.ctfFlags=[];
@@ -17640,7 +17780,7 @@ const POLYTANK_IO={
     }
   },
   updateModeObjectives(dt){
-    if(this.isDominationMode()&&this.dominators.length>=2){
+    if(this.isDominationMode()&&this.dominators.length>=2&&!this.networkRoomActive){
       const teams=this.dominators.map(entry=>entry.team);
       const heldTeam=teams.every(team=>team===teams[0])&&teams[0]!=='neutral'?teams[0]:'';
       if(heldTeam&&heldTeam===this.modeObjective.dominationTeam){
@@ -17659,7 +17799,7 @@ const POLYTANK_IO={
     if(this.isBreakoutMode()&&this.breakoutCores.length===2){
       for(const core of this.breakoutCores) core.barTimer=Math.max(0,(core.barTimer||0)-dt);
     }
-    if(this.isCtfMode()&&this.ctfFlags.length===2){
+    if(this.isCtfMode()&&this.ctfFlags.length===2&&!this.networkRoomActive){
       const tanks=this.livingTanks();
       for(const flag of this.ctfFlags){
         if(flag.carrierId){
@@ -21228,7 +21368,7 @@ const POLYTANK_IO={
     tank.y=this.clamp(tank.y,tank.r,this.world.h-tank.r);
   },
   bulletHitsMazeWall(bullet){
-    if(!bullet||!this.isMazeMode()||!this.mazeWalls.length) return false;
+    if(!bullet||!this.isMazeMode()||!this.mazeWalls.length||this.networkRoomActive) return false;
     for(const wall of this.mazeWalls){
       const nearestX=this.clamp(bullet.x,wall.x,wall.x+wall.w);
       const nearestY=this.clamp(bullet.y,wall.y,wall.y+wall.h);
@@ -21268,6 +21408,7 @@ const POLYTANK_IO={
     return !!owner&&(owner.specialRole==='mothership'||this.isArenaCloserLike(owner));
   },
   damageCageWall(amount,ownerId,ownerTeam){
+    if(this.networkRoomActive) return false;
     if(!this.cageWall||this.cageWall.released||amount<=0||!this.canDamageCageWall(ownerId,ownerTeam)) return false;
     this.cageWall.hp=Math.max(0,this.cageWall.hp-amount);
     this.cageWall.barTimer=2.8;
@@ -21442,6 +21583,7 @@ const POLYTANK_IO={
     }
   },
   updateMothershipEncounter(dt){
+    if(this.networkRoomActive) return;
     if(!this.isMothershipMode()||!this.enemyMothership||this.enemyMothership.hp<=0) return;
     const mothership=this.enemyMothership;
     mothership.barTimer=Math.max(0,(mothership.barTimer||0)-dt);
@@ -22313,7 +22455,7 @@ const POLYTANK_IO={
         this.startBulletHitFade(bullet);
         continue;
       }
-      if(this.isBreakoutMode()&&this.breakoutCores.length){
+      if(this.isBreakoutMode()&&this.breakoutCores.length&&!this.networkRoomActive){
         let hitCore=false;
         for(const core of this.breakoutCores){
           if(core.team===bullet.ownerTeam||core.hp<=0) continue;

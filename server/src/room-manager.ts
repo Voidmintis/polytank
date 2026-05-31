@@ -3,12 +3,19 @@ import {
   PROTOCOL_VERSION,
   type EventMessage,
   type MatchStartMessage,
+  type WorldBreakoutCoreState,
+  type WorldCtfFlagState,
+  type WorldMothershipCageState,
+  type WorldMothershipState,
+  type WorldMazeWallState,
   type RoomAccess,
   type RoomRosterEntry,
   type RoomSettings,
   type RoomStateMessage,
   type SnapshotMessage,
   type ServerMessage,
+  type WorldDominatorState,
+  type WorldObjectiveState,
   type WorldProjectileState,
   type WorldShapeState,
 } from '../../src/shared/protocol.js';
@@ -61,6 +68,13 @@ interface ActiveRoomRuntime {
   inputs: Map<string, InputPayload>;
   fireCooldowns: Map<string, number>;
   respawnTimers: Map<string, number>;
+  dominators: ActiveDominator[];
+  breakoutCores: ActiveBreakoutCore[];
+  mazeWalls: ActiveMazeWall[];
+  cageWall: ActiveMothershipCageWall | null;
+  enemyMothership: ActiveMothership | null;
+  ctfFlags: ActiveCtfFlag[];
+  objective: WorldObjectiveState;
   shapes: ActiveShape[];
   projectiles: ActiveProjectile[];
   projectileSequence: number;
@@ -95,6 +109,102 @@ interface ActiveProjectile {
   ownerTeam: string;
   life: number;
   damage: number;
+  homingTurn?: number;
+  homingTargetTeam?: string;
+}
+
+interface ActiveDominator {
+  id: string;
+  side: string;
+  kind: 'gun' | 'destroyer' | 'trapper';
+  label: string;
+  team: string;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+}
+
+interface ActiveCtfFlag {
+  team: string;
+  x: number;
+  y: number;
+  homeX: number;
+  homeY: number;
+  carrierId: string;
+  atBase: boolean;
+  returnTimer: number;
+}
+
+interface ActiveBreakoutCore {
+  team: string;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  radius: number;
+}
+
+interface ActiveMazeWall {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface ActiveMothershipCageWall {
+  id: string;
+  x1: number;
+  x2: number;
+  y: number;
+  topY: number;
+  thickness: number;
+  hp: number;
+  maxHp: number;
+  released: boolean;
+}
+
+interface ActiveMothership {
+  id: string;
+  label: string;
+  team: string;
+  x: number;
+  y: number;
+  radius: number;
+  renderScale: number;
+  hp: number;
+  maxHp: number;
+  aimAngle: number;
+  released: boolean;
+  releaseProgress: number;
+  releaseStartX: number;
+  releaseStartY: number;
+  releaseTargetX: number;
+  releaseTargetY: number;
+  barTimer: number;
+  spinAngle: number;
+  bodyColor: string;
+  barrelColor: string;
+  bulletColor: string;
+  cagedBodyColor: string;
+  cagedBarrelColor: string;
+  cagedBulletColor: string;
+  targetBodyColor: string;
+  targetBarrelColor: string;
+  targetBulletColor: string;
+  entryDrift: number;
+  shotTimer: number;
+  homingTimer: number;
+  summonTimer: number;
+  laserCooldown: number;
+  laserWindup: number;
+  laserActive: number;
+  laserAngle: number;
+  laserTurnRate: number;
+  laserTick: number;
+  laserWidth: number;
+  laserRange: number;
 }
 
 interface RoomActionResult {
@@ -115,8 +225,24 @@ const UPGRADE_MAX_LEVEL = 10;
 const BOT_TARGET_PLAYERS = 6;
 const PREFERRED_PUBLIC_ROOM_MEMBERS = BOT_TARGET_PLAYERS;
 const FFA_TEAM_COLORS = ['blue', 'red', 'green', 'purple', 'yellow'] as const;
+const FOUR_TEAM_COLORS = ['blue', 'red', 'green', 'purple'] as const;
 const BOT_NAME_PREFIXES = ['Nova', 'Cipher', 'Vector', 'Pulse', 'Drift', 'Ion', 'Shard', 'Orbit'] as const;
 const BOT_NAME_SUFFIXES = ['Wing', 'Core', 'Bolt', 'Trace', 'Flux', 'Drive', 'Hex', 'Ray'] as const;
+const MOTHERSHIP_MINION_ID_PREFIX = 'mothership_minion_';
+const MOTHERSHIP_CLOSER_LEFT_ID = 'mothership_closer_left';
+const MOTHERSHIP_CLOSER_RIGHT_ID = 'mothership_closer_right';
+const CANONICAL_GAME_VARIANTS = new Set([
+  'ffa',
+  '2teams',
+  '4teams',
+  'maze',
+  'sandbox',
+  'domination',
+  'tag',
+  'breakout',
+  'ctf',
+  'mothership',
+]);
 
 type UpgradeKey = keyof PlayerUpgradeState;
 
@@ -214,6 +340,14 @@ const SHAPE_DEFS = {
   pentagon: { radius: 31, hp: 120, xp: 24, color: '#7f94f4', sides: 5 },
 } as const;
 
+const DOMINATOR_DEFS = {
+  gun: { maxHp: 224000, radius: 198 },
+  destroyer: { maxHp: 250000, radius: 206 },
+  trapper: { maxHp: 230000, radius: 198 },
+} as const;
+
+const VALID_CAPTURE_TEAMS = new Set(['blue', 'red', 'green', 'purple', 'yellow']);
+
 export class RoomManager {
   private readonly roomsById = new Map<string, Room>();
   private readonly roomIdByCode = new Map<string, string>();
@@ -221,13 +355,53 @@ export class RoomManager {
 
   constructor(private readonly now: () => number) {}
 
+  private normalizeGameVariant(value: string): string {
+    const key = String(value || '').trim().toLowerCase();
+    if (key === 'standard') {
+      return '2teams';
+    }
+    return CANONICAL_GAME_VARIANTS.has(key) ? key : 'ffa';
+  }
+
+  private getSelectableTeamsForVariant(gameVariant: string): readonly string[] {
+    if (gameVariant === '4teams') {
+      return FOUR_TEAM_COLORS;
+    }
+    if (gameVariant === 'ffa' || gameVariant === 'sandbox' || gameVariant === 'mothership') {
+      return ['blue'];
+    }
+    return ['blue', 'red'];
+  }
+
+  private getOrderedTeamsForRoom(room: Room): readonly string[] {
+    const selectableTeams = this.getSelectableTeamsForVariant(room.settings.gameVariant);
+    const hostTeamIndex = selectableTeams.indexOf(room.settings.hostTeam);
+    if (hostTeamIndex <= 0) {
+      return selectableTeams;
+    }
+    return [...selectableTeams.slice(hostTeamIndex), ...selectableTeams.slice(0, hostTeamIndex)];
+  }
+
+  private normalizeRoomSettings(settings: RoomSettings): RoomSettings {
+    const gameVariant = this.normalizeGameVariant(settings.gameVariant);
+    const selectableTeams = this.getSelectableTeamsForVariant(gameVariant);
+    const fallbackTeam = selectableTeams[0] || 'blue';
+    const hostTeam = selectableTeams.includes(settings.hostTeam) ? settings.hostTeam : fallbackTeam;
+
+    return {
+      gameVariant,
+      aiEnabled: settings.aiEnabled !== false,
+      hostTeam,
+    };
+  }
+
   private createRoomRecord(access: RoomAccess, settings: RoomSettings): Room {
     return {
       id: crypto.randomUUID(),
       code: this.generateRoomCode(),
       access,
       status: 'lobby',
-      settings: { ...settings },
+      settings: this.normalizeRoomSettings(settings),
       members: [],
       createdAt: this.now(),
     };
@@ -312,7 +486,7 @@ export class RoomManager {
       return { error: { code: 'ROOM_NOT_CONFIGURABLE', message: 'Room settings can no longer be changed.' } };
     }
 
-    room.settings = { ...settings };
+    room.settings = this.normalizeRoomSettings(settings);
     return { room };
   }
 
@@ -546,6 +720,86 @@ export class RoomManager {
           sides: shape.sides,
           rotation: shape.rotation,
         })),
+        dominators: runtime.dominators.map<WorldDominatorState>(dominator => ({
+          id: dominator.id,
+          side: dominator.side,
+          kind: dominator.kind,
+          label: dominator.label,
+          team: dominator.team,
+          x: dominator.x,
+          y: dominator.y,
+          radius: dominator.radius,
+          hp: dominator.hp,
+          maxHp: dominator.maxHp,
+        })),
+        breakoutCores: runtime.breakoutCores.map<WorldBreakoutCoreState>(core => ({
+          team: core.team,
+          x: core.x,
+          y: core.y,
+          hp: core.hp,
+          maxHp: core.maxHp,
+          radius: core.radius,
+        })),
+        mazeWalls: runtime.mazeWalls.map<WorldMazeWallState>(wall => ({
+          x: wall.x,
+          y: wall.y,
+          w: wall.w,
+          h: wall.h,
+        })),
+        cageWall: runtime.cageWall
+          ? {
+              id: runtime.cageWall.id,
+              x1: runtime.cageWall.x1,
+              x2: runtime.cageWall.x2,
+              y: runtime.cageWall.y,
+              topY: runtime.cageWall.topY,
+              thickness: runtime.cageWall.thickness,
+              hp: runtime.cageWall.hp,
+              maxHp: runtime.cageWall.maxHp,
+              released: runtime.cageWall.released,
+            }
+          : null,
+        enemyMothership: runtime.enemyMothership
+          ? {
+              id: runtime.enemyMothership.id,
+              label: runtime.enemyMothership.label,
+              team: runtime.enemyMothership.team,
+              x: runtime.enemyMothership.x,
+              y: runtime.enemyMothership.y,
+              radius: runtime.enemyMothership.radius,
+              renderScale: runtime.enemyMothership.renderScale,
+              hp: runtime.enemyMothership.hp,
+              maxHp: runtime.enemyMothership.maxHp,
+              aimAngle: runtime.enemyMothership.aimAngle,
+              released: runtime.enemyMothership.released,
+              releaseProgress: runtime.enemyMothership.releaseProgress,
+              releaseStartX: runtime.enemyMothership.releaseStartX,
+              releaseStartY: runtime.enemyMothership.releaseStartY,
+              releaseTargetX: runtime.enemyMothership.releaseTargetX,
+              releaseTargetY: runtime.enemyMothership.releaseTargetY,
+              barTimer: runtime.enemyMothership.barTimer,
+              spinAngle: runtime.enemyMothership.spinAngle,
+              bodyColor: runtime.enemyMothership.bodyColor,
+              barrelColor: runtime.enemyMothership.barrelColor,
+              bulletColor: runtime.enemyMothership.bulletColor,
+              laserWindup: runtime.enemyMothership.laserWindup,
+              laserActive: runtime.enemyMothership.laserActive,
+              laserAngle: runtime.enemyMothership.laserAngle,
+              laserWidth: runtime.enemyMothership.laserWidth,
+              laserRange: runtime.enemyMothership.laserRange,
+            }
+          : null,
+        ctfFlags: runtime.ctfFlags.map<WorldCtfFlagState>(flag => ({
+          team: flag.team,
+          x: flag.x,
+          y: flag.y,
+          homeX: flag.homeX,
+          homeY: flag.homeY,
+          carrierId: flag.carrierId,
+          atBase: flag.atBase,
+          returnTimer: flag.returnTimer,
+        })),
+        objective: { ...runtime.objective, ctfScores: { ...runtime.objective.ctfScores } },
       },
     };
   }
@@ -688,6 +942,13 @@ export class RoomManager {
       inputs: new Map(),
       fireCooldowns: new Map(),
       respawnTimers: new Map(),
+      dominators: this.createInitialDominators(room),
+      breakoutCores: this.createInitialBreakoutCores(room),
+      mazeWalls: this.createInitialMazeWalls(room),
+      cageWall: this.createInitialMothershipCageWall(room),
+      enemyMothership: this.createInitialEncounterMothership(room),
+      ctfFlags: this.createInitialCtfFlags(room),
+      objective: this.createInitialObjectiveState(),
       shapes: [],
       projectiles: [],
       projectileSequence: 0,
@@ -734,15 +995,34 @@ export class RoomManager {
     const respawnDelaySeconds = 2.5;
 
     this.updateBotInputs(room, runtime);
+    this.updateObjectiveState(room, runtime, dt);
+    this.updateMothershipEncounterState(runtime, dt);
+    this.updateMothershipEndgameState(room, runtime, dt);
     this.maintainShapePopulation(runtime);
 
     for (const shape of runtime.shapes) {
       shape.rotation += shape.spin * dt;
     }
 
+    const removedPlayerIds = new Set<string>();
     for (const player of runtime.players) {
       const respawnTimer = runtime.respawnTimers.get(player.id) ?? 0;
       if (player.hp <= 0) {
+        if (this.shouldRemoveDefeatedPlayer(player)) {
+          removedPlayerIds.add(player.id);
+          runtime.inputs.delete(player.id);
+          runtime.fireCooldowns.delete(player.id);
+          runtime.respawnTimers.delete(player.id);
+          continue;
+        }
+
+        if (runtime.objective.mothershipEndgame) {
+          runtime.inputs.delete(player.id);
+          runtime.fireCooldowns.set(player.id, 0);
+          runtime.respawnTimers.delete(player.id);
+          continue;
+        }
+
         if (respawnTimer > 0) {
           const nextRespawnTimer = Math.max(0, respawnTimer - dt);
           runtime.respawnTimers.set(player.id, nextRespawnTimer);
@@ -781,6 +1061,8 @@ export class RoomManager {
       const velocityY = input.moveY * moveScale * player.moveSpeed;
       player.x = this.clamp(player.x + velocityX * dt, 24, WORLD_WIDTH - 24);
       player.y = this.clamp(player.y + velocityY * dt, 24, WORLD_HEIGHT - 24);
+      this.resolveMazeTankCollisions(player, runtime.mazeWalls);
+      this.resolveMothershipCageCollision(player, runtime.cageWall);
       player.angle = input.aimAngle;
 
       if (input.firing && nextCooldown <= 0) {
@@ -803,6 +1085,7 @@ export class RoomManager {
 
     for (let index = runtime.projectiles.length - 1; index >= 0; index -= 1) {
       const projectile = runtime.projectiles[index];
+      this.updateHomingProjectile(runtime, projectile, dt);
       projectile.x += Math.cos(projectile.angle) * projectile.speed * dt;
       projectile.y += Math.sin(projectile.angle) * projectile.speed * dt;
       projectile.life -= dt;
@@ -835,9 +1118,70 @@ export class RoomManager {
         continue;
       }
 
+      let hitDominator = false;
+      for (const dominator of runtime.dominators) {
+        if (this.isFriendlyDominatorTarget(projectile.ownerTeam, dominator.team)) {
+          continue;
+        }
+        if (Math.hypot(projectile.x - dominator.x, projectile.y - dominator.y) > projectile.radius + dominator.radius) {
+          continue;
+        }
+
+        this.damageDominator(room, runtime, dominator, projectile.ownerId, projectile.ownerTeam, projectile.damage);
+        runtime.projectiles.splice(index, 1);
+        hitDominator = true;
+        break;
+      }
+
+      if (hitDominator) {
+        continue;
+      }
+
+      let hitBreakoutCore = false;
+      for (const core of runtime.breakoutCores) {
+        if (core.team === projectile.ownerTeam || core.hp <= 0) {
+          continue;
+        }
+        if (Math.hypot(projectile.x - core.x, projectile.y - core.y) > projectile.radius + core.radius) {
+          continue;
+        }
+
+        core.hp = Math.max(0, core.hp - projectile.damage * 1.4);
+        if (core.hp <= 0) {
+          runtime.objective.breakoutWinner = core.team === 'blue' ? 'red' : 'blue';
+        }
+        runtime.projectiles.splice(index, 1);
+        hitBreakoutCore = true;
+        break;
+      }
+
+      if (hitBreakoutCore) {
+        continue;
+      }
+
+      if (this.projectileHitsMazeWall(projectile, runtime.mazeWalls)) {
+        runtime.projectiles.splice(index, 1);
+        continue;
+      }
+
+      if (this.projectileHitsMothershipCage(projectile, runtime.cageWall)) {
+        this.damageMothershipCage(runtime, projectile.ownerId, projectile.ownerTeam, projectile.damage);
+        runtime.projectiles.splice(index, 1);
+        continue;
+      }
+
+      if (this.projectileHitsEncounterMothership(projectile, runtime.enemyMothership)) {
+        this.damageEncounterMothership(runtime, projectile.ownerId, projectile.ownerTeam, projectile.damage);
+        runtime.projectiles.splice(index, 1);
+        continue;
+      }
+
       let hitPlayer = false;
       for (const player of runtime.players) {
         if (player.id === projectile.ownerId || player.hp <= 0) {
+          continue;
+        }
+        if (this.isWipeCloserId(player.id)) {
           continue;
         }
         if (this.isFriendlyTarget(room, projectile.ownerId, player.id, runtime)) {
@@ -849,8 +1193,14 @@ export class RoomManager {
 
         player.hp = Math.max(0, player.hp - projectile.damage);
         if (player.hp <= 0) {
-          runtime.respawnTimers.set(player.id, respawnDelaySeconds);
+          const respawnDelayForKill = runtime.objective.mothershipEndgame ? 0 : respawnDelaySeconds;
+          if (respawnDelayForKill > 0) {
+            runtime.respawnTimers.set(player.id, respawnDelayForKill);
+          } else {
+            runtime.respawnTimers.delete(player.id);
+          }
           const owner = runtime.players.find(entry => entry.id === projectile.ownerId);
+          this.applyTagEliminationConversion(room, owner, player);
           if (owner) {
             owner.score += 1;
           }
@@ -861,7 +1211,7 @@ export class RoomManager {
               victimNickname: player.nickname,
               attackerId: projectile.ownerId,
               attackerNickname: owner?.nickname || 'Pilot',
-              respawnDelaySeconds,
+              respawnDelaySeconds: respawnDelayForKill,
             }),
           );
         }
@@ -883,6 +1233,10 @@ export class RoomManager {
       ) {
         runtime.projectiles.splice(index, 1);
       }
+    }
+
+    if (removedPlayerIds.size > 0) {
+      runtime.players = runtime.players.filter(player => !removedPlayerIds.has(player.id));
     }
   }
 
@@ -917,6 +1271,875 @@ export class RoomManager {
     runtime.inputs.delete(playerId);
     runtime.fireCooldowns.delete(playerId);
     runtime.respawnTimers.delete(playerId);
+  }
+
+  private createInitialObjectiveState(): WorldObjectiveState {
+    return {
+      dominationTeam: '',
+      dominationHold: 0,
+      dominationLocked: false,
+      breakoutWinner: '',
+      ctfWinner: '',
+      mothershipEndgame: false,
+      endgameSpectateId: '',
+      ctfScores: {
+        blue: 0,
+        red: 0,
+      },
+    };
+  }
+
+  private createInitialDominators(room: Room): ActiveDominator[] {
+    if (room.settings.gameVariant !== 'domination') {
+      return [];
+    }
+
+    const offsetX = Math.min(1300, Math.max(920, WORLD_WIDTH * 0.14));
+    const offsetY = Math.min(900, Math.max(620, WORLD_HEIGHT * 0.16));
+    const configs = [
+      { side: 'north-west', x: WORLD_WIDTH * 0.5 - offsetX, y: WORLD_HEIGHT * 0.5 - offsetY, kind: 'gun', label: 'Northwest Gun Dominator' },
+      { side: 'north-east', x: WORLD_WIDTH * 0.5 + offsetX, y: WORLD_HEIGHT * 0.5 - offsetY, kind: 'destroyer', label: 'Northeast Destroyer Dominator' },
+      { side: 'south-west', x: WORLD_WIDTH * 0.5 - offsetX, y: WORLD_HEIGHT * 0.5 + offsetY, kind: 'trapper', label: 'Southwest Trapper Dominator' },
+      { side: 'south-east', x: WORLD_WIDTH * 0.5 + offsetX, y: WORLD_HEIGHT * 0.5 + offsetY, kind: 'gun', label: 'Southeast Gun Dominator' },
+    ] as const;
+
+    return configs.map(config => ({
+      id: `dominator_${config.side}`,
+      side: config.side,
+      kind: config.kind,
+      label: config.label,
+      team: 'neutral',
+      x: config.x,
+      y: config.y,
+      radius: DOMINATOR_DEFS[config.kind].radius,
+      hp: DOMINATOR_DEFS[config.kind].maxHp,
+      maxHp: DOMINATOR_DEFS[config.kind].maxHp,
+    }));
+  }
+
+  private createInitialCtfFlags(room: Room): ActiveCtfFlag[] {
+    if (room.settings.gameVariant !== 'ctf') {
+      return [];
+    }
+
+    return [
+      {
+        team: 'blue',
+        x: 300,
+        y: WORLD_HEIGHT / 2,
+        homeX: 300,
+        homeY: WORLD_HEIGHT / 2,
+        carrierId: '',
+        atBase: true,
+        returnTimer: 0,
+      },
+      {
+        team: 'red',
+        x: WORLD_WIDTH - 300,
+        y: WORLD_HEIGHT / 2,
+        homeX: WORLD_WIDTH - 300,
+        homeY: WORLD_HEIGHT / 2,
+        carrierId: '',
+        atBase: true,
+        returnTimer: 0,
+      },
+    ];
+  }
+
+  private createInitialBreakoutCores(room: Room): ActiveBreakoutCore[] {
+    if (room.settings.gameVariant !== 'breakout') {
+      return [];
+    }
+
+    return [
+      {
+        team: 'blue',
+        x: 230,
+        y: WORLD_HEIGHT / 2,
+        hp: 16000,
+        maxHp: 16000,
+        radius: 92,
+      },
+      {
+        team: 'red',
+        x: WORLD_WIDTH - 230,
+        y: WORLD_HEIGHT / 2,
+        hp: 16000,
+        maxHp: 16000,
+        radius: 92,
+      },
+    ];
+  }
+
+  private createInitialMazeWalls(room: Room): ActiveMazeWall[] {
+    if (room.settings.gameVariant !== 'maze') {
+      return [];
+    }
+
+    const halfW = 260;
+    const halfH = 220;
+    return [
+      { x: WORLD_WIDTH * 0.5 - 1200, y: WORLD_HEIGHT * 0.5 - halfH, w: 1900, h: 110 },
+      { x: WORLD_WIDTH * 0.5 - 760, y: WORLD_HEIGHT * 0.5 - 1100, w: 110, h: 1500 },
+      { x: WORLD_WIDTH * 0.5 + 360, y: WORLD_HEIGHT * 0.5 - 280, w: 1700, h: 110 },
+      { x: WORLD_WIDTH * 0.5 + 920, y: WORLD_HEIGHT * 0.5 - 420, w: 110, h: 1600 },
+      { x: WORLD_WIDTH * 0.5 - 1800, y: WORLD_HEIGHT * 0.5 + 620, w: 1600, h: 110 },
+      { x: WORLD_WIDTH * 0.5 - 120, y: WORLD_HEIGHT * 0.5 + 980, w: 1900, h: 110 },
+      { x: WORLD_WIDTH * 0.5 - halfW, y: WORLD_HEIGHT * 0.5 - halfH, w: halfW * 2, h: 95 },
+      { x: WORLD_WIDTH * 0.5 - halfW, y: WORLD_HEIGHT * 0.5 + halfH - 95, w: halfW * 2, h: 95 },
+      { x: WORLD_WIDTH * 0.5 - halfW, y: WORLD_HEIGHT * 0.5 - halfH, w: 95, h: halfH * 2 },
+      { x: WORLD_WIDTH * 0.5 + halfW - 95, y: WORLD_HEIGHT * 0.5 - halfH, w: 95, h: halfH * 2 },
+    ];
+  }
+
+  private createInitialMothershipCageWall(room: Room): ActiveMothershipCageWall | null {
+    if (room.settings.gameVariant !== 'mothership') {
+      return null;
+    }
+
+    const span = 1180;
+    return {
+      id: 'mothership_cage_wall',
+      x1: WORLD_WIDTH / 2 - span,
+      x2: WORLD_WIDTH / 2 + span,
+      y: 180,
+      topY: -780,
+      thickness: 140,
+      hp: 550000,
+      maxHp: 550000,
+      released: false,
+    };
+  }
+
+  private createInitialEncounterMothership(room: Room): ActiveMothership | null {
+    if (room.settings.gameVariant !== 'mothership') {
+      return null;
+    }
+
+    return {
+      id: 'encounter_mothership',
+      label: 'Mothership',
+      team: 'red',
+      x: WORLD_WIDTH / 2,
+      y: -320,
+      radius: 1360,
+      renderScale: 0.415,
+      hp: 1540000,
+      maxHp: 1540000,
+      aimAngle: Math.PI * 0.5,
+      released: false,
+      releaseProgress: 0,
+      releaseStartX: WORLD_WIDTH / 2,
+      releaseStartY: -320,
+      releaseTargetX: WORLD_WIDTH / 2,
+      releaseTargetY: 1120,
+      barTimer: 0,
+      spinAngle: 0,
+      bodyColor: '#7f858d',
+      barrelColor: '#b8bec6',
+      bulletColor: '#d5d9de',
+      cagedBodyColor: '#7f858d',
+      cagedBarrelColor: '#b8bec6',
+      cagedBulletColor: '#d5d9de',
+      targetBodyColor: '#d85872',
+      targetBarrelColor: '#ff97a9',
+      targetBulletColor: '#ffbbc8',
+      entryDrift: 0,
+      shotTimer: 1.5,
+      homingTimer: 0.7,
+      summonTimer: 4.8,
+      laserCooldown: 12,
+      laserWindup: 0,
+      laserActive: 0,
+      laserAngle: Math.PI * 0.5,
+      laserTurnRate: 0.56,
+      laserTick: 0,
+      laserWidth: 92,
+      laserRange: 3600,
+    };
+  }
+
+  private resolveMazeTankCollisions(player: PlayerState, mazeWalls: ActiveMazeWall[]): void {
+    if (!mazeWalls.length) {
+      return;
+    }
+
+    for (const wall of mazeWalls) {
+      const nearestX = this.clamp(player.x, wall.x, wall.x + wall.w);
+      const nearestY = this.clamp(player.y, wall.y, wall.y + wall.h);
+      const dx = player.x - nearestX;
+      const dy = player.y - nearestY;
+      const distanceSq = dx * dx + dy * dy;
+      const minDistance = 26;
+      if (distanceSq >= minDistance * minDistance) {
+        continue;
+      }
+
+      const distance = Math.sqrt(Math.max(distanceSq, 0.0001));
+      const push = minDistance - distance;
+      player.x += (dx / distance) * push;
+      player.y += (dy / distance) * push;
+    }
+
+    player.x = this.clamp(player.x, 24, WORLD_WIDTH - 24);
+    player.y = this.clamp(player.y, 24, WORLD_HEIGHT - 24);
+  }
+
+  private projectileHitsMazeWall(projectile: ActiveProjectile, mazeWalls: ActiveMazeWall[]): boolean {
+    if (!mazeWalls.length) {
+      return false;
+    }
+
+    for (const wall of mazeWalls) {
+      const nearestX = this.clamp(projectile.x, wall.x, wall.x + wall.w);
+      const nearestY = this.clamp(projectile.y, wall.y, wall.y + wall.h);
+      if (Math.hypot(projectile.x - nearestX, projectile.y - nearestY) < projectile.radius + 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private updateObjectiveState(room: Room, runtime: ActiveRoomRuntime, dt: number): void {
+    if (room.settings.gameVariant !== 'mothership') {
+      runtime.objective.mothershipEndgame = false;
+      runtime.objective.endgameSpectateId = '';
+    }
+
+    if (room.settings.gameVariant === 'domination') {
+      runtime.objective.breakoutWinner = '';
+      const teams = runtime.dominators.map(dominator => dominator.team);
+      const heldTeam = teams.length > 0 && teams.every(team => team === teams[0]) && teams[0] !== 'neutral' ? teams[0] : '';
+
+      runtime.objective.ctfWinner = '';
+      runtime.objective.ctfScores.blue = 0;
+      runtime.objective.ctfScores.red = 0;
+      if (heldTeam && heldTeam === runtime.objective.dominationTeam) {
+        runtime.objective.dominationHold = Math.min(12, runtime.objective.dominationHold + dt);
+        runtime.objective.dominationLocked = runtime.objective.dominationHold >= 12;
+        return;
+      }
+
+      runtime.objective.dominationTeam = heldTeam;
+      runtime.objective.dominationHold = 0;
+      runtime.objective.dominationLocked = false;
+      return;
+    }
+
+    runtime.objective.dominationTeam = '';
+    runtime.objective.dominationHold = 0;
+    runtime.objective.dominationLocked = false;
+    if (room.settings.gameVariant === 'mothership') {
+      runtime.objective.breakoutWinner = '';
+      runtime.objective.ctfWinner = '';
+      runtime.objective.ctfScores.blue = 0;
+      runtime.objective.ctfScores.red = 0;
+      return;
+    }
+    if (room.settings.gameVariant === 'breakout') {
+      runtime.objective.ctfWinner = '';
+      runtime.objective.ctfScores.blue = 0;
+      runtime.objective.ctfScores.red = 0;
+      return;
+    }
+    if (room.settings.gameVariant !== 'ctf') {
+      runtime.objective.breakoutWinner = '';
+      runtime.objective.ctfWinner = '';
+      runtime.objective.ctfScores.blue = 0;
+      runtime.objective.ctfScores.red = 0;
+      return;
+    }
+
+    runtime.objective.breakoutWinner = '';
+    this.updateCtfObjectiveState(runtime, dt);
+  }
+
+  private updateMothershipEncounterState(runtime: ActiveRoomRuntime, dt: number): void {
+    const mothership = runtime.enemyMothership;
+    const cageWall = runtime.cageWall;
+    if (!mothership || mothership.hp <= 0) {
+      return;
+    }
+
+    mothership.barTimer = Math.max(0, mothership.barTimer - dt);
+    mothership.shotTimer = Math.max(0, mothership.shotTimer - dt);
+    mothership.homingTimer = Math.max(0, mothership.homingTimer - dt);
+    mothership.summonTimer = Math.max(0, mothership.summonTimer - dt);
+    mothership.entryDrift += dt;
+    mothership.spinAngle += dt * 0.11;
+    if (!mothership.released) {
+      mothership.bodyColor = mothership.cagedBodyColor;
+      mothership.barrelColor = mothership.cagedBarrelColor;
+      mothership.bulletColor = mothership.cagedBulletColor;
+      mothership.x = WORLD_WIDTH / 2 + Math.sin(mothership.entryDrift * 0.32) * 140;
+      mothership.y = (cageWall ? cageWall.topY : -780) + 430 + Math.sin(mothership.entryDrift * 0.55) * 20;
+      const cagedTarget = this.getEncounterTarget(runtime, 'blue', mothership.x, mothership.y, 3400);
+      if (cagedTarget) {
+        mothership.aimAngle = Math.atan2(cagedTarget.y - mothership.y, cagedTarget.x - mothership.x);
+      }
+      return;
+    }
+
+    if (mothership.releaseProgress < 1) {
+      mothership.releaseProgress = Math.min(1, mothership.releaseProgress + dt / 5.4);
+      const colorBlend = this.clamp(mothership.releaseProgress / 0.42, 0, 1);
+      const moveBlend = this.clamp((mothership.releaseProgress - 0.16) / 0.84, 0, 1);
+      const easedMove = 1 - Math.pow(1 - moveBlend, 3);
+      mothership.bodyColor = this.blendHexColors(mothership.cagedBodyColor, mothership.targetBodyColor, colorBlend);
+      mothership.barrelColor = this.blendHexColors(mothership.cagedBarrelColor, mothership.targetBarrelColor, colorBlend);
+      mothership.bulletColor = this.blendHexColors(mothership.cagedBulletColor, mothership.targetBulletColor, colorBlend);
+      mothership.x = this.lerpValue(mothership.releaseStartX, mothership.releaseTargetX, easedMove) + Math.sin(runtime.tick * 0.048) * 110 * (1 - easedMove * 0.45);
+      mothership.y = this.lerpValue(mothership.releaseStartY, mothership.releaseTargetY, easedMove) + Math.sin(runtime.tick * 0.031) * 34 * (1 - easedMove * 0.35);
+      const breakoutTarget = this.getEncounterTarget(runtime, 'blue', mothership.x, mothership.y, 3600);
+      if (breakoutTarget) {
+        mothership.aimAngle = Math.atan2(breakoutTarget.y - mothership.y, breakoutTarget.x - mothership.x);
+      }
+      return;
+    }
+
+    const travelX = Math.min(1680, WORLD_WIDTH * 0.27);
+    mothership.x = this.clamp(WORLD_WIDTH / 2 + Math.sin(runtime.tick * 0.013) * travelX, 520, WORLD_WIDTH - 520);
+    mothership.y = this.clamp(1120 + Math.sin(runtime.tick * 0.021) * 180, 540, WORLD_HEIGHT * 0.55);
+    mothership.bodyColor = mothership.targetBodyColor;
+    mothership.barrelColor = mothership.targetBarrelColor;
+    mothership.bulletColor = mothership.targetBulletColor;
+    const target = this.getEncounterTarget(runtime, 'blue', mothership.x, mothership.y, 3600);
+    if (target) {
+      mothership.aimAngle = Math.atan2(target.y - mothership.y, target.x - mothership.x);
+    }
+    if (mothership.shotTimer <= 0) {
+      this.fireEncounterMothershipVolley(runtime, mothership, mothership.aimAngle);
+      mothership.shotTimer = 0.92;
+      mothership.barTimer = Math.max(mothership.barTimer, 1.2);
+    }
+
+    if (mothership.homingTimer <= 0) {
+      this.fireEncounterMothershipHoming(runtime, mothership, mothership.aimAngle);
+      mothership.homingTimer = 0.52;
+      mothership.barTimer = Math.max(mothership.barTimer, 0.9);
+    }
+
+    if (mothership.laserActive > 0) {
+      mothership.laserActive = Math.max(0, mothership.laserActive - dt);
+      mothership.laserAngle = (mothership.laserAngle || mothership.aimAngle) + mothership.laserTurnRate * dt;
+      mothership.laserTick = Math.max(0, mothership.laserTick - dt);
+      while (mothership.laserTick <= 0 && mothership.laserActive > 0) {
+        const renderRadius = mothership.radius * mothership.renderScale;
+        const startX = mothership.x + Math.cos(mothership.laserAngle) * (renderRadius - 12);
+        const startY = mothership.y + Math.sin(mothership.laserAngle) * (renderRadius - 12);
+        const endX = startX + Math.cos(mothership.laserAngle) * mothership.laserRange;
+        const endY = startY + Math.sin(mothership.laserAngle) * mothership.laserRange;
+        for (const player of runtime.players) {
+          if (player.team !== 'blue' || player.hp <= 0 || this.isWipeCloserId(player.id)) {
+            continue;
+          }
+          if (this.pointSegmentDistance(player.x, player.y, startX, startY, endX, endY) < 24 + mothership.laserWidth) {
+            player.hp = Math.max(0, player.hp - 75);
+          }
+        }
+        mothership.laserTick += 0.3;
+      }
+      mothership.barTimer = Math.max(mothership.barTimer, 1.1);
+      if (mothership.laserActive <= 0) {
+        mothership.laserCooldown = 18 + Math.random() * 8;
+      }
+    } else if (mothership.laserWindup > 0) {
+      mothership.laserWindup = Math.max(0, mothership.laserWindup - dt);
+      mothership.laserAngle = mothership.aimAngle;
+      mothership.barTimer = Math.max(mothership.barTimer, 0.8);
+      if (mothership.laserWindup <= 0) {
+        mothership.laserActive = 10;
+        mothership.laserTick = 0;
+        mothership.laserTurnRate = (Math.random() > 0.5 ? 1 : -1) * (0.34 + Math.random() * 0.18);
+      }
+    } else {
+      mothership.laserCooldown = Math.max(0, mothership.laserCooldown - dt);
+      if (mothership.laserCooldown <= 0) {
+        mothership.laserWindup = 1.6;
+        mothership.laserAngle = mothership.aimAngle;
+      }
+    }
+
+    const activeMinions = runtime.players.filter(player => this.isMothershipMinionId(player.id) && player.hp > 0).length;
+    if (mothership.summonTimer <= 0 && activeMinions < 10) {
+      this.spawnEncounterMothershipMinion(runtime, mothership);
+      mothership.summonTimer = 3.8 + Math.random() * 1.6;
+    }
+  }
+
+  private updateMothershipEndgameState(room: Room, runtime: ActiveRoomRuntime, dt: number): void {
+    if (!runtime.objective.mothershipEndgame) {
+      return;
+    }
+
+    for (const closer of runtime.players.filter(player => this.isWipeCloserId(player.id))) {
+      closer.hp = closer.maxHp;
+      closer.angle = closer.id === MOTHERSHIP_CLOSER_LEFT_ID ? 0 : Math.PI;
+      closer.x += (closer.id === MOTHERSHIP_CLOSER_LEFT_ID ? 1 : -1) * closer.moveSpeed * dt * 1.2;
+      closer.y = WORLD_HEIGHT * 0.5 + Math.sin(runtime.tick * 0.045 + (closer.id === MOTHERSHIP_CLOSER_LEFT_ID ? 0 : Math.PI)) * 180;
+
+      const purgeRadius = 520;
+      runtime.shapes = runtime.shapes.filter(shape => Math.hypot(shape.x - closer.x, shape.y - closer.y) >= purgeRadius + shape.radius);
+
+      for (const player of runtime.players) {
+        if (player.id === closer.id || player.hp <= 0 || this.isWipeCloserId(player.id)) {
+          continue;
+        }
+        if (Math.hypot(player.x - closer.x, player.y - closer.y) >= purgeRadius + 40) {
+          continue;
+        }
+
+        player.hp = 0;
+        runtime.respawnTimers.delete(player.id);
+        this.broadcastRoom(
+          room,
+          this.createEventMessage(room.id, 'player-eliminated', {
+            victimId: player.id,
+            victimNickname: player.nickname,
+            attackerId: closer.id,
+            attackerNickname: 'Arena Closer',
+            respawnDelaySeconds: 0,
+          }),
+        );
+      }
+    }
+  }
+
+  private getEncounterTarget(
+    runtime: ActiveRoomRuntime,
+    team: string,
+    fromX: number,
+    fromY: number,
+    maxDistance = Number.POSITIVE_INFINITY,
+  ): PlayerState | null {
+    let bestTarget: PlayerState | null = null;
+    let bestDistance = maxDistance;
+    for (const player of runtime.players) {
+      if (player.hp <= 0 || player.team !== team) {
+        continue;
+      }
+      const distance = Math.hypot(player.x - fromX, player.y - fromY);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestTarget = player;
+      }
+    }
+    return bestTarget;
+  }
+
+  private fireEncounterMothershipVolley(runtime: ActiveRoomRuntime, mothership: ActiveMothership, targetAngle: number): void {
+    const renderRadius = mothership.radius * mothership.renderScale;
+    for (let index = 0; index < 5; index += 1) {
+      const angle = targetAngle + (index - 2) * 0.11;
+      const speed = 430 + Math.abs(index - 2) * 18;
+      runtime.projectileSequence += 1;
+      runtime.projectiles.push({
+        id: `mothership_p_${runtime.projectileSequence}`,
+        x: mothership.x + Math.cos(angle) * (renderRadius + 92),
+        y: mothership.y + Math.sin(angle) * (renderRadius + 92),
+        angle,
+        speed,
+        radius: 22,
+        ownerId: mothership.id,
+        ownerTeam: mothership.team,
+        life: 3.8,
+        damage: 62,
+      });
+    }
+  }
+
+  private fireEncounterMothershipHoming(runtime: ActiveRoomRuntime, mothership: ActiveMothership, targetAngle: number): void {
+    const renderRadius = mothership.radius * mothership.renderScale;
+    for (let index = 0; index < 6; index += 1) {
+      const angle = targetAngle + (index - 2.5) * 0.18;
+      const speed = 360 + Math.abs(index - 2.5) * 10;
+      runtime.projectileSequence += 1;
+      runtime.projectiles.push({
+        id: `mothership_h_${runtime.projectileSequence}`,
+        x: mothership.x + Math.cos(angle) * (renderRadius + 76),
+        y: mothership.y + Math.sin(angle) * (renderRadius + 76),
+        angle,
+        speed,
+        radius: 8,
+        ownerId: mothership.id,
+        ownerTeam: mothership.team,
+        life: 4.5,
+        damage: 18,
+        homingTurn: 2.8,
+        homingTargetTeam: 'blue',
+      });
+    }
+  }
+
+  private spawnEncounterMothershipMinion(runtime: ActiveRoomRuntime, mothership: ActiveMothership): void {
+    const orbitAngle = Math.random() * Math.PI * 2;
+    const spawnDistance = mothership.radius * mothership.renderScale + 180 + Math.random() * 120;
+    const classOptions = ['twin', 'machine_gun', 'sniper', 'destroyer', 'flank_guard'] as const;
+    const minion: PlayerState = {
+      id: `${MOTHERSHIP_MINION_ID_PREFIX}${crypto.randomUUID()}`,
+      nickname: this.createBotName(runtime.players.length),
+      team: 'red',
+      classId: classOptions[Math.floor(Math.random() * classOptions.length)] || 'twin',
+      x: this.clamp(mothership.x + Math.cos(orbitAngle) * spawnDistance, 220, WORLD_WIDTH - 220),
+      y: this.clamp(mothership.y + Math.sin(orbitAngle) * spawnDistance, 220, WORLD_HEIGHT - 220),
+      angle: Math.PI * 0.5,
+      hp: BASE_TANK_HEALTH,
+      maxHp: BASE_TANK_HEALTH,
+      level: 22 + Math.floor(Math.random() * 16),
+      xp: 0,
+      xpNext: this.getXpNextForLevel(22),
+      points: 0,
+      score: 0,
+      upgrades: {
+        regen: 2,
+        maxHealth: 4,
+        bodyDamage: 2,
+        bulletSpeed: 5,
+        bulletPenetration: 4,
+        bulletDamage: 5,
+        reload: 5,
+        moveSpeed: 3,
+      },
+      moveSpeed: BASE_MOVE_SPEED,
+      bulletSpeed: BASE_BULLET_SPEED,
+      bulletDamage: BASE_BULLET_DAMAGE,
+      reload: BASE_RELOAD,
+      bulletRadius: BASE_BULLET_RADIUS,
+      isBot: true,
+    };
+    runtime.players.push(this.applyPlayerDerivedStats(minion, true));
+  }
+
+  private spawnWipeCloser(side: 'left' | 'right'): PlayerState {
+    return {
+      id: side === 'left' ? MOTHERSHIP_CLOSER_LEFT_ID : MOTHERSHIP_CLOSER_RIGHT_ID,
+      nickname: 'ARENA CLOSER',
+      team: 'red',
+      classId: 'destroyer',
+      x: side === 'left' ? -220 : WORLD_WIDTH + 220,
+      y: WORLD_HEIGHT * 0.5,
+      angle: side === 'left' ? 0 : Math.PI,
+      hp: 1_000_000,
+      maxHp: 1_000_000,
+      level: 45,
+      xp: 0,
+      xpNext: this.getXpNextForLevel(45),
+      points: 0,
+      score: 0,
+      upgrades: createDefaultUpgrades(),
+      moveSpeed: 420,
+      bulletSpeed: BASE_BULLET_SPEED,
+      bulletDamage: BASE_BULLET_DAMAGE,
+      reload: BASE_RELOAD,
+      bulletRadius: BASE_BULLET_RADIUS,
+      isBot: true,
+    };
+  }
+
+  private resolveMothershipCageCollision(player: PlayerState, cageWall: ActiveMothershipCageWall | null): void {
+    if (!cageWall || cageWall.released) {
+      return;
+    }
+
+    const halfThickness = cageWall.thickness * 0.5;
+    if (player.x + 24 < cageWall.x1 || player.x - 24 > cageWall.x2) {
+      return;
+    }
+    if (player.team === 'blue' && player.y - 24 < cageWall.y + halfThickness) {
+      player.y = cageWall.y + halfThickness + 24;
+    }
+    if (player.team === 'red' && player.y + 24 > cageWall.y - halfThickness) {
+      player.y = cageWall.y - halfThickness - 24;
+    }
+  }
+
+  private projectileHitsMothershipCage(projectile: ActiveProjectile, cageWall: ActiveMothershipCageWall | null): boolean {
+    if (!cageWall || cageWall.released || projectile.ownerTeam !== 'blue') {
+      return false;
+    }
+
+    const distanceToWall = this.pointSegmentDistance(projectile.x, projectile.y, cageWall.x1, cageWall.y, cageWall.x2, cageWall.y);
+    return distanceToWall < projectile.radius + cageWall.thickness * 0.5;
+  }
+
+  private projectileHitsEncounterMothership(projectile: ActiveProjectile, mothership: ActiveMothership | null): boolean {
+    if (!mothership || mothership.hp <= 0 || !mothership.released || projectile.ownerTeam !== 'blue') {
+      return false;
+    }
+
+    return Math.hypot(projectile.x - mothership.x, projectile.y - mothership.y) < projectile.radius + this.getMothershipHitRadius(mothership);
+  }
+
+  private damageMothershipCage(runtime: ActiveRoomRuntime, ownerId: string, ownerTeam: string, amount: number): void {
+    const cageWall = runtime.cageWall;
+    const mothership = runtime.enemyMothership;
+    if (!cageWall || !mothership || cageWall.released || amount <= 0 || ownerTeam !== 'blue') {
+      return;
+    }
+
+    cageWall.hp = Math.max(0, cageWall.hp - amount);
+    if (cageWall.hp > 0) {
+      return;
+    }
+
+    cageWall.hp = 0;
+    cageWall.released = true;
+    mothership.released = true;
+    mothership.releaseProgress = 0;
+    mothership.releaseStartX = mothership.x;
+    mothership.releaseStartY = mothership.y;
+    mothership.releaseTargetX = WORLD_WIDTH / 2;
+    mothership.releaseTargetY = this.clamp(cageWall.y + 920, 540, WORLD_HEIGHT * 0.55);
+    mothership.barTimer = 5;
+  }
+
+  private damageEncounterMothership(runtime: ActiveRoomRuntime, ownerId: string, ownerTeam: string, amount: number): void {
+    const mothership = runtime.enemyMothership;
+    if (!mothership || mothership.hp <= 0 || amount <= 0 || ownerTeam !== 'blue') {
+      return;
+    }
+
+    mothership.hp = Math.max(0, mothership.hp - amount);
+    mothership.barTimer = Math.max(mothership.barTimer, 2.8);
+    if (mothership.hp > 0) {
+      return;
+    }
+
+    const owner = runtime.players.find(player => player.id === ownerId);
+    if (owner) {
+      owner.score += 22_000;
+    }
+    this.startMothershipEndgame(runtime);
+    runtime.enemyMothership = null;
+  }
+
+  private startMothershipEndgame(runtime: ActiveRoomRuntime): void {
+    if (runtime.objective.mothershipEndgame) {
+      return;
+    }
+
+    runtime.objective.mothershipEndgame = true;
+    const leftCloser = this.spawnWipeCloser('left');
+    const rightCloser = this.spawnWipeCloser('right');
+    runtime.players.push(leftCloser, rightCloser);
+    runtime.objective.endgameSpectateId = leftCloser.id || rightCloser.id;
+    for (const player of runtime.players) {
+      if (!this.isWipeCloserId(player.id)) {
+        runtime.respawnTimers.delete(player.id);
+      }
+    }
+  }
+
+  private updateHomingProjectile(runtime: ActiveRoomRuntime, projectile: ActiveProjectile, dt: number): void {
+    if (!projectile.homingTurn || !projectile.homingTargetTeam) {
+      return;
+    }
+
+    const target = this.getEncounterTarget(runtime, projectile.homingTargetTeam, projectile.x, projectile.y, 2200);
+    if (!target) {
+      return;
+    }
+
+    const desiredAngle = Math.atan2(target.y - projectile.y, target.x - projectile.x);
+    const delta = this.normalizeAngle(desiredAngle - projectile.angle);
+    const maxTurn = projectile.homingTurn * dt;
+    projectile.angle += this.clamp(delta, -maxTurn, maxTurn);
+  }
+
+  private shouldRemoveDefeatedPlayer(player: PlayerState): boolean {
+    return this.isMothershipMinionId(player.id);
+  }
+
+  private isMothershipMinionId(playerId: string): boolean {
+    return playerId.startsWith(MOTHERSHIP_MINION_ID_PREFIX);
+  }
+
+  private isWipeCloserId(playerId: string): boolean {
+    return playerId === MOTHERSHIP_CLOSER_LEFT_ID || playerId === MOTHERSHIP_CLOSER_RIGHT_ID;
+  }
+
+  private normalizeAngle(angle: number): number {
+    let nextAngle = angle;
+    while (nextAngle > Math.PI) {
+      nextAngle -= Math.PI * 2;
+    }
+    while (nextAngle < -Math.PI) {
+      nextAngle += Math.PI * 2;
+    }
+    return nextAngle;
+  }
+
+  private getMothershipHitRadius(mothership: ActiveMothership): number {
+    return Math.max(80, mothership.radius * mothership.renderScale);
+  }
+
+  private lerpValue(from: number, to: number, t: number): number {
+    return from + (to - from) * t;
+  }
+
+  private blendHexColors(from: string, to: string, t: number): string {
+    const parse = (value: string) => {
+      const normalized = value.replace('#', '');
+      return {
+        r: parseInt(normalized.slice(0, 2), 16),
+        g: parseInt(normalized.slice(2, 4), 16),
+        b: parseInt(normalized.slice(4, 6), 16),
+      };
+    };
+    const fromColor = parse(from);
+    const toColor = parse(to);
+    const channel = (left: number, right: number) => Math.round(left + (right - left) * t).toString(16).padStart(2, '0');
+    return `#${channel(fromColor.r, toColor.r)}${channel(fromColor.g, toColor.g)}${channel(fromColor.b, toColor.b)}`;
+  }
+
+  private pointSegmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSq = dx * dx + dy * dy;
+    if (lengthSq <= 0) {
+      return Math.hypot(px - x1, py - y1);
+    }
+    const t = this.clamp(((px - x1) * dx + (py - y1) * dy) / lengthSq, 0, 1);
+    const nearestX = x1 + dx * t;
+    const nearestY = y1 + dy * t;
+    return Math.hypot(px - nearestX, py - nearestY);
+  }
+
+  private updateCtfObjectiveState(runtime: ActiveRoomRuntime, dt: number): void {
+    if (runtime.ctfFlags.length !== 2 || runtime.objective.ctfWinner) {
+      return;
+    }
+
+    const livingPlayers = runtime.players.filter(player => player.hp > 0);
+    for (const flag of runtime.ctfFlags) {
+      if (flag.carrierId) {
+        const carrier = livingPlayers.find(player => player.id === flag.carrierId);
+        if (!carrier) {
+          flag.carrierId = '';
+          flag.atBase = false;
+          flag.returnTimer = 6;
+          continue;
+        }
+
+        flag.x = carrier.x;
+        flag.y = carrier.y - 22;
+        const ownFlag = runtime.ctfFlags.find(entry => entry.team === carrier.team);
+        if (!ownFlag) {
+          continue;
+        }
+        const ownBaseDistance = Math.hypot(carrier.x - ownFlag.homeX, carrier.y - ownFlag.homeY);
+        if (carrier.team !== flag.team && ownFlag.atBase && ownBaseDistance < 180) {
+          const nextScore = (runtime.objective.ctfScores[carrier.team as 'blue' | 'red'] || 0) + 1;
+          runtime.objective.ctfScores[carrier.team as 'blue' | 'red'] = nextScore;
+          flag.carrierId = '';
+          flag.atBase = true;
+          flag.returnTimer = 0;
+          flag.x = flag.homeX;
+          flag.y = flag.homeY;
+          if (nextScore >= 3) {
+            runtime.objective.ctfWinner = carrier.team;
+          }
+        }
+        continue;
+      }
+
+      if (!flag.atBase) {
+        flag.returnTimer = Math.max(0, flag.returnTimer - dt);
+        if (flag.returnTimer <= 0) {
+          flag.atBase = true;
+          flag.x = flag.homeX;
+          flag.y = flag.homeY;
+        }
+      }
+
+      for (const player of livingPlayers) {
+        if (player.team === flag.team) {
+          continue;
+        }
+        if (runtime.ctfFlags.some(entry => entry.carrierId === player.id)) {
+          continue;
+        }
+        if (Math.hypot(player.x - flag.x, player.y - flag.y) >= 48) {
+          continue;
+        }
+
+        flag.carrierId = player.id;
+        flag.atBase = false;
+        flag.returnTimer = 0;
+        flag.x = player.x;
+        flag.y = player.y - 22;
+        break;
+      }
+    }
+  }
+
+  private applyTagEliminationConversion(room: Room, owner: PlayerState | undefined, victim: PlayerState): void {
+    if (room.settings.gameVariant !== 'tag' || !owner) {
+      return;
+    }
+    if (owner.id === victim.id || owner.team === victim.team) {
+      return;
+    }
+    if (owner.team === 'neutral' || owner.team === 'yellow') {
+      return;
+    }
+
+    victim.team = owner.team;
+  }
+
+  private damageDominator(
+    room: Room,
+    runtime: ActiveRoomRuntime,
+    dominator: ActiveDominator,
+    ownerId: string,
+    ownerTeam: string,
+    damage: number,
+  ): void {
+    if (damage <= 0 || dominator.hp <= 0) {
+      return;
+    }
+
+    const scaledDamage = damage * 0.18;
+    dominator.hp = Math.max(0, dominator.hp - scaledDamage);
+    if (dominator.hp > 0) {
+      return;
+    }
+
+    const captureTeam = this.getDominatorCaptureTeam(room, runtime, ownerId, ownerTeam);
+    const previousTeam = dominator.team;
+    dominator.hp = dominator.maxHp;
+
+    if (!captureTeam) {
+      dominator.team = 'neutral';
+      return;
+    }
+
+    dominator.team = previousTeam !== 'neutral' && previousTeam !== captureTeam ? 'neutral' : captureTeam;
+  }
+
+  private getDominatorCaptureTeam(
+    room: Room,
+    runtime: ActiveRoomRuntime,
+    ownerId: string,
+    ownerTeam: string,
+  ): string {
+    if (VALID_CAPTURE_TEAMS.has(ownerTeam)) {
+      return ownerTeam;
+    }
+
+    const owner = runtime.players.find(player => player.id === ownerId);
+    if (owner && VALID_CAPTURE_TEAMS.has(owner.team)) {
+      return owner.team;
+    }
+
+    if (ownerId) {
+      const fallbackTeam = this.getPlayerTeam(room, ownerId);
+      if (VALID_CAPTURE_TEAMS.has(fallbackTeam)) {
+        return fallbackTeam;
+      }
+    }
+
+    return '';
   }
 
   private pruneExpiredConnections(room: Room): void {
@@ -1057,13 +2280,14 @@ export class RoomManager {
     }
 
     const humans = runtime.players.filter(player => !player.isBot);
-    const bots = runtime.players.filter(player => player.isBot);
+    const specialBots = runtime.players.filter(player => player.isBot && (this.isWipeCloserId(player.id) || this.isMothershipMinionId(player.id)));
+    const bots = runtime.players.filter(player => player.isBot && !this.isWipeCloserId(player.id) && !this.isMothershipMinionId(player.id));
     const desiredBotCount = Math.max(0, BOT_TARGET_PLAYERS - room.members.length);
 
     if (bots.length > desiredBotCount) {
       const keptBots = bots.slice(0, desiredBotCount);
       const removedBotIds = bots.slice(desiredBotCount).map(player => player.id);
-      runtime.players = [...humans, ...keptBots];
+      runtime.players = [...humans, ...keptBots, ...specialBots];
       for (const playerId of removedBotIds) {
         runtime.inputs.delete(playerId);
         runtime.fireCooldowns.delete(playerId);
@@ -1072,8 +2296,8 @@ export class RoomManager {
       return;
     }
 
-    let nextPlayers = [...humans, ...bots];
-    while (nextPlayers.filter(player => player.isBot).length < desiredBotCount) {
+    let nextPlayers = [...humans, ...bots, ...specialBots];
+    while (nextPlayers.filter(player => player.isBot && !this.isWipeCloserId(player.id) && !this.isMothershipMinionId(player.id)).length < desiredBotCount) {
       const bot = this.createActiveBotPlayer(room, nextPlayers.length, room.members.length + desiredBotCount);
       nextPlayers = [...nextPlayers, bot];
     }
@@ -1139,7 +2363,7 @@ export class RoomManager {
 
   private updateBotInputs(room: Room, runtime: ActiveRoomRuntime): void {
     for (const player of runtime.players) {
-      if (!player.isBot || player.hp <= 0) {
+      if (!player.isBot || player.hp <= 0 || this.isWipeCloserId(player.id)) {
         continue;
       }
 
@@ -1362,13 +2586,13 @@ export class RoomManager {
     if (runtimePlayer) {
       return runtimePlayer.team;
     }
-    const hostTeam = room.settings.hostTeam === 'red' ? 'red' : 'blue';
-    const alternateTeam = hostTeam === 'red' ? 'blue' : 'red';
+    const orderedTeams = this.getOrderedTeamsForRoom(room);
+    const fallbackTeam = orderedTeams[0] || 'blue';
     const memberIndex = room.members.findIndex(member => member.playerId === playerId);
     if (memberIndex <= 0) {
-      return hostTeam;
+      return fallbackTeam;
     }
-    return memberIndex % 2 === 1 ? alternateTeam : hostTeam;
+    return orderedTeams[memberIndex % orderedTeams.length] || fallbackTeam;
   }
 
   private isFriendlyTarget(room: Room, attackerId: string, targetId: string, runtime: ActiveRoomRuntime): boolean {
@@ -1380,13 +2604,16 @@ export class RoomManager {
     return !!attacker && !!target && attacker.team === target.team;
   }
 
+  private isFriendlyDominatorTarget(attackerTeam: string, dominatorTeam: string): boolean {
+    return dominatorTeam !== 'neutral' && attackerTeam === dominatorTeam;
+  }
+
   private getAssignedTeam(room: Room, slotIndex: number): string {
     if (room.settings.gameVariant === 'ffa') {
       return FFA_TEAM_COLORS[slotIndex % FFA_TEAM_COLORS.length];
     }
-    const hostTeam = room.settings.hostTeam === 'red' ? 'red' : 'blue';
-    const alternateTeam = hostTeam === 'red' ? 'blue' : 'red';
-    return slotIndex % 2 === 0 ? hostTeam : alternateTeam;
+    const orderedTeams = this.getOrderedTeamsForRoom(room);
+    return orderedTeams[slotIndex % orderedTeams.length] || 'blue';
   }
 
   private createBotName(index: number): string {
@@ -1408,11 +2635,12 @@ export class RoomManager {
   }
 
   private findQuickJoinRoom(settings: RoomSettings): Room | undefined {
+    const normalizedSettings = this.normalizeRoomSettings(settings);
     const candidates = [...this.roomsById.values()]
       .filter(room => room.access === 'public')
-      .filter(room => room.settings.gameVariant === settings.gameVariant)
-      .filter(room => room.settings.aiEnabled === settings.aiEnabled)
-      .filter(room => room.settings.hostTeam === settings.hostTeam)
+      .filter(room => room.settings.gameVariant === normalizedSettings.gameVariant)
+      .filter(room => room.settings.aiEnabled === normalizedSettings.aiEnabled)
+      .filter(room => room.settings.hostTeam === normalizedSettings.hostTeam)
       .filter(room => room.members.length < MAX_ROOM_MEMBERS);
 
     const preferredActiveRoom = candidates
