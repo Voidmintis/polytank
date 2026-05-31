@@ -17714,7 +17714,7 @@ const POLYTANK_IO={
     const buttons=[...document.querySelectorAll('[data-polytank-mode]')];
     let activeLabel='FFA';
     let activeIndex=0;
-    buttons.forEach(button=>{
+    buttons.forEach((button,index)=>{
       const variant=this.normalizeGameVariant(button.getAttribute('data-polytank-mode'));
       button.classList.toggle('active',variant===this.gameVariant);
       button.disabled=this.isLocalPartyGuest();
@@ -17723,6 +17723,13 @@ const POLYTANK_IO={
         activeLabel=def?.label||button.textContent||'FFA';
         activeIndex=Math.max(0,buttons.indexOf(button));
       }
+      button.setAttribute('aria-selected',variant===this.gameVariant?'true':'false');
+      button.classList.remove('mode-depth-0','mode-depth-1','mode-depth-2','mode-depth-3','mode-depth-4','wheel-above','wheel-below');
+      const offset=index-activeIndex;
+      const depth=Math.min(4,Math.abs(offset));
+      button.classList.add(`mode-depth-${depth}`);
+      if(offset<0) button.classList.add('wheel-above');
+      if(offset>0) button.classList.add('wheel-below');
     });
     const wheelLabel=document.getElementById('polytank-mode-wheel-label');
     if(wheelLabel) wheelLabel.textContent=activeLabel;
