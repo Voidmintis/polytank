@@ -16116,7 +16116,6 @@ const POLYTANK_IO={
     const onlineButton=document.getElementById('polytank-online-btn');
     const newButton=document.getElementById('polytank-new-btn');
     const partyLinkButton=document.getElementById('polytank-party-link-btn');
-    const skinsButton=document.getElementById('polytank-skins-btn');
     const localCode=document.getElementById('polytank-local-party-code');
     const localStatus=document.getElementById('polytank-local-party-status');
     const localBack=document.getElementById('polytank-local-back-btn');
@@ -16169,20 +16168,13 @@ const POLYTANK_IO={
         :(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play')));
     if(newButton) newButton.textContent='Game Modes';
     if(newButton) newButton.style.display='';
-    if(onlineButton){
-      onlineButton.textContent='Copy Party Link';
-      onlineButton.setAttribute('onclick','POLYTANK_IO.copyPartyLink()');
-      onlineButton.style.display='';
-      onlineButton.disabled=false;
-    }
+    if(onlineButton) onlineButton.style.display=lobbyOpen?'none':'';
     if(playButton) playButton.disabled=usingPartyServer?(!localPartyActive||!localRoom?.roomId||localRoom?.status==='active'):this.isLocalPartyGuest();
     if(newButton) newButton.disabled=this.isLocalPartyGuest();
-    if(partyLinkButton) partyLinkButton.style.display='none';
-    if(skinsButton){
-      skinsButton.textContent='Region';
-      skinsButton.setAttribute('onclick','POLYTANK_IO.openPartyLobby()');
-      skinsButton.style.display=lobbyOpen?'none':'';
-      skinsButton.disabled=connecting;
+    if(partyLinkButton){
+      partyLinkButton.textContent=pausedSession?'Leave Match':'Copy Party Link';
+      partyLinkButton.setAttribute('onclick',pausedSession?'POLYTANK_IO.leaveToLobby()':'POLYTANK_IO.copyPartyLink()');
+      partyLinkButton.style.display=pausedSession||localPartyActive?'':'none';
     }
     if(localCode) localCode.textContent=localPartyActive?this.localPartyCode:'NO CODE';
     if(localBack){
