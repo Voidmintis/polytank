@@ -15311,6 +15311,7 @@ const POLYTANK_IO={
     this.ctx=this.canvas.getContext('2d');
     this.minimapCtx=this.minimapCanvas?this.minimapCanvas.getContext('2d'):null;
     this.setupMobileControls();
+    this.bindModeSelectNative();
     this.bindModeWheel();
     window.addEventListener('resize',()=>{ if(this.active) this.resize(); });
     window.addEventListener('orientationchange',()=>this.refreshMobileUiState());
@@ -16115,6 +16116,7 @@ const POLYTANK_IO={
     const onlineButton=document.getElementById('polytank-online-btn');
     const newButton=document.getElementById('polytank-new-btn');
     const partyLinkButton=document.getElementById('polytank-party-link-btn');
+    const skinsButton=document.getElementById('polytank-skins-btn');
     const localCode=document.getElementById('polytank-local-party-code');
     const localStatus=document.getElementById('polytank-local-party-status');
     const localBack=document.getElementById('polytank-local-back-btn');
@@ -16165,15 +16167,22 @@ const POLYTANK_IO={
       :(localPartyActive&&usingPartyServer
         ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
         :(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play')));
-    if(newButton) newButton.textContent=pausedSession?'Create New Match':'Start New Game';
+    if(newButton) newButton.textContent='Game Modes';
     if(newButton) newButton.style.display='';
-    if(onlineButton) onlineButton.style.display=lobbyOpen?'none':'';
+    if(onlineButton){
+      onlineButton.textContent='Copy Party Link';
+      onlineButton.setAttribute('onclick','POLYTANK_IO.copyPartyLink()');
+      onlineButton.style.display='';
+      onlineButton.disabled=false;
+    }
     if(playButton) playButton.disabled=usingPartyServer?(!localPartyActive||!localRoom?.roomId||localRoom?.status==='active'):this.isLocalPartyGuest();
     if(newButton) newButton.disabled=this.isLocalPartyGuest();
-    if(partyLinkButton){
-      partyLinkButton.textContent=pausedSession?'Leave Match':'Copy Party Link';
-      partyLinkButton.setAttribute('onclick',pausedSession?'POLYTANK_IO.leaveToLobby()':'POLYTANK_IO.copyPartyLink()');
-      partyLinkButton.style.display=pausedSession||localPartyActive?'':'none';
+    if(partyLinkButton) partyLinkButton.style.display='none';
+    if(skinsButton){
+      skinsButton.textContent='Region';
+      skinsButton.setAttribute('onclick','POLYTANK_IO.openPartyLobby()');
+      skinsButton.style.display=lobbyOpen?'none':'';
+      skinsButton.disabled=connecting;
     }
     if(localCode) localCode.textContent=localPartyActive?this.localPartyCode:'NO CODE';
     if(localBack){
@@ -18072,6 +18081,8 @@ const POLYTANK_IO={
     const buttons=[...document.querySelectorAll('#polytank-mode-wheel [data-polytank-mode]')];
     let activeLabel='FFA';
     const activeVariant=this.normalizeGameVariant(this.gameVariant);
+    const activeDef=this.getGameVariantDef(activeVariant);
+    if(activeDef?.label) activeLabel=activeDef.label;
     buttons.forEach(button=>{
       const variant=this.normalizeGameVariant(button.getAttribute('data-polytank-mode'));
       button.classList.toggle('active',variant===this.gameVariant);
@@ -18086,6 +18097,13 @@ const POLYTANK_IO={
     });
     const wheelLabel=document.getElementById('polytank-mode-wheel-label');
     if(wheelLabel) wheelLabel.textContent=activeLabel;
+    const mobileSummary=document.getElementById('polytank-mobile-mode-summary');
+    if(mobileSummary) mobileSummary.textContent=`Game mode: ${activeLabel}`;
+    const nativeSelect=document.getElementById('polytank-mode-select-native');
+    if(nativeSelect){
+      nativeSelect.value=activeVariant;
+      nativeSelect.disabled=this.isLocalPartyGuest();
+    }
     if(this.modeWheelOrder.length){
       const idx=this.modeWheelOrder.findIndex(value=>this.normalizeGameVariant(value)===activeVariant);
       if(idx>=0&&!this.modeWheelDragging&&Math.abs(this.modeWheelVelocity)<0.001){
@@ -18094,6 +18112,15 @@ const POLYTANK_IO={
       }
     }
     this.renderModeWheel();
+  },
+  bindModeSelectNative(){
+    const select=document.getElementById('polytank-mode-select-native');
+    if(!select||select.dataset.bound==='1') return;
+    select.dataset.bound='1';
+    select.addEventListener('change',event=>{
+      const variant=this.normalizeGameVariant(event?.target?.value||'ffa');
+      this.setGameVariant(variant);
+    });
   },
   getModeWheelColor(variant){
     return ({

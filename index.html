@@ -71,6 +71,20 @@ body.polytank-standalone #subtitle {
         <div id="polytank-menu-select-row">
           <div class="polytank-menu-select-group" id="polytank-mode-select">
             <div class="polytank-menu-label">Game Mode</div>
+            <div id="polytank-mode-native-shell">
+              <select id="polytank-mode-select-native" aria-label="Game mode selector">
+                <option value="ffa">Free For All</option>
+                <option value="2teams">2 Teams</option>
+                <option value="4teams">4 Teams</option>
+                <option value="maze">Maze</option>
+                <option value="breakout">Breakout</option>
+                <option value="sandbox">Sandbox</option>
+                <option value="domination">Domination</option>
+                <option value="tag">Tag</option>
+                <option value="ctf">Capture Flag</option>
+                <option value="mothership">Mothership</option>
+              </select>
+            </div>
             <div id="polytank-mode-wheel" tabindex="0" role="listbox" aria-label="Game mode selector">
               <div id="polytank-mode-wheel-viewport">
                 <div id="polytank-mode-wheel-track">
@@ -89,6 +103,7 @@ body.polytank-standalone #subtitle {
               </div>
               <div id="polytank-mode-wheel-label">Free For All</div>
             </div>
+            <div id="polytank-mobile-mode-summary" class="polytank-menu-label">Game mode: Free For All</div>
           </div>
         </div>
         <div id="polytank-team-row-wrap">
@@ -102,9 +117,9 @@ body.polytank-standalone #subtitle {
         </div>
         <div id="polytank-main-action-row" class="polytank-menu-actions">
           <button type="button" id="polytank-play-btn" onclick="POLYTANK_IO.startMatch()">Play</button>
-          <button type="button" id="polytank-online-btn" onclick="POLYTANK_IO.openPartyLobby()">Online</button>
+          <button type="button" id="polytank-online-btn" onclick="POLYTANK_IO.copyPartyLink()">Copy Party Link</button>
           <button type="button" id="polytank-party-link-btn" onclick="POLYTANK_IO.copyPartyLink()">Copy Party Link</button>
-          <button type="button" id="polytank-skins-btn" onclick="POLYTANK_IO.openSkinsShop()">Skins</button>
+          <button type="button" id="polytank-skins-btn" onclick="POLYTANK_IO.openPartyLobby()">Region</button>
           <button type="button" id="polytank-settings-btn" onclick="POLYTANK_IO.toggleSettingsPanel()">Settings</button>
           <button type="button" id="polytank-new-btn" onclick="POLYTANK_IO.toggleModeDropdown()">Game Modes</button>
         </div>
