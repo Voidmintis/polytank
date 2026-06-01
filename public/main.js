@@ -15270,6 +15270,16 @@ const POLYTANK_IO={
     auto_smasher:{name:'Auto Smasher',desc:'Rammer with turret.',style:'smasher',bodyOnly:true,bodyDamageScale:4,bodyPenetrationScale:3.4,moveSpeedScale:1.08,bodyScale:1.2,autoTurrets:1},
     spike:{name:'Spike',desc:'Maximum body damage.',style:'smasher',bodyOnly:true,bodyDamageScale:4.8,bodyPenetrationScale:4.1,moveSpeedScale:1.02,bodyScale:1.28},
     auto_tank:{name:'Auto Tank',desc:'Automatic turret support.',style:'basic',reloadScale:.86,bulletDamageScale:.92,barrelLengthScale:1.08,barrelWidthScale:1.12,autoTurrets:1},
+    reactor:{name:'Reactor',desc:'Reactive core that splinters every 20 shots.',style:'basic',reloadScale:.92,bulletDamageScale:1.06,bulletPenetrationScale:1.22,barrelLengthScale:1.12,barrelWidthScale:1.16},
+    nova:{name:'Nova',desc:'Explosive shells with plasma burst cycles.',style:'destroyer',reloadScale:1.46,bulletSpeedScale:.86,bulletDamageScale:2.9,bulletPenetrationScale:1.52,barrelLengthScale:1.62,barrelWidthScale:1.96,bulletRadiusScale:2.5},
+    magnetar:{name:'Magnetar',desc:'Magnetic orbs that pull enemies and projectiles.',style:'basic',reloadScale:1.06,bulletDamageScale:1.08,bulletPenetrationScale:1.36,bulletSpeedScale:.92,barrelLengthScale:1.2,barrelWidthScale:1.22,bulletRadiusScale:1.32},
+    overdrive:{name:'Overdrive',desc:'Rapid fire chassis with kill-speed surge.',style:'machine',reloadScale:.38,bulletDamageScale:.76,bulletSpeedScale:1.06,barrelLengthScale:1.08,barrelWidthScale:1.86,spreadScale:2.2,moveSpeedScale:1.08},
+    supernova:{name:'Supernova',desc:'Periodically launches a shell that splits into 12.',style:'destroyer',reloadScale:1.32,bulletSpeedScale:.82,bulletDamageScale:3.35,bulletPenetrationScale:1.7,barrelLengthScale:1.74,barrelWidthScale:2.14,bulletRadiusScale:2.95},
+    solar_flare:{name:'Solar Flare',desc:'Ignites targets and emits flare pulses.',style:'sniper',reloadScale:1.04,bulletSpeedScale:1.24,bulletDamageScale:1.06,bulletPenetrationScale:1.22,barrelLengthScale:1.48,barrelWidthScale:1.14,bulletRadiusScale:1.15},
+    blackstar:{name:'Blackstar',desc:'Deploys a gravity field every 10 seconds.',style:'basic',reloadScale:1.02,bulletDamageScale:1.12,bulletPenetrationScale:1.3,barrelLengthScale:1.18,barrelWidthScale:1.2,bodyScale:1.06},
+    polarity:{name:'Polarity',desc:'Switches between attraction and repulsion modes.',style:'twin',reloadScale:.92,bulletDamageScale:.92,bulletPenetrationScale:1.28,barrelLengthScale:1.14,barrelWidthScale:1.22,moveSpeedScale:1.05},
+    hyperdrive:{name:'Hyperdrive',desc:'Double-tap movement to dash.',style:'tri_angle',reloadScale:.82,bulletDamageScale:.92,barrelLengthScale:1.2,barrelWidthScale:1.22,moveSpeedScale:1.2},
+    quantum:{name:'Quantum',desc:'Creates hologram decoys on cadence.',style:'assassin',reloadScale:1.16,bulletSpeedScale:1.3,bulletDamageScale:1.14,bulletPenetrationScale:1.2,barrelLengthScale:1.72,barrelWidthScale:1.1,bulletRadiusScale:1.18},
     admin_dominator_gun:{name:'[ADMIN] Gun Dominator',desc:'Move as a slow Dominator platform.',style:'basic'},
     admin_dominator_destroyer:{name:'[ADMIN] Destroyer Dominator',desc:'Slow heavy Dominator shell chassis.',style:'destroyer'},
     admin_dominator_trapper:{name:'[ADMIN] Trapper Dominator',desc:'Slow trap-focused Dominator chassis.',style:'trapper'},
@@ -20070,6 +20080,9 @@ const POLYTANK_IO={
         case 'tri_angle': return ['booster','fighter'];
         case 'smasher': return ['landmine','auto_smasher','spike'];
         case 'machine_gun': return ['sprayer'];
+        case 'nova': return ['supernova','solar_flare'];
+        case 'magnetar': return ['blackstar','polarity'];
+        case 'overdrive': return ['hyperdrive','quantum'];
         case 'basic': return ['auto_tank'];
       }
     }
@@ -20079,10 +20092,11 @@ const POLYTANK_IO={
         case 'sniper': return ['assassin','overseer','hunter','trapper'];
         case 'machine_gun': return ['destroyer','gunner'];
         case 'flank_guard': return ['tri_angle','auto_3'];
+        case 'reactor': return ['nova','magnetar','overdrive'];
         case 'basic': return ['smasher'];
       }
     }
-    if(tank.level>=15&&classId==='basic') return ['twin','sniper','machine_gun','flank_guard'];
+    if(tank.level>=15&&classId==='basic') return ['twin','sniper','machine_gun','flank_guard','reactor'];
     return [];
   },
   getClassChoiceLevel(tank){
@@ -21721,6 +21735,298 @@ const POLYTANK_IO={
       }
     }
   },
+  isReactorBranchClass(classId=''){
+    return ['reactor','nova','magnetar','overdrive','supernova','solar_flare','blackstar','polarity','hyperdrive','quantum'].includes(classId);
+  },
+  getTankCurrentMoveSpeed(tank){
+    if(!tank) return 0;
+    let multiplier=1;
+    if((tank.overdriveBoostTimer||0)>0) multiplier*=1.35;
+    if((tank.hyperDashTimer||0)>0) multiplier*=1.9;
+    return tank.moveSpeed*multiplier;
+  },
+  applyClassBulletTraits(tank,bullet){
+    if(!tank||!bullet) return;
+    if(tank.classId==='nova'){
+      bullet.explosiveRadius=Math.max(72,(bullet.r||8)*5.2);
+      bullet.explosiveScale=0.58;
+    } else if(tank.classId==='magnetar'){
+      bullet.magneticPullRadius=Math.max(180,(bullet.r||8)*14);
+      bullet.magneticPullStrength=880;
+      bullet.drag=0.06;
+    } else if(tank.classId==='solar_flare'){
+      bullet.igniteDuration=2.8;
+      bullet.igniteDps=Math.max(8,bullet.damage*0.22);
+      bullet.burnColor='#ffc26e';
+    } else if(tank.classId==='supernova'){
+      bullet.explosiveRadius=Math.max(84,(bullet.r||8)*5.8);
+      bullet.explosiveScale=0.66;
+    }
+  },
+  spawnBulletFragments(source,count=4,{speedScale=0.82,damageScale=0.36,lifeScale=0.62,radiusScale=0.66}={}){
+    if(!source||count<=0) return;
+    const baseSpeed=Math.max(120,source.speed||Math.hypot(source.vx||0,source.vy||0)||420);
+    const baseAngle=Math.atan2(source.vy||0,source.vx||1);
+    for(let index=0;index<count;index++){
+      const angle=baseAngle+(index/count)*Math.PI*2;
+      const speed=baseSpeed*speedScale*(0.92+Math.random()*0.16);
+      this.bullets.push({
+        id:`bullet_${++this.bulletId}`,
+        x:source.x,
+        y:source.y,
+        vx:Math.cos(angle)*speed,
+        vy:Math.sin(angle)*speed,
+        speed,
+        r:Math.max(2,(source.r||6)*radiusScale),
+        damage:Math.max(0,source.damage*damageScale),
+        penetration:Math.max(0.12,(source.penetration||0.2)*0.62),
+        hp:Math.max(0.12,(source.hp||source.penetration||0.2)*0.62),
+        ownerId:source.ownerId,
+        ownerTeam:source.ownerTeam,
+        color:source.color,
+        life:Math.max(0.32,(source.life||1.2)*lifeScale),
+        maxLife:Math.max(0.32,(source.maxLife||1.2)*lifeScale),
+        homing:false,
+        homingTurn:0,
+        homingTargetKind:'',
+        homingTargetId:'',
+        lastHitTargetId:'',
+        lastHitTargetTimer:0,
+        massive:false,
+        shape:source.shape||'circle',
+        curve:(Math.random()-0.5)*0.35,
+        penetrationDropPct:this.getBulletPenetrationDamageDropPct(source),
+        penetrationHits:0,
+      });
+    }
+  },
+  fireSupernovaShell(tank){
+    if(!tank||tank.deadTimer>0||tank.hp<=0) return;
+    const angle=tank.aimAngle||0;
+    const tip=this.getBarrelTip(tank,angle,0,1.36,0);
+    const speed=tank.bulletSpeed*0.76;
+    const shell={
+      id:`bullet_${++this.bulletId}`,
+      x:tip.x,
+      y:tip.y,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed,
+      speed,
+      r:Math.max(tank.bulletRadius*1.35,18),
+      damage:tank.bulletDamage*2.8,
+      penetration:Math.max(1.8,tank.bulletPenetration*1.95),
+      hp:Math.max(1.8,tank.bulletPenetration*1.95),
+      ownerId:tank.id,
+      ownerTeam:tank.team,
+      color:tank.bulletColor,
+      life:2.2,
+      maxLife:2.2,
+      homing:false,
+      homingTurn:0,
+      homingTargetKind:'',
+      homingTargetId:'',
+      lastHitTargetId:'',
+      lastHitTargetTimer:0,
+      massive:true,
+      shape:'circle',
+      curve:0,
+      splitOnFadeCount:12,
+      splitSpawned:false,
+      penetrationDropPct:this.getPenetrationDamageDropPctForTank(tank),
+      penetrationHits:0,
+      explosiveRadius:140,
+      explosiveScale:0.72,
+    };
+    this.bullets.push(shell);
+    this.kickBarrelRecoil(tank,0,Math.min((tank.barrelLength||64)*0.09,7.2));
+  },
+  applyGravityPulseFromTank(tank,dt,{radius=260,strength=860,repel=false}={}){
+    if(!tank) return;
+    const pullSign=repel?-1:1;
+    for(const enemy of this.livingTanks()){
+      if(enemy.id===tank.id||this.areTanksAllied(tank,enemy)) continue;
+      const dx=tank.x-enemy.x;
+      const dy=tank.y-enemy.y;
+      const distance=Math.max(1,Math.hypot(dx,dy));
+      if(distance>radius) continue;
+      const falloff=1-distance/radius;
+      const force=(strength*falloff*dt)/(enemy.moveSpeed||220);
+      enemy.vx+=(dx/distance)*force*enemy.moveSpeed*pullSign;
+      enemy.vy+=(dy/distance)*force*enemy.moveSpeed*pullSign;
+    }
+    for(const bullet of this.bullets){
+      if(!bullet||bullet.ownerTeam===tank.team||bullet.hitFading) continue;
+      const dx=tank.x-bullet.x;
+      const dy=tank.y-bullet.y;
+      const distance=Math.max(1,Math.hypot(dx,dy));
+      if(distance>radius) continue;
+      const falloff=1-distance/radius;
+      const impulse=strength*0.55*falloff*dt*pullSign;
+      bullet.vx+=(dx/distance)*impulse;
+      bullet.vy+=(dy/distance)*impulse;
+    }
+  },
+  updateReactorBranchAbilities(tank,dt,{isPlayer=false}={}){
+    if(!tank||tank.deadTimer>0||tank.hp<=0||!this.isReactorBranchClass(tank.classId)) return;
+    tank.overdriveBoostTimer=Math.max(0,(tank.overdriveBoostTimer||0)-dt);
+    tank.hyperDashTimer=Math.max(0,(tank.hyperDashTimer||0)-dt);
+    tank.hyperDashCooldown=Math.max(0,(tank.hyperDashCooldown||0)-dt);
+    if(tank.classId==='nova'){
+      tank.novaBurstTimer=Math.max(0,(tank.novaBurstTimer||8)-dt);
+      if(tank.novaBurstTimer<=0){
+        for(let index=0;index<8;index++){
+          const angle=(index/8)*Math.PI*2+(tank.aimAngle||0);
+          const speed=tank.bulletSpeed*0.72;
+          this.bullets.push({
+            id:`bullet_${++this.bulletId}`,
+            x:tank.x+Math.cos(angle)*(tank.r+8),
+            y:tank.y+Math.sin(angle)*(tank.r+8),
+            vx:Math.cos(angle)*speed,
+            vy:Math.sin(angle)*speed,
+            speed,
+            r:Math.max(6,tank.bulletRadius*0.56),
+            damage:tank.bulletDamage*0.62,
+            penetration:Math.max(0.2,tank.bulletPenetration*0.6),
+            hp:Math.max(0.2,tank.bulletPenetration*0.6),
+            ownerId:tank.id,
+            ownerTeam:tank.team,
+            color:tank.bulletColor,
+            life:1.1,
+            maxLife:1.1,
+            massive:false,
+            shape:'circle',
+            curve:(Math.random()-0.5)*0.2,
+            penetrationDropPct:this.getPenetrationDamageDropPctForTank(tank),
+            penetrationHits:0,
+            explosiveRadius:66,
+            explosiveScale:0.36,
+          });
+        }
+        tank.novaBurstTimer=8;
+        if(isPlayer) toast('Plasma burst released.','#ffbd8f');
+      }
+    } else if(tank.classId==='supernova'){
+      tank.supernovaShellTimer=Math.max(0,(tank.supernovaShellTimer||6)-dt);
+      if(tank.supernovaShellTimer<=0){
+        this.fireSupernovaShell(tank);
+        tank.supernovaShellTimer=6;
+        if(isPlayer) toast('Supernova shell primed.','#ffd0a2');
+      }
+    } else if(tank.classId==='blackstar'){
+      tank.blackstarPulseTimer=Math.max(0,(tank.blackstarPulseTimer||10)-dt);
+      if(tank.blackstarPulseTimer<=0){
+        this.applyGravityPulseFromTank(tank,0.26,{radius:320,strength:1450,repel:false});
+        this.spawnBurst(tank.x,tank.y,'#8e7dff',16,260);
+        tank.blackstarPulseTimer=10;
+      }
+    } else if(tank.classId==='polarity'){
+      tank.polarityMode=tank.polarityMode||'attract';
+      tank.polaritySwitchTimer=Math.max(0,(tank.polaritySwitchTimer||4)-dt);
+      if(tank.polaritySwitchTimer<=0){
+        tank.polarityMode=tank.polarityMode==='attract'?'repel':'attract';
+        tank.polaritySwitchTimer=4;
+        if(isPlayer) toast(`Polarity: ${tank.polarityMode==='attract'?'Attract':'Repel'}.`,'#b8d6ff');
+      }
+      this.applyGravityPulseFromTank(tank,dt,{radius:250,strength:620,repel:tank.polarityMode==='repel'});
+    } else if(tank.classId==='quantum'){
+      tank.quantumDecoyTimer=Math.max(0,(tank.quantumDecoyTimer||7)-dt);
+      if(tank.quantumDecoyTimer<=0){
+        this.spawnBurst(tank.x,tank.y,'#b9f3ff',20,210);
+        for(let i=0;i<6;i++){
+          const angle=(i/6)*Math.PI*2;
+          this.particles.push({
+            x:tank.x+Math.cos(angle)*(tank.r+12),
+            y:tank.y+Math.sin(angle)*(tank.r+12),
+            vx:Math.cos(angle)*70,
+            vy:Math.sin(angle)*70,
+            life:1.4,
+            size:3.4,
+            grow:3.2,
+            color:'rgba(185,243,255,.85)',
+          });
+        }
+        tank.quantumDecoyTimer=7;
+        if(isPlayer) toast('Quantum decoy emitted.','#b9f3ff');
+      }
+    }
+  },
+  handleHyperdriveDashInput(tank,moveX,moveY,dt){
+    if(!tank||tank.classId!=='hyperdrive') return;
+    const magnitude=Math.hypot(moveX,moveY);
+    tank.hyperLastTapTimer=Math.max(0,(tank.hyperLastTapTimer||0)-Math.max(0,dt||0));
+    const currentDir=magnitude>0.78?`${Math.round(moveX)}:${Math.round(moveY)}`:'';
+    if(currentDir&&currentDir!==tank.hyperCurrentDir){
+      if(tank.hyperLastTapDir===currentDir&&(tank.hyperLastTapTimer||0)>0&&((tank.hyperDashCooldown||0)<=0)){
+        const norm=Math.max(1,Math.hypot(moveX,moveY));
+        const dashSpeed=this.getTankCurrentMoveSpeed(tank)*1.8;
+        this.applyTankImpulse(tank,(moveX/norm)*dashSpeed,(moveY/norm)*dashSpeed,1);
+        tank.hyperDashTimer=0.18;
+        tank.hyperDashCooldown=0.85;
+      }
+      tank.hyperLastTapDir=currentDir;
+      tank.hyperLastTapTimer=0.28;
+    }
+    tank.hyperCurrentDir=currentDir;
+  },
+  applyMagneticBulletPull(bullet,dt){
+    if(!bullet||bullet.hitFading||(bullet.magneticPullStrength||0)<=0||(bullet.magneticPullRadius||0)<=0) return;
+    const radius=bullet.magneticPullRadius;
+    for(const tank of this.livingTanks()){
+      if(this.isFriendlyOwnerToTank(bullet.ownerId,bullet.ownerTeam,tank)) continue;
+      const dx=bullet.x-tank.x;
+      const dy=bullet.y-tank.y;
+      const distance=Math.max(1,Math.hypot(dx,dy));
+      if(distance>radius) continue;
+      const falloff=1-distance/radius;
+      const impulse=(bullet.magneticPullStrength||0)*falloff*dt;
+      tank.vx+=(dx/distance)*(impulse*0.18);
+      tank.vy+=(dy/distance)*(impulse*0.18);
+    }
+    for(const other of this.bullets){
+      if(!other||other===bullet||other.hitFading||other.ownerTeam===bullet.ownerTeam) continue;
+      const dx=bullet.x-other.x;
+      const dy=bullet.y-other.y;
+      const distance=Math.max(1,Math.hypot(dx,dy));
+      if(distance>radius) continue;
+      const falloff=1-distance/radius;
+      const impulse=(bullet.magneticPullStrength||0)*falloff*dt*0.42;
+      other.vx+=(dx/distance)*impulse;
+      other.vy+=(dy/distance)*impulse;
+    }
+  },
+  applyBulletExplosion(bullet,x,y){
+    if(!bullet||(bullet.explosiveRadius||0)<=0||(bullet.explosiveScale||0)<=0) return;
+    const radius=bullet.explosiveRadius;
+    const scale=bullet.explosiveScale;
+    this.spawnBurst(x,y,'#ffd4a8',10,220);
+    for(const tank of this.livingTanks()){
+      if(this.isFriendlyOwnerToTank(bullet.ownerId,bullet.ownerTeam,tank)) continue;
+      const distance=Math.hypot(tank.x-x,tank.y-y);
+      if(distance<=0||distance>radius) continue;
+      const falloff=1-distance/radius;
+      const splash=bullet.damage*scale*falloff;
+      if(splash>0.2) this.damageTank(tank,splash,bullet.ownerId,bullet.ownerTeam);
+    }
+  },
+  applyIgniteToTank(target,bullet){
+    if(!target||!bullet||(bullet.igniteDuration||0)<=0||(bullet.igniteDps||0)<=0) return;
+    target.igniteTimer=Math.max(target.igniteTimer||0,bullet.igniteDuration);
+    target.igniteDps=Math.max(target.igniteDps||0,bullet.igniteDps);
+    target.igniteSourceId=bullet.ownerId||'';
+    target.igniteSourceTeam=bullet.ownerTeam||'';
+    target.igniteTick=0.25;
+  },
+  updateTankDamageOverTime(tank,dt){
+    if(!tank||tank.deadTimer>0||tank.hp<=0) return;
+    tank.igniteTimer=Math.max(0,(tank.igniteTimer||0)-dt);
+    if((tank.igniteTimer||0)<=0||(tank.igniteDps||0)<=0) return;
+    tank.igniteTick=Math.max(0,(tank.igniteTick||0)-dt);
+    while((tank.igniteTick||0)<=0&&(tank.igniteTimer||0)>0&&tank.hp>0){
+      const tickDamage=(tank.igniteDps||0)*0.25;
+      if(tickDamage>0) this.damageTank(tank,tickDamage,tank.igniteSourceId||'',tank.igniteSourceTeam||'');
+      tank.igniteTick+=0.25;
+    }
+  },
   getDominatorBarrels(dominator){
     if(!dominator||dominator.kind==='gun'){
       return [
@@ -21810,6 +22116,7 @@ const POLYTANK_IO={
     }
     this.player.barTimer=Math.max(0,(this.player.barTimer||0)-dt);
     this.player.abilityCooldown=Math.max(0,(this.player.abilityCooldown||0)-dt);
+    this.updateTankDamageOverTime(this.player,dt);
     for(const dominator of this.dominators){
       dominator.barTimer=Math.max(0,(dominator.barTimer||0)-dt);
       dominator.shotTimer=Math.max(0,dominator.shotTimer-dt);
@@ -22290,6 +22597,7 @@ const POLYTANK_IO={
       return;
     }
     this.applyZoneEffects(this.player,dt);
+    this.updateReactorBranchAbilities(this.player,dt,{isPlayer:true});
     const controlledDominator=this.getControlledDominator();
     let moveX=0;
     let moveY=0;
@@ -22303,9 +22611,11 @@ const POLYTANK_IO={
         moveY+=this.mobileLeftStick.y;
       }
     }
+    this.handleHyperdriveDashInput(this.player,moveX,moveY,dt);
     const moveLength=Math.hypot(moveX,moveY)||1;
-    const targetVX=moveX?moveX/moveLength*this.player.moveSpeed:0;
-    const targetVY=moveY?moveY/moveLength*this.player.moveSpeed:0;
+    const activeMoveSpeed=this.getTankCurrentMoveSpeed(this.player);
+    const targetVX=moveX?moveX/moveLength*activeMoveSpeed:0;
+    const targetVY=moveY?moveY/moveLength*activeMoveSpeed:0;
     this.applyTankDrive(this.player,targetVX,targetVY,dt,6.9,2.2);
     this.integrateTankVelocity(this.player,dt,this.player.r,this.world.w-this.player.r,this.player.r,this.world.h-this.player.r);
     this.resolveTankMazeCollisions(this.player);
@@ -22338,8 +22648,10 @@ const POLYTANK_IO={
       bot.invuln=Math.max(0,bot.invuln-dt);
       bot.barTimer=Math.max(0,(bot.barTimer||0)-dt);
       bot.abilityCooldown=Math.max(0,(bot.abilityCooldown||0)-dt);
+      this.updateTankDamageOverTime(bot,dt);
       this.updateWeaponFeedback(bot,dt);
       this.applyZoneEffects(bot,dt);
+      this.updateReactorBranchAbilities(bot,dt,{isPlayer:false});
       if(bot.level>=12&&bot.raidTimer<=0){
         bot.raidCooldown=Math.max(0,bot.raidCooldown-dt);
         if(bot.raidCooldown<=0&&Math.random()<0.08*dt){
@@ -22577,7 +22889,8 @@ const POLYTANK_IO={
         const dx=orbitX-bot.x;
         const dy=orbitY-bot.y;
         const distance=Math.max(1,Math.hypot(dx,dy));
-        this.applyTankDrive(bot,dx/distance*bot.moveSpeed*0.92,dy/distance*bot.moveSpeed*0.92,dt,6.9,2.4);
+        const moveSpeed=this.getTankCurrentMoveSpeed(bot);
+        this.applyTankDrive(bot,dx/distance*moveSpeed*0.92,dy/distance*moveSpeed*0.92,dt,6.9,2.4);
         this.integrateTankVelocity(bot,dt,bot.r,this.world.w-bot.r,bot.r,this.world.h-bot.r);
         if(target){
           bot.aimAngle=Math.atan2(target.entity.y-bot.y,target.entity.x-bot.x);
@@ -22636,9 +22949,10 @@ const POLYTANK_IO={
     else if(target&&distance<desiredDistance-70) moveFactor=-0.22-personality.caution*0.36;
     const velocityX=dirX*moveFactor-dirY*strafe;
     const velocityY=dirY*moveFactor+dirX*strafe;
+    const moveSpeed=this.getTankCurrentMoveSpeed(bot);
     const minX=bot.r;
     const maxX=this.world.w-bot.r;
-    this.applyTankDrive(bot,velocityX*bot.moveSpeed,velocityY*bot.moveSpeed,dt,6.6,2.6);
+    this.applyTankDrive(bot,velocityX*moveSpeed,velocityY*moveSpeed,dt,6.6,2.6);
     this.integrateTankVelocity(bot,dt,minX,maxX,bot.r,this.world.h-bot.r);
     this.resolveTankMazeCollisions(bot);
     this.constrainTankToCageWall(bot);
@@ -22688,6 +23002,13 @@ const POLYTANK_IO={
     } else {
       barrels.forEach((barrel,index)=>this.fireBarrelShot(tank,barrel,index));
     }
+    if(tank.classId==='reactor'){
+      tank.reactorShotCounter=(tank.reactorShotCounter||0)+1;
+      if(tank.reactorShotCounter%20===0){
+        const origin=this.bullets[this.bullets.length-1];
+        if(origin&&origin.ownerId===tank.id) this.spawnBulletFragments(origin,4,{speedScale:0.88,damageScale:0.42,lifeScale:0.68,radiusScale:0.7});
+      }
+    }
     if(tank.isPlayer&&SFX.orbShoot) SFX.orbShoot();
   },
   fireBarrelShot(tank,barrel,index){
@@ -22709,7 +23030,7 @@ const POLYTANK_IO={
           y:tank.y+Math.sin(spreadAngle)*Math.max(0,(barrel.isSummonBarrel?(tank.r*(tank.renderScale||.42))+18:(tank.r*(tank.renderScale||.42))+42)+((barrel.isSummonBarrel?(tank.r*(tank.renderScale||.42))*0.5:(tank.r*(tank.renderScale||.42))*0.28)*(barrel.lengthScale||1))-recoil),
         }
       : this.getBarrelTip(tank,spreadAngle,barrel.lateral,barrel.lengthScale,recoil);
-    this.bullets.push({
+    const bullet={
       id:`bullet_${++this.bulletId}`,
       x:tip.x,
       y:tip.y,
@@ -22734,15 +23055,42 @@ const POLYTANK_IO={
       massive:this.isArenaCloserLike(tank)||tank.specialRole==='mothership'||tank.isDominator||(tank.isArenaBoss&&tank.bulletRadius>=12),
       shape:barrel.shape,
       curve:Math.random()<0.48?0:(Math.random()-0.5)*(tank.specialRole==='mothership'?0.12:0.28),
-    });
+      penetrationDropPct:this.getPenetrationDamageDropPctForTank(tank),
+      penetrationHits:0,
+    };
+    this.applyClassBulletTraits(tank,bullet);
+    this.bullets.push(bullet);
     this.kickBarrelRecoil(tank,index,recoilKick);
     if(!tank.specialRole||tank.specialRole==='mothershipMinion'||tank.specialRole==='mothershipThrall'){
       const recoilForce=(tank.bulletRadius*barrel.bulletScale)*2.8+(tank.bulletDamage*barrel.damageScale)*0.34;
       this.applyTankImpulse(tank,-Math.cos(spreadAngle)*recoilForce,-Math.sin(spreadAngle)*recoilForce,tank.isPlayer?1:.9);
     }
   },
+  getPenetrationDamageDropPctForTank(tank){
+    const maxUpgrade=Math.max(1,Number(this.upgradeMaxLevel)||10);
+    const level=this.clamp(Number(tank?.upgrades?.bulletPenetration)||0,0,maxUpgrade);
+    const ratio=maxUpgrade>0?level/maxUpgrade:0;
+    return this.clamp(0.25-ratio*0.15,0.10,0.25);
+  },
+  getBulletPenetrationDamageDropPct(bullet){
+    const raw=Number(bullet?.penetrationDropPct);
+    if(!Number.isFinite(raw)) return 0.25;
+    return this.clamp(raw,0.10,0.25);
+  },
+  applyBulletPenetrationDamageDrop(bullet){
+    if(!bullet) return true;
+    const dropPct=this.getBulletPenetrationDamageDropPct(bullet);
+    const nextDamage=Math.max(0,(Number(bullet.damage)||0)*(1-dropPct));
+    bullet.damage=nextDamage;
+    bullet.penetrationHits=(bullet.penetrationHits||0)+1;
+    return nextDamage<=0.05;
+  },
   startBulletHitFade(bullet){
     if(!bullet||bullet.hitFading) return false;
+    if((bullet.splitOnFadeCount||0)>0&&!bullet.splitSpawned){
+      bullet.splitSpawned=true;
+      this.spawnBulletFragments(bullet,bullet.splitOnFadeCount,{speedScale:0.9,damageScale:0.26,lifeScale:0.58,radiusScale:0.52});
+    }
     bullet.hitFading=true;
     bullet.penetration=0;
     bullet.life=Math.min(Number.isFinite(bullet.life)?bullet.life:0.18,0.18);
@@ -22767,7 +23115,8 @@ const POLYTANK_IO={
     if(Number.isFinite(bullet.hp)) bullet.hp-=impactCost;
     else bullet.hp=(bullet.penetration||0)-impactCost;
     bullet.penetration-=impactCost;
-    return bullet.penetration<=0||bullet.hp<=0;
+    const damageDepleted=this.applyBulletPenetrationDamageDrop(bullet);
+    return bullet.penetration<=0||bullet.hp<=0||damageDepleted;
   },
   spawnBulletImpactEffect(x,y,color,size=1){
     const scale=Math.max(0.6,size||1);
@@ -22835,6 +23184,8 @@ const POLYTANK_IO={
       color:style.bullet,
       life:1.9,
       maxLife:1.9,
+      penetrationDropPct:0.25,
+      penetrationHits:0,
     });
   },
   updateBosses(dt){
@@ -23002,6 +23353,7 @@ const POLYTANK_IO={
         bullet.lastHitTargetTimer=Math.max(0,(bullet.lastHitTargetTimer||0)-dt);
         if(bullet.lastHitTargetTimer<=0) bullet.lastHitTargetId='';
       }
+      this.applyMagneticBulletPull(bullet,dt);
       if(Math.abs(bullet.curve||0)>0.0001){
         const turn=(bullet.curve||0)*dt;
         const cos=Math.cos(turn);
@@ -23092,6 +23444,7 @@ const POLYTANK_IO={
           shape.hitFade=1;
           this.awardDamageXp(shape,bullet.ownerId,actualDamage,shape.xp);
           this.registerBulletHitTarget(bullet,shape.id);
+          this.applyBulletExplosion(bullet,bullet.x,bullet.y);
           this.spawnDamageNumber(bullet.x,bullet.y,bullet.damage,this.darkenColor(shape.color,.88));
           this.spawnBulletImpactEffect(bullet.x,bullet.y,shape.color,Math.max(0.8,(shape.r||18)/22));
           if(shape.hp<=0) this.destroyShape(shapeIndex,shape,bullet.ownerId,bullet.ownerTeam);
@@ -23104,6 +23457,7 @@ const POLYTANK_IO={
         if(Math.hypot(boss.x-bullet.x,boss.y-bullet.y)<this.getArenaBossHitRadius(boss)+bullet.r){
           if(!this.damageArenaBoss(boss,bullet.damage,bullet.ownerId,bullet.ownerTeam)) continue;
           this.registerBulletHitTarget(bullet,boss.id);
+          this.applyBulletExplosion(bullet,bullet.x,bullet.y);
           this.spawnBulletImpactEffect(bullet.x,bullet.y,boss.bodyColor,1.5);
           if(this.spendBulletDurability(bullet,boss.kind==='centerAlpha'||boss.kind==='alpha'?1.8:2.3)){
             remove=true;
@@ -23118,6 +23472,7 @@ const POLYTANK_IO={
         if(Math.hypot(dominator.x-bullet.x,dominator.y-bullet.y)<dominator.r+bullet.r){
           if(!this.damageDominator(dominator,bullet.damage,bullet.ownerId,bullet.ownerTeam)) continue;
           this.registerBulletHitTarget(bullet,dominator.id);
+          this.applyBulletExplosion(bullet,bullet.x,bullet.y);
           this.spawnBulletImpactEffect(bullet.x,bullet.y,dominator.bodyColor,1.4);
           remove=this.spendBulletDurability(bullet,dominator.team==='neutral'?1.8:2.4);
           break;
@@ -23130,6 +23485,8 @@ const POLYTANK_IO={
         if(Math.hypot(tank.x-bullet.x,tank.y-bullet.y)<this.getTankHitRadius(tank)+bullet.r){
           if(!this.damageTank(tank,bullet.damage,bullet.ownerId,bullet.ownerTeam)) continue;
           this.registerBulletHitTarget(bullet,tank.id);
+          this.applyIgniteToTank(tank,bullet);
+          this.applyBulletExplosion(bullet,bullet.x,bullet.y);
           this.spawnBulletImpactEffect(bullet.x,bullet.y,tank.bodyColor,1.1);
           remove=this.spendBulletDurability(bullet,0.45);
           break;
@@ -23224,7 +23581,10 @@ const POLYTANK_IO={
       this.awardXpToOwner(ownerId,levelBasedKillXp);
     }
     const previousName=tank.displayName;
-    if(owner) owner.kills=(owner.kills||0)+1;
+    if(owner){
+      owner.kills=(owner.kills||0)+1;
+      if(owner.classId==='overdrive') owner.overdriveBoostTimer=Math.max(owner.overdriveBoostTimer||0,3.5);
+    }
     if(this.isCtfMode()&&this.ctfFlags.length){
       for(const flag of this.ctfFlags){
         if(flag.carrierId===tank.id){
