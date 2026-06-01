@@ -15136,6 +15136,8 @@ const POLYTANK_IO={
   networkSnapshotReceivedAt:0,
   networkInputSequence:0,
   networkInputTimer:0,
+  networkLocalProjectileId:0,
+  networkLocalProjectiles:[],
   networkCorrectionSnapDistance:280,
   networkRemoteSmoothingRate:12,
   networkCorrectionSmoothingRate:10,
@@ -16144,6 +16146,7 @@ const POLYTANK_IO={
     const localRoomAccess=String(localRoom?.access||'private');
     const pendingJoinCode=this.normalizeLocalPartyCode(localInput?.value||'');
     const lobbyOpen=!!this.overlayEl?.classList.contains('waiting-room');
+    const canStartFreshOffline=!localPartyActive&&!usingPartyServer&&!this.isLocalPartyGuest()&&(pausedSession||hasResume);
     if(summary){
       summary.textContent=localPartyActive
         ?`${this.localPartyRole==='host'?'Hosting':'Joined'} ${usingPartyServer?(localRoomAccess==='public'?'public online room':'online room'):'local party'} ${this.localPartyCode}.${usingPartyServer?' Lobby sync is live through the server.':' Waiting room sync is live in this browser.'}`
@@ -16171,8 +16174,12 @@ const POLYTANK_IO={
       leaveMatchButton.style.display=pausedSession?'inline-flex':'none';
       leaveMatchButton.disabled=false;
     }
-    if(newButton) newButton.textContent='Game Modes';
-    if(newButton) newButton.style.display='';
+    if(newButton){
+      newButton.textContent=canStartFreshOffline?'Start Fresh':'Game Modes';
+      newButton.setAttribute('onclick',canStartFreshOffline?'POLYTANK_IO.startFreshMatch()':'POLYTANK_IO.toggleModeDropdown()');
+      newButton.title=canStartFreshOffline?'Discard the saved single-player run and start a new arena.':'Choose a game mode';
+    }
+    if(newButton) newButton.style.display=canStartFreshOffline?'inline-flex':'';
     if(onlineButton) onlineButton.style.display=lobbyOpen?'none':'';
     if(playButton) playButton.disabled=usingPartyServer?(!localPartyActive||!localRoom?.roomId||localRoom?.status==='active'):this.isLocalPartyGuest();
     if(newButton) newButton.disabled=this.isLocalPartyGuest();
@@ -16522,7 +16529,89 @@ const POLYTANK_IO={
         hitFading:false,
       });
     });
+    this.reconcileNetworkLocalProjectiles(bullets);
+    if(this.networkLocalProjectiles&&this.networkLocalProjectiles.length){
+      bullets.push(...this.networkLocalProjectiles);
+    }
     return bullets;
+  },
+  reconcileNetworkLocalProjectiles(authoritativeBullets){
+    if(!this.networkLocalProjectiles?.length) return false;
+    const matchedAuthoritative=new Set();
+    this.networkLocalProjectiles=this.networkLocalProjectiles.filter(localBullet=>{
+      if(!localBullet) return false;
+      let matched=false;
+      for(let index=0;index<authoritativeBullets.length;index++){
+        if(matchedAuthoritative.has(index)) continue;
+        const authoritative=authoritativeBullets[index];
+        if(!authoritative||authoritative.ownerId!==localBullet.ownerId) continue;
+        const distance=Math.hypot((authoritative.x||0)-(localBullet.x||0),(authoritative.y||0)-(localBullet.y||0));
+        if(distance>Math.max(72,(localBullet.r||0)*5.5)) continue;
+        const angleDelta=Math.abs(this.normalizeAngle((authoritative.angle||0)-(localBullet.angle||0)));
+        if(angleDelta>0.42) continue;
+        matchedAuthoritative.add(index);
+        matched=true;
+        break;
+      }
+      return !matched&&localBullet.life>0;
+    });
+    return matchedAuthoritative.size>0;
+  },
+  updateNetworkLocalProjectiles(dt){
+    if(!this.networkLocalProjectiles?.length) return false;
+    this.networkLocalProjectiles=this.networkLocalProjectiles.filter(bullet=>{
+      if(!bullet) return false;
+      bullet.x+=bullet.vx*dt;
+      bullet.y+=bullet.vy*dt;
+      bullet.life=Math.max(0,(bullet.life||0)-dt);
+      if(bullet.life<=0) return false;
+      const margin=Math.max(48,(bullet.r||0)*2);
+      return bullet.x>=-margin&&bullet.x<=this.world.w+margin&&bullet.y>=-margin&&bullet.y<=this.world.h+margin;
+    });
+    return this.networkLocalProjectiles.length>0;
+  },
+  spawnNetworkLocalProjectilePreview(tank,barrel,index){
+    if(!tank||!barrel) return false;
+    const heavyClassScale=(tank.classId==='destroyer'||tank.classId==='annihilator')?0.4:1;
+    const spreadAngle=tank.aimAngle+barrel.angle;
+    const recoil=this.getBarrelRecoil(tank,index);
+    const tip=this.getBarrelTip(tank,spreadAngle,barrel.lateral,barrel.lengthScale,recoil);
+    const speed=tank.bulletSpeed*barrel.speedScale;
+    const life=Math.min(0.22,(tank.specialRole==='mothership'?7:2.6)*barrel.lifeScale);
+    this.networkLocalProjectiles.push({
+      id:`network_local_projectile_${++this.networkLocalProjectileId}`,
+      x:tip.x,
+      y:tip.y,
+      vx:Math.cos(spreadAngle)*speed,
+      vy:Math.sin(spreadAngle)*speed,
+      speed,
+      r:tank.bulletRadius*barrel.bulletScale*1.08*heavyClassScale,
+      ownerId:tank.id,
+      ownerTeam:tank.team,
+      color:tank.bulletColor,
+      angle:spreadAngle,
+      life,
+      maxLife:life,
+      massive:false,
+      shape:barrel.shape,
+      hitFading:false,
+      visualOnly:true,
+    });
+    return true;
+  },
+  triggerNetworkLocalFirePreview(tank){
+    if(!tank||tank.deadTimer>0||tank.hp<=0||tank.shotTimer>0) return false;
+    const barrels=this.getBarrelsForTank(tank);
+    if(!barrels.length) return false;
+    tank.shotTimer=tank.reload;
+    this.ensureBarrelRecoil(tank,barrels.length);
+    barrels.forEach((barrel,index)=>{
+      this.spawnNetworkLocalProjectilePreview(tank,barrel,index);
+      const recoilKick=Math.min((tank.barrelLength||64)*0.08*(barrel.lengthScale||1),5.3);
+      this.kickBarrelRecoil(tank,index,recoilKick);
+    });
+    if(tank.isPlayer&&SFX.orbShoot) SFX.orbShoot();
+    return true;
   },
   applyBufferedNetworkRender(){
     if(!this.networkRoomActive) return false;
@@ -16878,6 +16967,8 @@ const POLYTANK_IO={
       this.networkSnapshotReceivedAt=performance.now();
       this.networkInputSequence=0;
       this.networkInputTimer=0;
+      this.networkLocalProjectileId=0;
+      this.networkLocalProjectiles=[];
       this.resetNetworkTelemetry();
       this.bullets=[];
       this.shapes=[];
@@ -21760,6 +21851,7 @@ const POLYTANK_IO={
     this.networkInputTimer=Math.max(0,(this.networkInputTimer||0)-dt);
     this.networkPingTimer=Math.max(0,(this.networkPingTimer||0)-dt);
     const input=this.getServerRoomInputState();
+    this.updateNetworkLocalProjectiles(dt);
     const hasBufferedRender=this.applyBufferedNetworkRender();
     if(this.networkInputTimer<=0) this.sendServerRoomInput();
     if(this.networkPingTimer<=0){
@@ -21770,7 +21862,10 @@ const POLYTANK_IO={
     if(this.player){
       this.player.deadTimer=Math.max(0,(this.player.deadTimer||0)-dt);
       this.player.barTimer=Math.max(0,(this.player.barTimer||0)-dt);
+      this.player.shotTimer=Math.max(0,(this.player.shotTimer||0)-dt);
       this.player.damageFlash=Math.max(0,(this.player.damageFlash||0)-dt*1.08);
+      this.updateWeaponFeedback(this.player,dt);
+      if(input.firing&&this.networkSnapshotAgeMs<400) this.triggerNetworkLocalFirePreview(this.player);
       this.updateSmoothedSnapshotTank(this.player,dt,{isSelf:true,input});
     }
     for(const bot of this.bots){
