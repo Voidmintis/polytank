@@ -781,6 +781,10 @@ describe('polytank room server', () => {
     expect(snapshot?.payload.objective.dominationLocked).toBe(false);
     expect(snapshot?.payload.dominators.every(dominator => dominator.team === 'neutral')).toBe(true);
     expect(snapshot?.payload.dominators.map(dominator => dominator.kind).sort()).toEqual(['destroyer', 'gun', 'gun', 'trapper']);
+    expect(snapshot?.payload.shapes.length ?? 0).toBeGreaterThanOrEqual(26);
+    const leftShapes = snapshot?.payload.shapes.filter(shape => shape.x < WORLD_WIDTH / 2 - 240).length ?? 0;
+    const rightShapes = snapshot?.payload.shapes.filter(shape => shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
+    expect(Math.abs(leftShapes - rightShapes)).toBeLessThanOrEqual(2);
   }, 10_000);
 
   it('spawns domination teams on their side of the map', async () => {
@@ -959,6 +963,84 @@ describe('polytank room server', () => {
       ),
       6000,
     );
+  }, 10_000);
+
+  it('lets domination dominators damage nearby enemies authoritatively', async () => {
+    const app = createPolytankServer(3329);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3329);
+    const guest = await openClient(3329);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'domination', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      guest.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.some(player => player.nickname === 'Guest Pilot') &&
+          message.payload.dominators.length === 4,
+      ),
+      6000,
+    );
+
+    const liveManager = app.roomManager as unknown as {
+      activeRooms: Map<
+        string,
+        {
+          players: Array<{ id: string; nickname: string; x: number; y: number; hp: number; maxHp: number; team: string }>;
+          dominators: Array<{ id: string; x: number; y: number; team: string; aimAngle: number; shotCooldown: number }>;
+        }
+      >;
+    };
+    const runtime = liveManager.activeRooms.get(String(roomId));
+    const hostPlayer = runtime?.players.find(player => player.nickname === 'Host Pilot');
+    const guestPlayer = runtime?.players.find(player => player.nickname === 'Guest Pilot');
+    const targetDominator = runtime?.dominators[0];
+    expect(hostPlayer).toBeDefined();
+    expect(guestPlayer).toBeDefined();
+    expect(targetDominator).toBeDefined();
+
+    if (hostPlayer && guestPlayer && targetDominator) {
+      targetDominator.team = 'blue';
+      hostPlayer.x = WORLD_WIDTH - 260;
+      hostPlayer.y = WORLD_HEIGHT - 260;
+      guestPlayer.x = targetDominator.x + 320;
+      guestPlayer.y = targetDominator.y;
+      guestPlayer.hp = guestPlayer.maxHp;
+    }
+
+    await waitFor(() => {
+      const currentRuntime = liveManager.activeRooms.get(String(roomId));
+      const currentGuest = currentRuntime?.players.find(player => player.nickname === 'Guest Pilot');
+      return !!currentGuest && currentGuest.hp < currentGuest.maxHp;
+    }, 6000);
   }, 10_000);
 
   it('includes authoritative CTF flag state in snapshots', async () => {

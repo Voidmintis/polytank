@@ -124,6 +124,8 @@ interface ActiveDominator {
   radius: number;
   hp: number;
   maxHp: number;
+  aimAngle: number;
+  shotCooldown: number;
 }
 
 interface ActiveCtfFlag {
@@ -338,12 +340,13 @@ const SHAPE_DEFS = {
   square: { radius: 18, hp: 30, xp: 6, color: '#ffe36d', sides: 4 },
   triangle: { radius: 22, hp: 56, xp: 12, color: '#ef7076', sides: 3 },
   pentagon: { radius: 31, hp: 120, xp: 24, color: '#7f94f4', sides: 5 },
+  hexagon: { radius: 38, hp: 220, xp: 48, color: '#9a7cf4', sides: 6 },
 } as const;
 
 const DOMINATOR_DEFS = {
-  gun: { maxHp: 224000, radius: 198 },
-  destroyer: { maxHp: 250000, radius: 206 },
-  trapper: { maxHp: 230000, radius: 198 },
+  gun: { maxHp: 224000, radius: 198, reload: 0.42, bulletSpeed: 760, bulletDamage: 34, bulletRadius: 13, range: 1080 },
+  destroyer: { maxHp: 250000, radius: 206, reload: 1.72, bulletSpeed: 520, bulletDamage: 118, bulletRadius: 24, range: 1220 },
+  trapper: { maxHp: 230000, radius: 198, reload: 1.04, bulletSpeed: 360, bulletDamage: 48, bulletRadius: 18, range: 980 },
 } as const;
 
 const VALID_CAPTURE_TEAMS = new Set(['blue', 'red', 'green', 'purple', 'yellow']);
@@ -962,6 +965,7 @@ export class RoomManager {
     };
 
     runtime.shapes = this.createInitialShapes(room, runtime);
+    this.maintainShapePopulation(room, runtime);
 
     this.activeRooms.set(room.id, runtime);
 
@@ -998,7 +1002,8 @@ export class RoomManager {
     this.updateObjectiveState(room, runtime, dt);
     this.updateMothershipEncounterState(runtime, dt);
     this.updateMothershipEndgameState(room, runtime, dt);
-    this.maintainShapePopulation(runtime);
+    this.maintainShapePopulation(room, runtime);
+    this.updateDominators(room, runtime, dt);
 
     for (const shape of runtime.shapes) {
       shape.rotation += shape.spin * dt;
@@ -1184,7 +1189,7 @@ export class RoomManager {
         if (this.isWipeCloserId(player.id)) {
           continue;
         }
-        if (this.isFriendlyTarget(room, projectile.ownerId, player.id, runtime)) {
+        if (projectile.ownerTeam === player.team && projectile.ownerTeam !== 'neutral') {
           continue;
         }
         if (Math.hypot(projectile.x - player.x, projectile.y - player.y) > projectile.radius + 24) {
@@ -1200,6 +1205,7 @@ export class RoomManager {
             runtime.respawnTimers.delete(player.id);
           }
           const owner = runtime.players.find(entry => entry.id === projectile.ownerId);
+          const ownerDominator = runtime.dominators.find(entry => entry.id === projectile.ownerId);
           this.applyTagEliminationConversion(room, owner, player);
           if (owner) {
             owner.score += 1;
@@ -1210,7 +1216,7 @@ export class RoomManager {
               victimId: player.id,
               victimNickname: player.nickname,
               attackerId: projectile.ownerId,
-              attackerNickname: owner?.nickname || 'Pilot',
+              attackerNickname: owner?.nickname || ownerDominator?.label || 'Pilot',
               respawnDelaySeconds: respawnDelayForKill,
             }),
           );
@@ -1314,6 +1320,8 @@ export class RoomManager {
       radius: DOMINATOR_DEFS[config.kind].radius,
       hp: DOMINATOR_DEFS[config.kind].maxHp,
       maxHp: DOMINATOR_DEFS[config.kind].maxHp,
+      aimAngle: 0,
+      shotCooldown: 0.35 + Math.random() * 0.5,
     }));
   }
 
@@ -1552,6 +1560,64 @@ export class RoomManager {
 
     runtime.objective.breakoutWinner = '';
     this.updateCtfObjectiveState(runtime, dt);
+  }
+
+  private updateDominators(room: Room, runtime: ActiveRoomRuntime, dt: number): void {
+    if (room.settings.gameVariant !== 'domination') {
+      return;
+    }
+
+    for (const dominator of runtime.dominators) {
+      dominator.shotCooldown = Math.max(0, dominator.shotCooldown - dt);
+      const target = this.chooseDominatorTarget(runtime, dominator);
+      if (!target) {
+        dominator.aimAngle += dt * (dominator.kind === 'trapper' ? 0.92 : 0.35);
+        continue;
+      }
+
+      dominator.aimAngle = Math.atan2(target.y - dominator.y, target.x - dominator.x);
+      if (dominator.shotCooldown <= 0) {
+        this.fireDominator(runtime, dominator);
+      }
+    }
+  }
+
+  private chooseDominatorTarget(runtime: ActiveRoomRuntime, dominator: ActiveDominator): PlayerState | null {
+    let bestTarget: PlayerState | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    const definition = DOMINATOR_DEFS[dominator.kind];
+    for (const player of runtime.players) {
+      if (player.hp <= 0) {
+        continue;
+      }
+      if (dominator.team !== 'neutral' && player.team === dominator.team) {
+        continue;
+      }
+      const distance = Math.hypot(player.x - dominator.x, player.y - dominator.y);
+      if (distance < bestDistance && distance <= definition.range) {
+        bestDistance = distance;
+        bestTarget = player;
+      }
+    }
+    return bestTarget;
+  }
+
+  private fireDominator(runtime: ActiveRoomRuntime, dominator: ActiveDominator): void {
+    const definition = DOMINATOR_DEFS[dominator.kind];
+    runtime.projectileSequence += 1;
+    runtime.projectiles.push({
+      id: `${dominator.id}_p_${runtime.projectileSequence}`,
+      x: dominator.x + Math.cos(dominator.aimAngle) * (dominator.radius * 0.62),
+      y: dominator.y + Math.sin(dominator.aimAngle) * (dominator.radius * 0.62),
+      angle: dominator.aimAngle,
+      speed: definition.bulletSpeed,
+      radius: definition.bulletRadius,
+      ownerId: dominator.id,
+      ownerTeam: dominator.team,
+      life: dominator.kind === 'trapper' ? 2.1 : 1.6,
+      damage: definition.bulletDamage,
+    });
+    dominator.shotCooldown = definition.reload;
   }
 
   private updateMothershipEncounterState(runtime: ActiveRoomRuntime, dt: number): void {
@@ -2309,6 +2375,10 @@ export class RoomManager {
   }
 
   private createInitialShapes(room: Room, runtime: ActiveRoomRuntime): ActiveShape[] {
+    if (room.settings.gameVariant === 'domination') {
+      return [];
+    }
+
     const shapes: ActiveShape[] = [];
     for (const player of runtime.players) {
       const spawn = this.getSpawnPointForActivePlayer(room, runtime, player.id);
@@ -2371,30 +2441,29 @@ export class RoomManager {
         continue;
       }
 
-      const target = this.chooseBotPlayerTarget(room, runtime, player);
-      const shape = target ? null : this.chooseBotShapeTarget(runtime, player);
+      const target = this.chooseBotTarget(room, runtime, player);
       const botSeed = this.hashString(player.id);
       let moveX = 0;
       let moveY = 0;
       let aimAngle = player.angle;
       let firing = false;
 
-      if (target) {
-        const dx = target.x - player.x;
-        const dy = target.y - player.y;
+      if (target?.type === 'player' || target?.type === 'dominator') {
+        const dx = target.entity.x - player.x;
+        const dy = target.entity.y - player.y;
         const distance = Math.max(1, Math.hypot(dx, dy));
         const preferredDistance = 260 + (botSeed % 180);
         const strafeDirection = botSeed % 2 === 0 ? 1 : -1;
         const wave = Math.sin(runtime.tick * 0.045 + (botSeed % 17)) * 0.35;
         aimAngle = Math.atan2(dy, dx);
-        firing = distance < 920;
+        firing = distance < (target.type === 'dominator' ? 1120 : 920);
 
         const forward = distance > preferredDistance + 80 ? 1 : distance < preferredDistance * 0.7 ? -0.85 : 0.1;
         moveX = (dx / distance) * forward + Math.cos(aimAngle + Math.PI / 2 * strafeDirection) * (0.48 + wave);
         moveY = (dy / distance) * forward + Math.sin(aimAngle + Math.PI / 2 * strafeDirection) * (0.48 + wave);
-      } else if (shape) {
-        const dx = shape.x - player.x;
-        const dy = shape.y - player.y;
+      } else if (target?.type === 'shape') {
+        const dx = target.entity.x - player.x;
+        const dy = target.entity.y - player.y;
         const distance = Math.max(1, Math.hypot(dx, dy));
         aimAngle = Math.atan2(dy, dx);
         moveX = dx / distance;
@@ -2419,6 +2488,31 @@ export class RoomManager {
     }
   }
 
+  private chooseBotTarget(
+    room: Room,
+    runtime: ActiveRoomRuntime,
+    bot: PlayerState,
+  ): { type: 'player'; entity: PlayerState } | { type: 'shape'; entity: ActiveShape } | { type: 'dominator'; entity: ActiveDominator } | null {
+    if (room.settings.gameVariant === 'domination') {
+      const dominator = this.chooseBotDominatorTarget(runtime, bot);
+      const player = this.chooseBotPlayerTarget(room, runtime, bot);
+      if (dominator && (!player || Math.hypot(dominator.x - bot.x, dominator.y - bot.y) <= Math.hypot(player.x - bot.x, player.y - bot.y) * 1.15)) {
+        return { type: 'dominator', entity: dominator };
+      }
+      if (player) {
+        return { type: 'player', entity: player };
+      }
+    } else {
+      const player = this.chooseBotPlayerTarget(room, runtime, bot);
+      if (player) {
+        return { type: 'player', entity: player };
+      }
+    }
+
+    const shape = this.chooseBotShapeTarget(runtime, bot);
+    return shape ? { type: 'shape', entity: shape } : null;
+  }
+
   private chooseBotPlayerTarget(room: Room, runtime: ActiveRoomRuntime, bot: PlayerState): PlayerState | null {
     let bestTarget: PlayerState | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
@@ -2438,6 +2532,22 @@ export class RoomManager {
     return bestTarget;
   }
 
+  private chooseBotDominatorTarget(runtime: ActiveRoomRuntime, bot: PlayerState): ActiveDominator | null {
+    let bestTarget: ActiveDominator | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const dominator of runtime.dominators) {
+      if (dominator.team === bot.team) {
+        continue;
+      }
+      const distance = Math.hypot(dominator.x - bot.x, dominator.y - bot.y);
+      if (distance < bestDistance && distance < 2100) {
+        bestDistance = distance;
+        bestTarget = dominator;
+      }
+    }
+    return bestTarget;
+  }
+
   private chooseBotShapeTarget(runtime: ActiveRoomRuntime, bot: PlayerState): ActiveShape | null {
     let bestShape: ActiveShape | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
@@ -2451,23 +2561,76 @@ export class RoomManager {
     return bestShape;
   }
 
-  private maintainShapePopulation(runtime: ActiveRoomRuntime): void {
+  private maintainShapePopulation(room: Room, runtime: ActiveRoomRuntime): void {
+    if (room.settings.gameVariant === 'domination') {
+      this.maintainDominationShapePopulation(runtime);
+      return;
+    }
+
     const targetCount = Math.max(6, runtime.players.length + 2);
     while (runtime.shapes.length < targetCount) {
       const kind: keyof typeof SHAPE_DEFS = runtime.shapes.length % 5 === 0 ? 'triangle' : runtime.shapes.length % 11 === 0 ? 'pentagon' : 'square';
-      const position = this.createOpenShapePosition(runtime);
+      const position = this.createOpenShapePosition(runtime, 'wide');
       runtime.shapes.push(this.createShape(runtime, kind, position.x, position.y));
     }
   }
 
-  private createOpenShapePosition(runtime: ActiveRoomRuntime): { x: number; y: number } {
+  private maintainDominationShapePopulation(runtime: ActiveRoomRuntime): void {
+    const centerBand = 240;
+    const leftCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0 };
+    const rightCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0 };
+    const centerCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0 };
+
+    for (const shape of runtime.shapes) {
+      if (!(shape.kind in leftCounts)) {
+        continue;
+      }
+      const kind = shape.kind as keyof typeof SHAPE_DEFS;
+      if (shape.x < WORLD_WIDTH / 2 - centerBand) {
+        leftCounts[kind] += 1;
+      } else if (shape.x > WORLD_WIDTH / 2 + centerBand) {
+        rightCounts[kind] += 1;
+      } else {
+        centerCounts[kind] += 1;
+      }
+    }
+
+    const mirroredTargets: Array<{ kind: keyof typeof SHAPE_DEFS; perSide: number }> = [
+      { kind: 'square', perSide: 8 },
+      { kind: 'triangle', perSide: 4 },
+    ];
+
+    for (const target of mirroredTargets) {
+      while (leftCounts[target.kind] < target.perSide) {
+        const position = this.createOpenShapePosition(runtime, 'left');
+        runtime.shapes.push(this.createShape(runtime, target.kind, position.x, position.y));
+        leftCounts[target.kind] += 1;
+      }
+      while (rightCounts[target.kind] < target.perSide) {
+        const position = this.createOpenShapePosition(runtime, 'right');
+        runtime.shapes.push(this.createShape(runtime, target.kind, position.x, position.y));
+        rightCounts[target.kind] += 1;
+      }
+    }
+
+    while (centerCounts.pentagon < 4) {
+      const position = this.createOpenShapePosition(runtime, 'center');
+      runtime.shapes.push(this.createShape(runtime, 'pentagon', position.x, position.y));
+      centerCounts.pentagon += 1;
+    }
+
+    while (centerCounts.hexagon < 2) {
+      const position = this.createOpenShapePosition(runtime, 'center');
+      runtime.shapes.push(this.createShape(runtime, 'hexagon', position.x, position.y));
+      centerCounts.hexagon += 1;
+    }
+  }
+
+  private createOpenShapePosition(runtime: ActiveRoomRuntime, region: 'wide' | 'left' | 'right' | 'center'): { x: number; y: number } {
     let best = { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 };
     let bestDistance = -1;
     for (let attempt = 0; attempt < 16; attempt += 1) {
-      const candidate = {
-        x: 240 + Math.random() * (WORLD_WIDTH - 480),
-        y: 240 + Math.random() * (WORLD_HEIGHT - 480),
-      };
+      const candidate = this.createShapeCandidate(region);
       const nearestPlayer = runtime.players.reduce((closest, player) => Math.min(closest, Math.hypot(candidate.x - player.x, candidate.y - player.y)), Number.POSITIVE_INFINITY);
       const nearestShape = runtime.shapes.reduce((closest, shape) => Math.min(closest, Math.hypot(candidate.x - shape.x, candidate.y - shape.y)), Number.POSITIVE_INFINITY);
       const score = Math.min(nearestPlayer, nearestShape);
@@ -2477,6 +2640,32 @@ export class RoomManager {
       }
     }
     return best;
+  }
+
+  private createShapeCandidate(region: 'wide' | 'left' | 'right' | 'center'): { x: number; y: number } {
+    const padding = 240;
+    if (region === 'left') {
+      return {
+        x: padding + Math.random() * Math.max(120, WORLD_WIDTH * 0.5 - 2 * padding),
+        y: padding + Math.random() * (WORLD_HEIGHT - 2 * padding),
+      };
+    }
+    if (region === 'right') {
+      return {
+        x: WORLD_WIDTH * 0.5 + Math.random() * Math.max(120, WORLD_WIDTH * 0.5 - 2 * padding),
+        y: padding + Math.random() * (WORLD_HEIGHT - 2 * padding),
+      };
+    }
+    if (region === 'center') {
+      return {
+        x: WORLD_WIDTH * 0.5 - 760 + Math.random() * 1520,
+        y: WORLD_HEIGHT * 0.5 - 660 + Math.random() * 1320,
+      };
+    }
+    return {
+      x: padding + Math.random() * (WORLD_WIDTH - 2 * padding),
+      y: padding + Math.random() * (WORLD_HEIGHT - 2 * padding),
+    };
   }
 
   private advanceBotBuild(player: PlayerState): void {
