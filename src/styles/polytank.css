@@ -174,7 +174,8 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 #polytank-overlay.waiting-room #polytank-online-btn,
 #polytank-overlay.waiting-room #polytank-party-link-btn,
 #polytank-overlay.waiting-room #polytank-skins-btn,
-#polytank-overlay.waiting-room #polytank-settings-btn{display:none !important}
+#polytank-overlay.waiting-room #polytank-settings-btn,
+#polytank-overlay.waiting-room #polytank-leave-match-btn{display:none !important}
 #polytank-overlay.waiting-room #polytank-menu-form{grid-template-columns:minmax(0,1fr);gap:8px}
 #polytank-overlay.waiting-room #polytank-menu-hero{padding-top:0}
 #polytank-overlay.waiting-room #polytank-title{font-size:2.3rem}
@@ -271,7 +272,8 @@ body.mobile-touch #polytank-local-code-input{padding:8px 10px;font-size:.52rem;b
 body.mobile-touch #polytank-menu-preview{gap:6px}
 body.mobile-touch #polytank-live-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 body.mobile-touch .polytank-menu-banner{padding:7px 9px;font-size:.72rem;line-height:1.02}
-body.mobile-touch #polytank-main-action-row{grid-template-columns:1fr 1fr;grid-template-areas:'play play' 'online skins' 'settings modes';gap:8px;row-gap:8px}
+body.mobile-touch #polytank-main-action-row{grid-template-columns:1fr 1fr;grid-template-areas:'leave leave' 'play play' 'online skins' 'settings modes';gap:8px;row-gap:8px}
+body.mobile-touch #polytank-leave-match-btn{grid-area:leave;min-height:42px;padding:0 10px;font-size:.72rem;letter-spacing:.06em}
 body.mobile-touch #polytank-play-btn{grid-area:play;min-height:82px;padding:0 10px;font-size:1.7rem;letter-spacing:.03em;border-radius:12px;background:linear-gradient(180deg,#5cf08f,#3ddf7a);border:3px solid rgba(34,149,84,.45);color:#ffffff;box-shadow:0 10px 0 rgba(32,130,74,.36),0 20px 28px rgba(18,31,28,.24)}
 body.mobile-touch #polytank-online-btn{grid-area:online;min-height:42px;padding:0 10px;font-size:.74rem;letter-spacing:.06em}
 body.mobile-touch #polytank-skins-btn{grid-area:skins;min-height:42px;padding:0 10px;font-size:.74rem;letter-spacing:.06em}
@@ -649,6 +651,13 @@ body.mobile-touch #polytank-mode-wheel.open{display:block;animation:polytankPane
 .polytank-mode-option.active{box-shadow:none;text-shadow:0 1px 0 rgba(255,255,255,.45);font-style:normal}
 #polytank-team-row-wrap{display:none}
 #polytank-main-action-row{display:grid;grid-template-columns:1fr;gap:10px;align-items:stretch;margin-top:6px}
+#polytank-main-action-row > button{position:relative;overflow:hidden;transform:translateY(0) scale(1);transition:transform .16s ease,filter .16s ease,box-shadow .16s ease,border-color .16s ease}
+#polytank-main-action-row > button::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg,rgba(255,255,255,0) 18%,rgba(255,255,255,.16) 48%,rgba(255,255,255,0) 78%);transform:translateX(-120%);pointer-events:none}
+#polytank-main-action-row > button:hover::after{transform:translateX(120%);transition:transform .42s ease}
+#polytank-main-action-row > button:hover{filter:brightness(1.05) saturate(1.05)}
+#polytank-main-action-row > button:active{transform:translateY(1px) scale(.995)}
+#polytank-leave-match-btn{display:none;min-height:42px;border:none;border-radius:10px;font-family:'Orbitron',monospace;font-size:.72rem;letter-spacing:.08em;color:#fff1f2;background:linear-gradient(180deg,#ff6f78,#ea4758);border:2px solid rgba(136,42,56,.45);box-shadow:0 7px 0 rgba(131,36,49,.34),0 12px 24px rgba(41,18,24,.2)}
+#polytank-leave-match-btn:hover{box-shadow:0 9px 0 rgba(131,36,49,.34),0 16px 28px rgba(41,18,24,.24)}
 #polytank-play-btn{
   min-width:0;
   min-height:54px;
@@ -679,7 +688,7 @@ body.mobile-touch #polytank-mode-wheel.open{display:block;animation:polytankPane
 #polytank-play-btn:active{transform:translateY(1px);box-shadow:0 6px 0 rgba(9,99,131,.35),0 10px 16px rgba(18,27,39,.2)}
 #polytank-play-btn:disabled{opacity:.58;cursor:not-allowed;filter:saturate(.7)}
 @keyframes polytank-btn-sheen{0%,18%{left:-42%}44%{left:112%}100%{left:112%}}
-#polytank-play-btn:focus-visible,#polytank-party-link-btn:focus-visible,#polytank-mode-wheel:focus-visible,.polytank-mode-option:focus-visible{
+#polytank-play-btn:focus-visible,#polytank-party-link-btn:focus-visible,#polytank-mode-wheel:focus-visible,.polytank-mode-option:focus-visible,#polytank-leave-match-btn:focus-visible,#polytank-online-btn:focus-visible,#polytank-skins-btn:focus-visible,#polytank-new-btn:focus-visible{
   outline:3px solid rgba(255,255,255,.75);
   outline-offset:2px;
 }
@@ -785,7 +794,7 @@ body.mobile-touch #polytank-mode-wheel.open{display:block;animation:polytankPane
   #polytank-name-input{font-size:1.7rem}
   #polytank-menu-select-row{grid-template-columns:1fr}
   #polytank-main-action-row{grid-template-columns:1fr}
-  #polytank-play-btn,#polytank-party-link-btn,#polytank-new-btn{grid-column:1;grid-row:auto;min-height:40px;font-size:.92rem}
+  #polytank-play-btn,#polytank-party-link-btn,#polytank-new-btn,#polytank-leave-match-btn{grid-column:1;grid-row:auto;min-height:40px;font-size:.92rem}
   #polytank-settings-btn{min-height:36px;font-size:.66rem}
   #polytank-mode-wheel{--polytank-mode-step:44px;--polytank-mode-center-shift:88px}
   .polytank-mode-option{min-height:44px;font-size:1rem}
@@ -804,7 +813,7 @@ body.mobile-touch #polytank-mode-wheel.open{display:block;animation:polytankPane
   body.mobile-touch #polytank-mode-wheel-label{margin-top:6px;font-size:var(--ui-mobile-min-text)}
   body.mobile-touch .polytank-mode-option{min-height:32px;font-size:var(--ui-mobile-min-text);padding:0 8px}
   body.mobile-touch #polytank-main-action-row{gap:6px;row-gap:6px}
-  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn,body.mobile-touch #polytank-skins-btn{min-height:34px;font-size:var(--ui-mobile-min-text);border-width:1px}
+  body.mobile-touch #polytank-play-btn,body.mobile-touch #polytank-party-link-btn,body.mobile-touch #polytank-settings-btn,body.mobile-touch #polytank-new-btn,body.mobile-touch #polytank-skins-btn,body.mobile-touch #polytank-leave-match-btn{min-height:34px;font-size:var(--ui-mobile-min-text);border-width:1px}
   body.mobile-touch #polytank-settings-panel{padding:6px 8px 8px}
   body.mobile-touch #polytank-theme-switcher{gap:6px}
   body.mobile-touch .polytank-theme-option{min-height:30px;font-size:.52rem}

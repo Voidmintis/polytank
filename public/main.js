@@ -16112,6 +16112,7 @@ const POLYTANK_IO={
   refreshMenuState(){
     const summary=document.getElementById('polytank-menu-session');
     const statusLine=document.getElementById('polytank-status-line');
+    const leaveMatchButton=document.getElementById('polytank-leave-match-btn');
     const playButton=document.getElementById('polytank-play-btn');
     const onlineButton=document.getElementById('polytank-online-btn');
     const newButton=document.getElementById('polytank-new-btn');
@@ -16166,6 +16167,10 @@ const POLYTANK_IO={
       :(localPartyActive&&usingPartyServer
         ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
         :(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play')));
+    if(leaveMatchButton){
+      leaveMatchButton.style.display=pausedSession?'inline-flex':'none';
+      leaveMatchButton.disabled=false;
+    }
     if(newButton) newButton.textContent='Game Modes';
     if(newButton) newButton.style.display='';
     if(onlineButton) onlineButton.style.display=lobbyOpen?'none':'';
@@ -18095,6 +18100,7 @@ const POLYTANK_IO={
     if(nativeSelect){
       nativeSelect.value=activeVariant;
       nativeSelect.disabled=this.isLocalPartyGuest();
+      this.updateNativeModeSelectTheme(activeVariant);
     }
     if(this.modeWheelOrder.length){
       const idx=this.modeWheelOrder.findIndex(value=>this.normalizeGameVariant(value)===activeVariant);
@@ -18104,6 +18110,20 @@ const POLYTANK_IO={
       }
     }
     this.renderModeWheel();
+  },
+  updateNativeModeSelectTheme(variant){
+    const nativeSelect=document.getElementById('polytank-mode-select-native');
+    if(!nativeSelect) return;
+    const color=this.getModeWheelColor(variant);
+    const darkText=['#dbc446','#6ddd45','#4ed0d4','#d67d4f'].includes(color);
+    nativeSelect.style.background=`linear-gradient(180deg,${color},${color})`;
+    nativeSelect.style.color=darkText?'#1f2b1f':'#f3f8ff';
+    nativeSelect.style.borderColor='rgba(48,56,70,.38)';
+    nativeSelect.style.boxShadow='0 8px 0 rgba(37,45,57,.24),0 14px 24px rgba(20,29,34,.16)';
+    [...nativeSelect.options].forEach(option=>{
+      option.style.background=color;
+      option.style.color=darkText?'#1f2b1f':'#f3f8ff';
+    });
   },
   bindModeSelectNative(){
     const select=document.getElementById('polytank-mode-select-native');
