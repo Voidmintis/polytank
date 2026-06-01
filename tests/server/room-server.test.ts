@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createPolytankServer } from '../../server/src/index.js';
 import { PROTOCOL_VERSION, type ServerMessage } from '../../src/shared/protocol.js';
+import { WORLD_HEIGHT, WORLD_WIDTH } from '../../src/shared/world.js';
 
 async function openClient(port: number) {
   const messages: ServerMessage[] = [];
@@ -780,6 +781,73 @@ describe('polytank room server', () => {
     expect(snapshot?.payload.objective.dominationLocked).toBe(false);
     expect(snapshot?.payload.dominators.every(dominator => dominator.team === 'neutral')).toBe(true);
     expect(snapshot?.payload.dominators.map(dominator => dominator.kind).sort()).toEqual(['destroyer', 'gun', 'gun', 'trapper']);
+  }, 10_000);
+
+  it('spawns domination teams on their side of the map', async () => {
+    const app = createPolytankServer(3328);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3328);
+    const guest = await openClient(3328);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'domination', hostTeam: 'blue', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      host.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ) &&
+      guest.messages.some(
+        message => message.type === 'roomState' && message.payload.roomId === roomId && message.payload.roster.length === 2,
+      ),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.players.some(player => player.nickname === 'Host Pilot') &&
+          message.payload.players.some(player => player.nickname === 'Guest Pilot'),
+      ),
+      6000,
+    );
+
+    const snapshot = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' &&
+        message.payload.roomId === roomId &&
+        message.payload.players.some(player => player.nickname === 'Host Pilot') &&
+        message.payload.players.some(player => player.nickname === 'Guest Pilot'),
+    );
+
+    const hostPlayer = snapshot?.payload.players.find(player => player.nickname === 'Host Pilot');
+    const guestPlayer = snapshot?.payload.players.find(player => player.nickname === 'Guest Pilot');
+
+    expect(hostPlayer?.team).toBe('blue');
+    expect(guestPlayer?.team).toBe('red');
+    expect(hostPlayer?.x ?? WORLD_WIDTH).toBeLessThan(WORLD_WIDTH * 0.35);
+    expect(guestPlayer?.x ?? 0).toBeGreaterThan(WORLD_WIDTH * 0.65);
+    expect(hostPlayer?.y ?? WORLD_HEIGHT).toBeLessThan(WORLD_HEIGHT * 0.4);
+    expect(guestPlayer?.y ?? WORLD_HEIGHT).toBeLessThan(WORLD_HEIGHT * 0.4);
   }, 10_000);
 
   it('captures dominators authoritatively and locks domination progress from snapshots', async () => {

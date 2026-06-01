@@ -961,7 +961,7 @@ export class RoomManager {
       }, Math.max(1, Math.floor(1000 / SNAPSHOT_RATE))),
     };
 
-    runtime.shapes = this.createInitialShapes(runtime);
+    runtime.shapes = this.createInitialShapes(room, runtime);
 
     this.activeRooms.set(room.id, runtime);
 
@@ -1027,7 +1027,7 @@ export class RoomManager {
           const nextRespawnTimer = Math.max(0, respawnTimer - dt);
           runtime.respawnTimers.set(player.id, nextRespawnTimer);
           if (nextRespawnTimer <= 0) {
-            const spawn = this.getSpawnPointForActivePlayer(runtime, player.id);
+            const spawn = this.getSpawnPointForActivePlayer(room, runtime, player.id);
             player.x = spawn.x;
             player.y = spawn.y;
             player.angle = spawn.angle;
@@ -2194,11 +2194,12 @@ export class RoomManager {
 
   private createActiveHumanPlayer(room: Room, member: RoomMember): PlayerState {
     const slotIndex = Math.max(0, room.members.findIndex(entry => entry.playerId === member.playerId));
-    const spawn = this.getSpawnPointByIndex(slotIndex, Math.max(room.members.length, 1));
+    const team = this.getAssignedTeam(room, slotIndex);
+    const spawn = this.getSpawnPoint(room, member.playerId);
     const player: PlayerState = {
       id: member.playerId,
       nickname: member.nickname,
-      team: this.getAssignedTeam(room, slotIndex),
+      team,
       classId: 'basic',
       x: spawn.x,
       y: spawn.y,
@@ -2222,11 +2223,14 @@ export class RoomManager {
   }
 
   private createActiveBotPlayer(room: Room, slotIndex: number, totalSlots: number): PlayerState {
-    const spawn = this.getSpawnPointByIndex(slotIndex, Math.max(totalSlots, 1));
+    const team = this.getAssignedTeam(room, slotIndex);
+    const slotTeams = Array.from({ length: Math.max(totalSlots, 1) }, (_unused, index) => this.getAssignedTeam(room, index));
+    const { teamSlotIndex, teamCount } = this.getTeamSlotInfo(slotTeams, slotIndex, team);
+    const spawn = this.getSpawnPointForVariant(room.settings.gameVariant, team, teamSlotIndex, teamCount, slotIndex, Math.max(totalSlots, 1));
     const bot: PlayerState = {
       id: `bot_${crypto.randomUUID()}`,
       nickname: this.createBotName(slotIndex),
-      team: this.getAssignedTeam(room, slotIndex),
+      team,
       classId: 'basic',
       x: spawn.x,
       y: spawn.y,
@@ -2304,10 +2308,10 @@ export class RoomManager {
     runtime.players = nextPlayers;
   }
 
-  private createInitialShapes(runtime: ActiveRoomRuntime): ActiveShape[] {
+  private createInitialShapes(room: Room, runtime: ActiveRoomRuntime): ActiveShape[] {
     const shapes: ActiveShape[] = [];
     for (const player of runtime.players) {
-      const spawn = this.getSpawnPointForActivePlayer(runtime, player.id);
+      const spawn = this.getSpawnPointForActivePlayer(room, runtime, player.id);
       shapes.push(this.createShape(runtime, 'square', spawn.x + Math.cos(spawn.angle) * 130, spawn.y + Math.sin(spawn.angle) * 130));
     }
     shapes.push(this.createShape(runtime, 'pentagon', WORLD_WIDTH / 2, WORLD_HEIGHT / 2));
@@ -2559,12 +2563,117 @@ export class RoomManager {
 
   private getSpawnPoint(room: Room, playerId: string): { x: number; y: number; angle: number } {
     const memberIndex = Math.max(0, room.members.findIndex(member => member.playerId === playerId));
-    return this.getSpawnPointByIndex(memberIndex, room.members.length);
+    const team = this.getAssignedTeam(room, memberIndex);
+    const slotTeams = room.members.map((_member, index) => this.getAssignedTeam(room, index));
+    const { teamSlotIndex, teamCount } = this.getTeamSlotInfo(slotTeams, memberIndex, team);
+    return this.getSpawnPointForVariant(room.settings.gameVariant, team, teamSlotIndex, teamCount, memberIndex, room.members.length);
   }
 
-  private getSpawnPointForActivePlayer(runtime: ActiveRoomRuntime, playerId: string): { x: number; y: number; angle: number } {
+  private getSpawnPointForActivePlayer(room: Room, runtime: ActiveRoomRuntime, playerId: string): { x: number; y: number; angle: number } {
     const index = Math.max(0, runtime.players.findIndex(player => player.id === playerId));
-    return this.getSpawnPointByIndex(index, Math.max(1, runtime.players.length));
+    const team = runtime.players[index]?.team || 'blue';
+    const slotTeams = runtime.players.map(player => player.team);
+    const { teamSlotIndex, teamCount } = this.getTeamSlotInfo(slotTeams, index, team);
+    return this.getSpawnPointForVariant(room.settings.gameVariant, team, teamSlotIndex, teamCount, index, Math.max(1, runtime.players.length));
+  }
+
+  private getTeamSlotInfo(teams: readonly string[], targetIndex: number, team: string): { teamSlotIndex: number; teamCount: number } {
+    let teamSlotIndex = 0;
+    let teamCount = 0;
+    for (let index = 0; index < teams.length; index += 1) {
+      if (teams[index] !== team) {
+        continue;
+      }
+      if (index < targetIndex) {
+        teamSlotIndex += 1;
+      }
+      teamCount += 1;
+    }
+    return { teamSlotIndex, teamCount };
+  }
+
+  private getSpawnPointForVariant(
+    gameVariant: string,
+    team: string,
+    teamSlotIndex: number,
+    teamCount: number,
+    globalIndex: number,
+    globalCount: number,
+  ): { x: number; y: number; angle: number } {
+    if (gameVariant === '4teams') {
+      const edgeX = 340;
+      const edgeY = 300;
+      const teamBases: Record<string, Array<{ x: number; y: number }>> = {
+        blue: [{ x: edgeX, y: edgeY }],
+        red: [{ x: WORLD_WIDTH - edgeX, y: edgeY }],
+        green: [{ x: edgeX, y: WORLD_HEIGHT - edgeY }],
+        purple: [{ x: WORLD_WIDTH - edgeX, y: WORLD_HEIGHT - edgeY }],
+      };
+      return this.getSpawnPointOnBases(teamBases[team] || teamBases.blue, teamSlotIndex, teamCount);
+    }
+
+    if (gameVariant === '2teams' || gameVariant === 'domination' || gameVariant === 'ctf' || gameVariant === 'breakout' || gameVariant === 'tag' || gameVariant === 'maze') {
+      const edge = 250;
+      const x = team === 'red' ? WORLD_WIDTH - edge : edge;
+      return this.getSpawnPointOnBases(
+        [
+          { x, y: WORLD_HEIGHT * 0.24 },
+          { x, y: WORLD_HEIGHT * 0.76 },
+        ],
+        teamSlotIndex,
+        teamCount,
+      );
+    }
+
+    if (gameVariant === 'mothership') {
+      return this.getSpawnPointOnBases(
+        [
+          { x: WORLD_WIDTH * 0.22, y: WORLD_HEIGHT - 320 },
+          { x: WORLD_WIDTH * 0.5, y: WORLD_HEIGHT - 280 },
+          { x: WORLD_WIDTH * 0.78, y: WORLD_HEIGHT - 320 },
+        ],
+        teamSlotIndex,
+        teamCount,
+      );
+    }
+
+    if (gameVariant === 'sandbox') {
+      return this.getSpawnPointOnBases([{ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 }], teamSlotIndex, teamCount);
+    }
+
+    return this.getSpawnPointByIndex(globalIndex, globalCount);
+  }
+
+  private getSpawnPointOnBases(
+    bases: readonly { x: number; y: number }[],
+    teamSlotIndex: number,
+    teamCount: number,
+  ): { x: number; y: number; angle: number } {
+    const baseCount = Math.max(1, bases.length);
+    const safeTeamSlotIndex = Math.max(0, teamSlotIndex);
+    const baseIndex = safeTeamSlotIndex % baseCount;
+    const baseSlotIndex = Math.floor(safeTeamSlotIndex / baseCount);
+    const baseSlotCount = Math.max(1, Math.ceil(Math.max(1, teamCount) / baseCount));
+    const base = bases[baseIndex] || bases[0] || { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 };
+    const spread = this.getSpawnSpreadOffset(baseSlotIndex, baseSlotCount);
+    const x = this.clamp(base.x + spread.x, 24, WORLD_WIDTH - 24);
+    const y = this.clamp(base.y + spread.y, 24, WORLD_HEIGHT - 24);
+    return {
+      x,
+      y,
+      angle: Math.atan2(WORLD_HEIGHT / 2 - y, WORLD_WIDTH / 2 - x),
+    };
+  }
+
+  private getSpawnSpreadOffset(slotIndex: number, slotCount: number): { x: number; y: number } {
+    if (slotCount <= 1) {
+      return { x: 0, y: 0 };
+    }
+    const angle = (Math.PI * 2 * slotIndex) / slotCount;
+    return {
+      x: Math.cos(angle) * 48,
+      y: Math.sin(angle) * 48,
+    };
   }
 
   private getSpawnPointByIndex(index: number, memberCount: number): { x: number; y: number; angle: number } {
