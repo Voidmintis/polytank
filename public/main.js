@@ -15069,9 +15069,17 @@ const POLYTANK_IO={
   pausedByMenu:false,
   modeDropdownOpen:false,
   modeWheelStepPx:54,
+  modeWheelLoopRepeats:5,
+  modeWheelVirtualIndex:0,
+  modeWheelVelocity:0,
+  modeWheelLastTs:0,
+  modeWheelRaf:0,
+  modeWheelDragging:false,
   modeWheelPointerId:null,
   modeWheelStartY:0,
   modeWheelLastY:0,
+  modeWheelLastMoveTs:0,
+  modeWheelOrder:[],
   sandboxPanelOpen:true,
   gameVariant:'ffa',
   playerTeam:'blue',
@@ -18061,134 +18069,220 @@ const POLYTANK_IO={
     }
   },
   syncGameModeButtons(){
-    const buttons=[...document.querySelectorAll('[data-polytank-mode]')];
+    const buttons=[...document.querySelectorAll('#polytank-mode-wheel [data-polytank-mode]')];
     let activeLabel='FFA';
-    let activeIndex=0;
-    buttons.forEach((button,index)=>{
+    const activeVariant=this.normalizeGameVariant(this.gameVariant);
+    buttons.forEach(button=>{
       const variant=this.normalizeGameVariant(button.getAttribute('data-polytank-mode'));
       button.classList.toggle('active',variant===this.gameVariant);
       button.disabled=this.isLocalPartyGuest();
       if(variant===this.gameVariant){
         const def=this.getGameVariantDef(variant);
         activeLabel=def?.label||button.textContent||'FFA';
-        activeIndex=Math.max(0,buttons.indexOf(button));
       }
       button.setAttribute('aria-selected',variant===this.gameVariant?'true':'false');
-      button.classList.remove('mode-depth-0','mode-depth-1','mode-depth-2','mode-depth-3','mode-depth-4','wheel-above','wheel-below');
-      const offset=index-activeIndex;
-      const depth=Math.min(4,Math.abs(offset));
-      button.classList.add(`mode-depth-${depth}`);
-      if(offset<0) button.classList.add('wheel-above');
-      if(offset>0) button.classList.add('wheel-below');
-      const sign=offset<0?1:offset>0?-1:0;
-      let rotateX=0;
-      let skewX=0;
-      let translateZ=56;
-      let scale=1.03;
-      let opacity=1;
-      if(depth===1){
-        rotateX=36*sign;
-        skewX=14*sign;
-        translateZ=40;
-        scale=.965;
-        opacity=.84;
-      }else if(depth===2){
-        rotateX=56*sign;
-        skewX=20*sign;
-        translateZ=18;
-        scale=.9;
-        opacity=.56;
-      }else if(depth===3){
-        rotateX=70*sign;
-        skewX=26*sign;
-        translateZ=6;
-        scale=.83;
-        opacity=.32;
-      }else if(depth>=4){
-        rotateX=78*sign;
-        skewX=30*sign;
-        translateZ=0;
-        scale=.76;
-        opacity=.14;
-      }
-      button.style.transform=`translateZ(${translateZ}px) rotateX(${rotateX}deg) skewX(${skewX}deg) scale(${scale})`;
-      button.style.opacity=String(opacity);
-      button.style.fontStyle=depth===0?'normal':'italic';
-      button.style.pointerEvents=depth>=4?'none':'auto';
+      button.style.background=this.getModeWheelColor(variant);
+      button.style.color=variant===activeVariant?'#f9fdff':'#f1f6ff';
     });
     const wheelLabel=document.getElementById('polytank-mode-wheel-label');
     if(wheelLabel) wheelLabel.textContent=activeLabel;
-    const track=document.getElementById('polytank-mode-wheel-track');
-    if(track){
-      track.style.setProperty('--polytank-mode-index',String(activeIndex));
-      track.style.transform=`translateY(calc(var(--polytank-mode-center-shift, 0px) - (${activeIndex} * var(--polytank-mode-step, 54px))))`;
+    if(this.modeWheelOrder.length){
+      const idx=this.modeWheelOrder.findIndex(value=>this.normalizeGameVariant(value)===activeVariant);
+      if(idx>=0&&!this.modeWheelDragging&&Math.abs(this.modeWheelVelocity)<0.001){
+        const count=this.modeWheelOrder.length;
+        this.modeWheelVirtualIndex=count*2+idx;
+      }
     }
+    this.renderModeWheel();
+  },
+  getModeWheelColor(variant){
+    return ({
+      ffa:'#4ed0d4',
+      '2teams':'#6ddd45',
+      '4teams':'#ea4649',
+      maze:'#dbc446',
+      breakout:'#4f77d6',
+      sandbox:'#7a4edb',
+      domination:'#4f9bd6',
+      tag:'#d67d4f',
+      ctf:'#5f8d5e',
+      mothership:'#b45fd1',
+    }[this.normalizeGameVariant(variant)]||'#6f7f93');
   },
   bindModeWheel(){
     const wheel=document.getElementById('polytank-mode-wheel');
     const viewport=document.getElementById('polytank-mode-wheel-viewport');
-    if(!wheel||!viewport||wheel.dataset.bound==='1') return;
+    const track=document.getElementById('polytank-mode-wheel-track');
+    if(!wheel||!viewport||!track||wheel.dataset.bound==='1') return;
+    const sourceButtons=[...track.querySelectorAll('[data-polytank-mode]')];
+    const order=sourceButtons.map(button=>this.normalizeGameVariant(button.getAttribute('data-polytank-mode'))).filter(Boolean);
+    if(!order.length) return;
+    this.modeWheelOrder=order;
+    const repeated=[];
+    for(let repeat=0;repeat<this.modeWheelLoopRepeats;repeat++){
+      for(const variant of order){
+        const def=this.getGameVariantDef(variant);
+        repeated.push(`<button type=\"button\" class=\"polytank-mode-option\" data-polytank-mode=\"${variant}\">${def?.label||variant.toUpperCase()}</button>`);
+      }
+    }
+    track.innerHTML=repeated.join('');
+    this.modeWheelStepPx=parseFloat(getComputedStyle(wheel).getPropertyValue('--polytank-mode-step'))||54;
+    const currentIndex=Math.max(0,order.findIndex(variant=>variant===this.normalizeGameVariant(this.gameVariant)));
+    this.modeWheelVirtualIndex=order.length*2+currentIndex;
+    this.renderModeWheel();
     wheel.dataset.bound='1';
     const spinByDelta=delta=>{
       this.spinModeWheelByDelta(delta);
     };
     wheel.addEventListener('wheel',event=>{
-      if(!this.menuOpen) return;
+      if(!this.menuOpen||!this.modeDropdownOpen) return;
       event.preventDefault();
-      spinByDelta(event.deltaY>0?1:-1);
+      spinByDelta(event.deltaY/120);
     },{passive:false});
     wheel.addEventListener('keydown',event=>{
+      if(!this.modeDropdownOpen) return;
       if(event.key==='ArrowDown'){
         event.preventDefault();
-        spinByDelta(1);
+        spinByDelta(1.2);
       } else if(event.key==='ArrowUp'){
         event.preventDefault();
-        spinByDelta(-1);
+        spinByDelta(-1.2);
       } else if(event.key==='Enter'){
         event.preventDefault();
-        const active=[...document.querySelectorAll('#polytank-mode-wheel [data-polytank-mode].active')][0];
-        if(active) this.setGameVariant(active.getAttribute('data-polytank-mode')||'ffa');
+        this.lockModeWheelToNearest(true);
       }
     });
     viewport.addEventListener('pointerdown',event=>{
-      if(!this.menuOpen||this.isLocalPartyGuest()) return;
+      if(!this.menuOpen||!this.modeDropdownOpen||this.isLocalPartyGuest()) return;
       this.modeWheelPointerId=event.pointerId;
+      this.modeWheelDragging=true;
+      this.modeWheelVelocity=0;
       this.modeWheelStartY=event.clientY;
       this.modeWheelLastY=event.clientY;
+      this.modeWheelLastMoveTs=performance.now();
+      if(this.modeWheelRaf){
+        cancelAnimationFrame(this.modeWheelRaf);
+        this.modeWheelRaf=0;
+      }
       if(viewport.setPointerCapture){
         try{ viewport.setPointerCapture(event.pointerId); }catch(_err){}
       }
     });
     viewport.addEventListener('pointermove',event=>{
       if(this.modeWheelPointerId!==event.pointerId||this.isLocalPartyGuest()) return;
-      const delta=this.modeWheelLastY-event.clientY;
-      const threshold=24;
-      if(Math.abs(delta)>=threshold){
-        const steps=Math.trunc(delta/threshold);
-        this.modeWheelLastY=event.clientY;
-        if(steps!==0) spinByDelta(steps);
-      }
+      const now=performance.now();
+      const dy=event.clientY-this.modeWheelLastY;
+      const step=this.modeWheelStepPx||54;
+      this.modeWheelVirtualIndex-=dy/step;
+      const dt=Math.max(8,now-this.modeWheelLastMoveTs);
+      this.modeWheelVelocity=-(dy/step)/(dt/16.6667);
+      this.modeWheelLastMoveTs=now;
+      this.modeWheelLastY=event.clientY;
+      this.normalizeModeWheelVirtualIndex();
+      this.renderModeWheel();
     });
     const release=event=>{
       if(this.modeWheelPointerId!==event.pointerId) return;
       this.modeWheelPointerId=null;
+      this.modeWheelDragging=false;
+      this.startModeWheelMotion();
     };
     viewport.addEventListener('pointerup',release);
     viewport.addEventListener('pointercancel',release);
+    track.addEventListener('click',event=>{
+      const target=event.target instanceof Element?event.target.closest('[data-polytank-mode]'):null;
+      if(!target||this.isLocalPartyGuest()) return;
+      event.preventDefault();
+      const variant=this.normalizeGameVariant(target.getAttribute('data-polytank-mode'));
+      const index=this.modeWheelOrder.findIndex(value=>value===variant);
+      if(index<0) return;
+      const count=this.modeWheelOrder.length;
+      const base=Math.round(this.modeWheelVirtualIndex/count)*count;
+      this.modeWheelVirtualIndex=base+index;
+      this.modeWheelVelocity=0;
+      this.startModeWheelMotion();
+    });
   },
   spinModeWheelByDelta(delta){
-    if(!this.menuOpen||this.isLocalPartyGuest()) return;
-    const buttons=[...document.querySelectorAll('#polytank-mode-wheel [data-polytank-mode]')];
-    if(!buttons.length) return;
-    const currentIndex=Math.max(0,buttons.findIndex(button=>this.normalizeGameVariant(button.getAttribute('data-polytank-mode'))===this.gameVariant));
-    const count=buttons.length;
-    const rawNext=currentIndex+Math.trunc(delta);
-    const nextIndex=((rawNext%count)+count)%count;
-    const nextVariant=this.normalizeGameVariant(buttons[nextIndex].getAttribute('data-polytank-mode'));
-    if(nextVariant&&nextVariant!==this.gameVariant) this.setGameVariant(nextVariant);
+    if(!this.menuOpen||!this.modeDropdownOpen||this.isLocalPartyGuest()) return;
+    this.modeWheelVelocity+=delta*0.26;
+    this.startModeWheelMotion();
+  },
+  normalizeModeWheelVirtualIndex(){
+    const count=this.modeWheelOrder.length;
+    if(!count) return;
+    const min=count;
+    const max=count*(this.modeWheelLoopRepeats-1);
+    if(this.modeWheelVirtualIndex<min) this.modeWheelVirtualIndex+=count;
+    if(this.modeWheelVirtualIndex>max) this.modeWheelVirtualIndex-=count;
+  },
+  renderModeWheel(){
+    const track=document.getElementById('polytank-mode-wheel-track');
+    if(!track||!this.modeWheelOrder.length) return;
+    const buttons=[...track.querySelectorAll('[data-polytank-mode]')];
+    const step=this.modeWheelStepPx||54;
+    this.normalizeModeWheelVirtualIndex();
+    track.style.transform=`translateY(calc(var(--polytank-mode-center-shift, 0px) - (${this.modeWheelVirtualIndex.toFixed(4)} * ${step}px)))`;
+    const centerIndex=Math.round(this.modeWheelVirtualIndex);
+    buttons.forEach((button,index)=>{
+      const offset=index-this.modeWheelVirtualIndex;
+      const abs=Math.abs(offset);
+      const depth=Math.min(4,Math.floor(abs+0.35));
+      button.classList.remove('mode-depth-0','mode-depth-1','mode-depth-2','mode-depth-3','mode-depth-4','wheel-above','wheel-below','active');
+      button.classList.add(`mode-depth-${depth}`);
+      if(offset<0) button.classList.add('wheel-above');
+      if(offset>0) button.classList.add('wheel-below');
+      if(index===centerIndex) button.classList.add('active');
+    });
+  },
+  lockModeWheelToNearest(applyVariant=false){
+    if(!this.modeWheelOrder.length) return;
+    const nearest=Math.round(this.modeWheelVirtualIndex);
+    this.modeWheelVirtualIndex=nearest;
+    this.normalizeModeWheelVirtualIndex();
+    this.renderModeWheel();
+    if(applyVariant){
+      const count=this.modeWheelOrder.length;
+      const slot=((nearest%count)+count)%count;
+      const variant=this.modeWheelOrder[slot];
+      if(variant&&variant!==this.gameVariant) this.setGameVariant(variant);
+    }
+  },
+  startModeWheelMotion(){
+    if(this.modeWheelRaf) return;
+    this.modeWheelLastTs=performance.now();
+    const tick=timestamp=>{
+      const dt=Math.max(8,Math.min(34,timestamp-this.modeWheelLastTs));
+      this.modeWheelLastTs=timestamp;
+      if(!this.modeWheelDragging){
+        if(Math.abs(this.modeWheelVelocity)>0.001){
+          this.modeWheelVirtualIndex+=this.modeWheelVelocity*(dt/16.6667);
+          this.modeWheelVelocity*=Math.pow(0.915,dt/16.6667);
+        }else{
+          const target=Math.round(this.modeWheelVirtualIndex);
+          const diff=target-this.modeWheelVirtualIndex;
+          this.modeWheelVirtualIndex+=diff*Math.min(1,0.23*(dt/16.6667));
+          if(Math.abs(diff)<0.0015){
+            this.modeWheelVelocity=0;
+            this.lockModeWheelToNearest(true);
+            this.modeWheelRaf=0;
+            return;
+          }
+        }
+      }
+      this.renderModeWheel();
+      this.modeWheelRaf=requestAnimationFrame(tick);
+    };
+    this.modeWheelRaf=requestAnimationFrame(tick);
   },
   toggleModeDropdown(force){
-    this.modeDropdownOpen=typeof force==='boolean'?force:false;
+    const wheel=document.getElementById('polytank-mode-wheel');
+    this.modeDropdownOpen=typeof force==='boolean'?force:!this.modeDropdownOpen;
+    if(wheel) wheel.classList.toggle('open',this.modeDropdownOpen);
+    if(this.modeDropdownOpen){
+      this.modeWheelStepPx=parseFloat(getComputedStyle(wheel).getPropertyValue('--polytank-mode-step'))||this.modeWheelStepPx||54;
+      this.renderModeWheel();
+    }
   },
   showAchievementsTeaser(){
     const total=Array.isArray(ACHIEVEMENT_DEFS)?ACHIEVEMENT_DEFS.length:0;
@@ -18281,7 +18375,6 @@ const POLYTANK_IO={
       return;
     }
     this.gameVariant=this.normalizeGameVariant(variant);
-    this.toggleModeDropdown(false);
     if(this.isMothershipMode()||this.isSandboxMode()||this.isFreeForAllMode()) this.playerTeam='blue';
     this.syncGameModeButtons();
     this.updateMenuPreview();

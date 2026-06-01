@@ -515,6 +515,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-mode-wheel{
   --polytank-mode-step:54px;
   --polytank-mode-center-shift:108px;
+  display:none;
   border-radius:12px;
   border:1px solid rgba(180,186,196,.55);
   background:linear-gradient(180deg,#f5f6f8,#eceff3);
@@ -522,6 +523,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   padding:8px 8px 9px;
   outline:none;
 }
+#polytank-mode-wheel.open{display:block;animation:polytankPanelIn .22s cubic-bezier(.2,.82,.22,1.04)}
 #polytank-mode-wheel:focus-visible{box-shadow:0 0 0 3px rgba(255,255,255,.72),0 14px 24px rgba(18,23,33,.2)}
 #polytank-mode-wheel-viewport{
   position:relative;
@@ -546,7 +548,7 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
   display:grid;
   gap:0;
   transform:translateY(var(--polytank-mode-center-shift));
-  transition:transform .2s cubic-bezier(.2,.82,.26,1.08);
+  transition:transform .14s cubic-bezier(.18,.82,.24,1.04);
   will-change:transform;
   transform-style:preserve-3d;
 }
