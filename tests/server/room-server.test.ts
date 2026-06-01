@@ -789,11 +789,65 @@ describe('polytank room server', () => {
     const rightShapes = snapshot?.payload.shapes.filter(shape => shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
     expect(leftShapes).toBeGreaterThan(12);
     expect(rightShapes).toBeGreaterThan(12);
+    const leftPentagons = snapshot?.payload.shapes.filter(shape => shape.kind === 'pentagon' && shape.x < WORLD_WIDTH / 2 - 240).length ?? 0;
+    const rightPentagons = snapshot?.payload.shapes.filter(shape => shape.kind === 'pentagon' && shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
+    const leftHexagons = snapshot?.payload.shapes.filter(shape => shape.kind === 'hexagon' && shape.x < WORLD_WIDTH / 2 - 240).length ?? 0;
+    const rightHexagons = snapshot?.payload.shapes.filter(shape => shape.kind === 'hexagon' && shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
+    const leftDecagons = snapshot?.payload.shapes.filter(shape => shape.kind === 'decagon' && shape.x < WORLD_WIDTH / 2 - 240).length ?? 0;
+    const rightDecagons = snapshot?.payload.shapes.filter(shape => shape.kind === 'decagon' && shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
+    expect(leftPentagons).toBeGreaterThan(0);
+    expect(rightPentagons).toBeGreaterThan(0);
+    expect(leftHexagons).toBeGreaterThan(0);
+    expect(rightHexagons).toBeGreaterThan(0);
+    expect(leftDecagons).toBeGreaterThan(0);
+    expect(rightDecagons).toBeGreaterThan(0);
     const rightDominators = snapshot?.payload.dominators.filter(dominator => dominator.x > WORLD_WIDTH / 2).length ?? 0;
     const leftDominators = snapshot?.payload.dominators.filter(dominator => dominator.x < WORLD_WIDTH / 2).length ?? 0;
     expect(leftDominators).toBe(2);
     expect(rightDominators).toBe(2);
   }, 10_000);
+
+  it('creates domination shapes with authoritative drift', async () => {
+    const app = createPolytankServer(3329);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3329);
+    const guest = await openClient(3329);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ gameVariant: 'domination', aiEnabled: false }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+    const createdRoom = host.messages.find(message => message.type === 'roomState');
+    const roomCode = createdRoom?.payload.roomCode;
+    const roomId = createdRoom?.payload.roomId;
+    expect(roomCode).toBeTruthy();
+    expect(roomId).toBeTruthy();
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      host.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2) &&
+      guest.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2),
+    );
+
+    send(host.socket, 'roomReady', { roomId, ready: true });
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+
+    const manager = app.roomManager as unknown as {
+      activeRooms: Map<string, { shapes: Array<{ id: string; x: number; y: number; vx: number; vy: number }> }>;
+    };
+
+    await waitFor(() => (manager.activeRooms.get(String(roomId))?.shapes.length ?? 0) > 0);
+
+    const runtime = manager.activeRooms.get(String(roomId));
+    expect(runtime?.shapes.length ?? 0).toBeGreaterThan(0);
+    expect(runtime?.shapes.some(shape => Math.abs(shape.vx) > 0.01 || Math.abs(shape.vy) > 0.01)).toBe(true);
+  });
 
   it('spawns domination teams on their side of the map', async () => {
     const app = createPolytankServer(3328);

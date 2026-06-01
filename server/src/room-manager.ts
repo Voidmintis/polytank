@@ -88,6 +88,8 @@ interface ActiveShape {
   kind: string;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   radius: number;
   hp: number;
   maxHp: number;
@@ -1012,6 +1014,24 @@ export class RoomManager {
     this.updateDominators(room, runtime, dt);
 
     for (const shape of runtime.shapes) {
+      shape.x += shape.vx * dt;
+      shape.y += shape.vy * dt;
+      if (shape.x < shape.radius) {
+        shape.x = shape.radius;
+        shape.vx = Math.abs(shape.vx);
+      }
+      if (shape.x > WORLD_WIDTH - shape.radius) {
+        shape.x = WORLD_WIDTH - shape.radius;
+        shape.vx = -Math.abs(shape.vx);
+      }
+      if (shape.y < shape.radius) {
+        shape.y = shape.radius;
+        shape.vy = Math.abs(shape.vy);
+      }
+      if (shape.y > WORLD_HEIGHT - shape.radius) {
+        shape.y = WORLD_HEIGHT - shape.radius;
+        shape.vy = -Math.abs(shape.vy);
+      }
       shape.rotation += shape.spin * dt;
     }
 
@@ -2396,12 +2416,16 @@ export class RoomManager {
 
   private createShape(runtime: ActiveRoomRuntime, kind: keyof typeof SHAPE_DEFS, x: number, y: number): ActiveShape {
     const definition = SHAPE_DEFS[kind];
+    const driftAngle = Math.random() * Math.PI * 2;
+    const driftSpeed = 12 + Math.random() * 28;
     runtime.shapeSequence += 1;
     return {
       id: `shape_${runtime.shapeSequence}`,
       kind,
       x,
       y,
+      vx: Math.cos(driftAngle) * driftSpeed,
+      vy: Math.sin(driftAngle) * driftSpeed,
       radius: definition.radius,
       hp: definition.hp,
       maxHp: definition.hp,
@@ -2582,7 +2606,7 @@ export class RoomManager {
   }
 
   private maintainDominationShapePopulation(runtime: ActiveRoomRuntime): void {
-    const centerBand = 240;
+    const centerBand = 420;
     const leftCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
     const rightCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
     const centerCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
@@ -2604,7 +2628,10 @@ export class RoomManager {
     const mirroredTargets: Array<{ kind: keyof typeof SHAPE_DEFS; perSide: number }> = [
       { kind: 'square', perSide: 18 },
       { kind: 'triangle', perSide: 8 },
+      { kind: 'pentagon', perSide: 5 },
+      { kind: 'hexagon', perSide: 2 },
       { kind: 'octagon', perSide: 2 },
+      { kind: 'decagon', perSide: 1 },
     ];
 
     for (const target of mirroredTargets) {
@@ -2620,19 +2647,19 @@ export class RoomManager {
       }
     }
 
-    while (centerCounts.pentagon < 8) {
+    while (centerCounts.pentagon < 2) {
       const position = this.createOpenShapePosition(runtime, 'center');
       runtime.shapes.push(this.createShape(runtime, 'pentagon', position.x, position.y));
       centerCounts.pentagon += 1;
     }
 
-    while (centerCounts.hexagon < 4) {
+    while (centerCounts.hexagon < 1) {
       const position = this.createOpenShapePosition(runtime, 'center');
       runtime.shapes.push(this.createShape(runtime, 'hexagon', position.x, position.y));
       centerCounts.hexagon += 1;
     }
 
-    while (centerCounts.decagon < 2) {
+    while (centerCounts.decagon < 1) {
       const position = this.createOpenShapePosition(runtime, 'center');
       runtime.shapes.push(this.createShape(runtime, 'decagon', position.x, position.y));
       centerCounts.decagon += 1;
