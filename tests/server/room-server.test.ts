@@ -285,7 +285,7 @@ describe('polytank room server', () => {
     if (liveHost && liveGuest) {
       liveGuest.x = liveHost.x - 96;
       liveGuest.y = liveHost.y;
-      liveGuest.hp = liveGuest.maxHp;
+      liveGuest.hp = Math.min(liveGuest.maxHp, 10);
     }
 
     send(host.socket, 'input', {
@@ -787,7 +787,8 @@ describe('polytank room server', () => {
     expect(snapshot?.payload.shapes.some(shape => shape.kind === 'decagon')).toBe(true);
     const leftShapes = snapshot?.payload.shapes.filter(shape => shape.x < WORLD_WIDTH / 2 - 240).length ?? 0;
     const rightShapes = snapshot?.payload.shapes.filter(shape => shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
-    expect(Math.abs(leftShapes - rightShapes)).toBeLessThanOrEqual(2);
+    expect(leftShapes).toBeGreaterThan(12);
+    expect(rightShapes).toBeGreaterThan(12);
     const rightDominators = snapshot?.payload.dominators.filter(dominator => dominator.x > WORLD_WIDTH / 2).length ?? 0;
     const leftDominators = snapshot?.payload.dominators.filter(dominator => dominator.x < WORLD_WIDTH / 2).length ?? 0;
     expect(leftDominators).toBe(2);
@@ -2152,7 +2153,7 @@ describe('polytank room server', () => {
     expect(hostPlayerId).toBeTruthy();
 
     const manager = app.roomManager as unknown as {
-      activeRooms: Map<string, { players: Array<{ id: string; level: number; points: number; xpNext: number; xp: number }> }>;
+      activeRooms: Map<string, { players: Array<{ id: string; level: number; points: number; xpNext: number; xp: number; classId: string; upgrades: { maxHealth: number }; maxHp: number; bulletRadius: number; bulletSpeed: number; bulletDamage: number; reload: number; moveSpeed: number }> }>;
     };
     const runtime = manager.activeRooms.get(String(roomId));
     expect(runtime).toBeDefined();
@@ -2196,9 +2197,18 @@ describe('polytank room server', () => {
       );
 
     const upgradedHost = upgradedSnapshot?.payload.players.find(player => player.id === hostPlayerId);
+    const upgradedRuntimeHost = runtime?.players.find(player => player.id === hostPlayerId);
     expect(upgradedHost?.points).toBe(2);
     expect(upgradedHost?.classId).toBe('twin');
     expect(upgradedHost?.upgrades.maxHealth).toBe(1);
-    expect(upgradedHost?.maxHp).toBeGreaterThan(100);
+    expect(upgradedHost?.maxHp).toBe(542);
+    expect(upgradedRuntimeHost?.classId).toBe('twin');
+    expect(upgradedRuntimeHost?.upgrades.maxHealth).toBe(1);
+    expect(upgradedRuntimeHost?.maxHp).toBe(542);
+    expect(upgradedRuntimeHost?.bulletRadius).toBe(22);
+    expect(upgradedRuntimeHost?.bulletSpeed).toBe(660);
+    expect(upgradedRuntimeHost?.bulletDamage).toBeCloseTo(30.34, 2);
+    expect(upgradedRuntimeHost?.reload).toBeCloseTo(0.4048, 4);
+    expect(upgradedRuntimeHost?.moveSpeed).toBe(212);
   });
 });

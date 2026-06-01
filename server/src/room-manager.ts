@@ -216,12 +216,12 @@ interface RoomActionResult {
 }
 
 const MAX_ROOM_MEMBERS = 8;
-const BASE_TANK_HEALTH = 100;
-const BASE_MOVE_SPEED = 240;
-const BASE_BULLET_SPEED = 620;
-const BASE_BULLET_DAMAGE = 34;
-const BASE_RELOAD = 0.28;
-const BASE_BULLET_RADIUS = 8;
+const BASE_TANK_HEALTH = 400;
+const BASE_MOVE_SPEED = 212;
+const BASE_BULLET_SPEED = 510;
+const BASE_BULLET_DAMAGE = 13;
+const BASE_RELOAD = 0.46;
+const BASE_BULLET_RADIUS = 16;
 const UPGRADE_UNLOCK_LEVEL = 5;
 const UPGRADE_MAX_LEVEL = 10;
 const BOT_TARGET_PLAYERS = 6;
@@ -2720,12 +2720,12 @@ export class RoomManager {
     const previousMax = player.maxHp || BASE_TANK_HEALTH;
     const classDef = CLASS_DEFS[player.classId] || CLASS_DEFS.basic;
 
-    player.maxHp = Math.round((BASE_TANK_HEALTH + player.level * 2 + player.upgrades.maxHealth * 8) * (classDef.hpScale || classDef.bodyScale || 1));
-    player.moveSpeed = (BASE_MOVE_SPEED + player.upgrades.moveSpeed * 12) * (classDef.moveSpeedScale || 1);
-    player.bulletSpeed = (BASE_BULLET_SPEED + player.upgrades.bulletSpeed * 35) * (classDef.bulletSpeedScale || 1);
-    player.bulletDamage = (BASE_BULLET_DAMAGE + player.level * 0.35 + player.upgrades.bulletDamage * 3.5) * (classDef.bulletDamageScale || 1);
+    player.maxHp = Math.round((BASE_TANK_HEALTH + player.level * 4 + player.upgrades.maxHealth * 22) * (classDef.hpScale || classDef.bodyScale || 1));
+    player.moveSpeed = ((player.isBot ? 188 : BASE_MOVE_SPEED) + Math.max(0, 10 - player.level) * 1.6 + player.upgrades.moveSpeed * 18) * (classDef.moveSpeedScale || 1);
+    player.bulletSpeed = (BASE_BULLET_SPEED + player.level * 5 + player.upgrades.bulletSpeed * 50) * (classDef.bulletSpeedScale || 1);
+    player.bulletDamage = (BASE_BULLET_DAMAGE + player.level * 0.8 + player.upgrades.bulletDamage * 4.5) * (classDef.bulletDamageScale || 1);
     player.reload = Math.max(0.08, BASE_RELOAD * Math.pow(0.92, player.upgrades.reload) * (classDef.reloadScale || 1));
-    player.bulletRadius = Math.max(4, Math.round((BASE_BULLET_RADIUS + Math.min(4, Math.floor(player.level / 15))) * (classDef.bulletRadiusScale || 1)));
+    player.bulletRadius = Math.max(4, Math.round((BASE_BULLET_RADIUS + Math.min(8, Math.floor(player.level / 10))) * (classDef.bulletRadiusScale || 1)));
 
     if (refillHealth) {
       player.hp = player.maxHp;

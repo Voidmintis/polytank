@@ -16924,6 +16924,7 @@ const POLYTANK_IO={
     if(!roomId) return;
     if(!this.networkRoomActive||this.networkRoomId!==roomId) this.startServerRoomMatch(payload);
     if(!this.networkRoomActive||this.networkRoomId!==roomId) return;
+    const previousPresentationState=this.captureServerPresentationState();
     this.applyNetworkWorldSnapshot(payload.world||null);
     this.bufferServerSnapshot(payload,serverTimestamp);
     const players=Array.isArray(payload.players)?payload.players:[];
@@ -17189,7 +17190,106 @@ const POLYTANK_IO={
     this.networkSnapshotTick=Math.max(this.networkSnapshotTick,Math.floor(Number(payload.tick)||0));
     this.networkSnapshotReceivedAt=performance.now();
     this.networkSnapshotAgeMs=0;
+    this.applyServerSnapshotPresentationEffects(previousPresentationState);
     this.updateCamera();
+  },
+  captureServerPresentationState(){
+    const captureEntity=entity=>({
+      hp:Math.max(0,Number(entity?.hp)||0),
+      x:Number(entity?.x)||0,
+      y:Number(entity?.y)||0,
+      r:Math.max(0,Number(entity?.r)||0),
+      color:String(entity?.bodyColor||entity?.color||'#ffffff'),
+      team:String(entity?.team||'neutral'),
+    });
+    const players=new Map();
+    if(this.player&&this.player.id) players.set(this.player.id,captureEntity(this.player));
+    for(const bot of this.bots||[]){
+      if(bot&&bot.id) players.set(bot.id,captureEntity(bot));
+    }
+    const shapes=new Map((this.shapes||[]).map(shape=>[String(shape.id||''),captureEntity(shape)]).filter(entry=>entry[0]));
+    const dominators=new Map((this.dominators||[]).map(dominator=>[String(dominator.id||''),captureEntity(dominator)]).filter(entry=>entry[0]));
+    const breakoutCores=new Map((this.breakoutCores||[]).map(core=>[String(core.team||''),captureEntity(core)]).filter(entry=>entry[0]));
+    const enemyMothership=this.enemyMothership?captureEntity(this.enemyMothership):null;
+    return {players,shapes,dominators,breakoutCores,enemyMothership};
+  },
+  applyServerSnapshotDamageEffect(previous,current,{yOffset=0,color,size=1,flash}={}){
+    const previousHp=Math.max(0,Number(previous?.hp)||0);
+    const currentHp=Math.max(0,Number(current?.hp)||0);
+    const damage=previousHp-currentHp;
+    if(!(damage>0.5)) return false;
+    if(typeof flash==='function') flash(current,damage);
+    const x=Number(current?.x)||0;
+    const y=(Number(current?.y)||0)+yOffset;
+    this.spawnDamageNumber(x,y,damage,color||String(current?.color||'#ffffff'));
+    this.spawnBulletImpactEffect(x,Number(current?.y)||0,String(current?.color||'#ffffff'),size);
+    return true;
+  },
+  applyServerSnapshotPresentationEffects(previousState){
+    if(!previousState||typeof previousState!=='object') return;
+    const tanks=[this.player,...(this.bots||[])].filter(Boolean);
+    for(const tank of tanks){
+      const previous=previousState.players.get(String(tank.id||''));
+      this.applyServerSnapshotDamageEffect(previous,tank,{
+        yOffset:-((tank.r||0)*0.35),
+        color:tank.team==='red'?'#ffb8bf':'#bfefff',
+        size:1.1,
+        flash:entry=>{
+          entry.barTimer=Math.max(0,Number(entry.barTimer)||0,2.4);
+          entry.damageFlash=1;
+        },
+      });
+    }
+    for(const shape of this.shapes||[]){
+      const previous=previousState.shapes.get(String(shape.id||''));
+      this.applyServerSnapshotDamageEffect(previous,shape,{
+        color:this.darkenColor(shape.color,.88),
+        size:Math.max(0.8,(shape.r||18)/22),
+        flash:entry=>{
+          entry.barTimer=Math.max(0,Number(entry.barTimer)||0,2.2);
+          entry.damageFlash=1;
+          entry.hitFade=1;
+        },
+      });
+    }
+    for(const [id,previous] of previousState.shapes.entries()){
+      if(this.shapes.some(shape=>String(shape.id||'')===id)) continue;
+      this.spawnBulletImpactEffect(previous.x,previous.y,previous.color,Math.max(0.8,(previous.r||18)/22));
+    }
+    for(const dominator of this.dominators||[]){
+      const previous=previousState.dominators.get(String(dominator.id||''));
+      this.applyServerSnapshotDamageEffect(previous,dominator,{
+        yOffset:-((dominator.r||0)*0.3),
+        color:'#ffe78c',
+        size:1.4,
+        flash:entry=>{
+          entry.barTimer=Math.max(0,Number(entry.barTimer)||0,2.7);
+          entry.damageFlash=1;
+        },
+      });
+    }
+    for(const core of this.breakoutCores||[]){
+      const previous=previousState.breakoutCores.get(String(core.team||''));
+      this.applyServerSnapshotDamageEffect(previous,core,{
+        yOffset:-((core.r||0)*0.3),
+        color:'#ffd2d2',
+        size:1.3,
+        flash:entry=>{
+          entry.barTimer=Math.max(0,Number(entry.barTimer)||0,2.1);
+        },
+      });
+    }
+    if(this.enemyMothership&&previousState.enemyMothership){
+      this.applyServerSnapshotDamageEffect(previousState.enemyMothership,this.enemyMothership,{
+        yOffset:-((this.enemyMothership.r||0)*0.08),
+        color:'#ffb4bc',
+        size:1.8,
+        flash:entry=>{
+          entry.barTimer=Math.max(0,Number(entry.barTimer)||0,2.8);
+          entry.damageFlash=1;
+        },
+      });
+    }
   },
   applyNetworkWorldSnapshot(world){
     if(!world||typeof world!=='object') return false;
