@@ -779,12 +779,19 @@ describe('polytank room server', () => {
     expect(snapshot?.payload.objective.dominationTeam).toBe('');
     expect(snapshot?.payload.objective.dominationHold).toBe(0);
     expect(snapshot?.payload.objective.dominationLocked).toBe(false);
+    expect(snapshot?.payload.world).toEqual({ w: WORLD_WIDTH, h: WORLD_HEIGHT });
     expect(snapshot?.payload.dominators.every(dominator => dominator.team === 'neutral')).toBe(true);
     expect(snapshot?.payload.dominators.map(dominator => dominator.kind).sort()).toEqual(['destroyer', 'gun', 'gun', 'trapper']);
-    expect(snapshot?.payload.shapes.length ?? 0).toBeGreaterThanOrEqual(26);
+    expect(snapshot?.payload.shapes.length ?? 0).toBeGreaterThanOrEqual(60);
+    expect(snapshot?.payload.shapes.some(shape => shape.kind === 'octagon')).toBe(true);
+    expect(snapshot?.payload.shapes.some(shape => shape.kind === 'decagon')).toBe(true);
     const leftShapes = snapshot?.payload.shapes.filter(shape => shape.x < WORLD_WIDTH / 2 - 240).length ?? 0;
     const rightShapes = snapshot?.payload.shapes.filter(shape => shape.x > WORLD_WIDTH / 2 + 240).length ?? 0;
     expect(Math.abs(leftShapes - rightShapes)).toBeLessThanOrEqual(2);
+    const rightDominators = snapshot?.payload.dominators.filter(dominator => dominator.x > WORLD_WIDTH / 2).length ?? 0;
+    const leftDominators = snapshot?.payload.dominators.filter(dominator => dominator.x < WORLD_WIDTH / 2).length ?? 0;
+    expect(leftDominators).toBe(2);
+    expect(rightDominators).toBe(2);
   }, 10_000);
 
   it('spawns domination teams on their side of the map', async () => {

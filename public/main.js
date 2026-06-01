@@ -16924,6 +16924,7 @@ const POLYTANK_IO={
     if(!roomId) return;
     if(!this.networkRoomActive||this.networkRoomId!==roomId) this.startServerRoomMatch(payload);
     if(!this.networkRoomActive||this.networkRoomId!==roomId) return;
+    this.applyNetworkWorldSnapshot(payload.world||null);
     this.bufferServerSnapshot(payload,serverTimestamp);
     const players=Array.isArray(payload.players)?payload.players:[];
     const currentBots=new Map((this.bots||[]).map(bot=>[bot.id,bot]));
@@ -17189,6 +17190,20 @@ const POLYTANK_IO={
     this.networkSnapshotReceivedAt=performance.now();
     this.networkSnapshotAgeMs=0;
     this.updateCamera();
+  },
+  applyNetworkWorldSnapshot(world){
+    if(!world||typeof world!=='object') return false;
+    const nextW=Number(world.w);
+    const nextH=Number(world.h);
+    if(!Number.isFinite(nextW)||!Number.isFinite(nextH)||nextW<=0||nextH<=0) return false;
+    if(Math.abs(this.world.w-nextW)<0.5&&Math.abs(this.world.h-nextH)<0.5) return false;
+    this.world.w=nextW;
+    this.world.h=nextH;
+    this.world.midX=nextW*0.5;
+    this.world.midY=nextH*0.5;
+    this.createBases();
+    this.setupModeObjectives();
+    return true;
   },
   supportsLocalParty(){
     return typeof BroadcastChannel!=='undefined';

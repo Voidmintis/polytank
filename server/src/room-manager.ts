@@ -340,13 +340,15 @@ const SHAPE_DEFS = {
   square: { radius: 18, hp: 30, xp: 6, color: '#ffe36d', sides: 4 },
   triangle: { radius: 22, hp: 56, xp: 12, color: '#ef7076', sides: 3 },
   pentagon: { radius: 31, hp: 120, xp: 24, color: '#7f94f4', sides: 5 },
-  hexagon: { radius: 38, hp: 220, xp: 48, color: '#9a7cf4', sides: 6 },
+  hexagon: { radius: 40, hp: 720, xp: 180, color: '#43bdd7', sides: 6 },
+  octagon: { radius: 47, hp: 2880, xp: 720, color: '#ff9f45', sides: 8 },
+  decagon: { radius: 56, hp: 14400, xp: 5040, color: '#5d2a86', sides: 10 },
 } as const;
 
 const DOMINATOR_DEFS = {
-  gun: { maxHp: 224000, radius: 198, reload: 0.42, bulletSpeed: 760, bulletDamage: 34, bulletRadius: 13, range: 1080 },
-  destroyer: { maxHp: 250000, radius: 206, reload: 1.72, bulletSpeed: 520, bulletDamage: 118, bulletRadius: 24, range: 1220 },
-  trapper: { maxHp: 230000, radius: 198, reload: 1.04, bulletSpeed: 360, bulletDamage: 48, bulletRadius: 18, range: 980 },
+  gun: { maxHp: 224000, radius: 198, reload: 0.54, bulletSpeed: 650, bulletDamage: 320, bulletRadius: 22, range: 1080 },
+  destroyer: { maxHp: 250000, radius: 206, reload: 1.92, bulletSpeed: 420, bulletDamage: 1020, bulletRadius: 38, range: 1120 },
+  trapper: { maxHp: 230000, radius: 198, reload: 1, bulletSpeed: 262, bulletDamage: 260, bulletRadius: 28, range: 1080 },
 } as const;
 
 const VALID_CAPTURE_TEAMS = new Set(['blue', 'red', 'green', 'purple', 'yellow']);
@@ -684,6 +686,10 @@ export class RoomManager {
       payload: {
         roomId: room.id,
         tick: runtime.tick,
+        world: {
+          w: WORLD_WIDTH,
+          h: WORLD_HEIGHT,
+        },
         players: runtime.players.map(player => ({
           id: player.id,
           nickname: player.nickname,
@@ -2577,9 +2583,9 @@ export class RoomManager {
 
   private maintainDominationShapePopulation(runtime: ActiveRoomRuntime): void {
     const centerBand = 240;
-    const leftCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0 };
-    const rightCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0 };
-    const centerCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0 };
+    const leftCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
+    const rightCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
+    const centerCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
 
     for (const shape of runtime.shapes) {
       if (!(shape.kind in leftCounts)) {
@@ -2596,8 +2602,9 @@ export class RoomManager {
     }
 
     const mirroredTargets: Array<{ kind: keyof typeof SHAPE_DEFS; perSide: number }> = [
-      { kind: 'square', perSide: 8 },
-      { kind: 'triangle', perSide: 4 },
+      { kind: 'square', perSide: 18 },
+      { kind: 'triangle', perSide: 8 },
+      { kind: 'octagon', perSide: 2 },
     ];
 
     for (const target of mirroredTargets) {
@@ -2613,16 +2620,22 @@ export class RoomManager {
       }
     }
 
-    while (centerCounts.pentagon < 4) {
+    while (centerCounts.pentagon < 8) {
       const position = this.createOpenShapePosition(runtime, 'center');
       runtime.shapes.push(this.createShape(runtime, 'pentagon', position.x, position.y));
       centerCounts.pentagon += 1;
     }
 
-    while (centerCounts.hexagon < 2) {
+    while (centerCounts.hexagon < 4) {
       const position = this.createOpenShapePosition(runtime, 'center');
       runtime.shapes.push(this.createShape(runtime, 'hexagon', position.x, position.y));
       centerCounts.hexagon += 1;
+    }
+
+    while (centerCounts.decagon < 2) {
+      const position = this.createOpenShapePosition(runtime, 'center');
+      runtime.shapes.push(this.createShape(runtime, 'decagon', position.x, position.y));
+      centerCounts.decagon += 1;
     }
   }
 

@@ -300,6 +300,10 @@ export interface WorldObjectiveState {
 export interface SnapshotPayload {
   roomId: string;
   tick: number;
+  world: {
+    w: number;
+    h: number;
+  };
   players: WorldPlayerState[];
   projectiles: WorldProjectileState[];
   shapes: WorldShapeState[];
