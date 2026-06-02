@@ -74,6 +74,7 @@ body.polytank-standalone #subtitle {
             <div id="polytank-mode-native-shell">
               <select id="polytank-mode-select-native" aria-label="Game mode selector">
                 <option value="ffa">Free For All</option>
+                <option value="ancient">Ancient Frontier</option>
                 <option value="2teams">2 Teams</option>
                 <option value="4teams">4 Teams</option>
                 <option value="maze">Maze</option>
@@ -89,6 +90,7 @@ body.polytank-standalone #subtitle {
               <div id="polytank-mode-wheel-viewport">
                 <div id="polytank-mode-wheel-track">
                   <button type="button" class="polytank-mode-option active" id="polytank-mode-ffa" data-polytank-mode="ffa" onclick="POLYTANK_IO.setGameVariant('ffa')">FFA</button>
+                  <button type="button" class="polytank-mode-option" id="polytank-mode-ancient" data-polytank-mode="ancient" onclick="POLYTANK_IO.setGameVariant('ancient')">Ancient</button>
                   <button type="button" class="polytank-mode-option" id="polytank-mode-2teams" data-polytank-mode="2teams" onclick="POLYTANK_IO.setGameVariant('2teams')">2 Teams</button>
                   <button type="button" class="polytank-mode-option" id="polytank-mode-4teams" data-polytank-mode="4teams" onclick="POLYTANK_IO.setGameVariant('4teams')">4 Teams</button>
                   <button type="button" class="polytank-mode-option" id="polytank-mode-maze" data-polytank-mode="maze" onclick="POLYTANK_IO.setGameVariant('maze')">Maze</button>
@@ -128,6 +130,10 @@ body.polytank-standalone #subtitle {
           <div id="polytank-theme-switcher">
             <button type="button" class="polytank-theme-option active" id="polytank-theme-light" onclick="POLYTANK_IO.setMapTheme('light')">Light</button>
             <button type="button" class="polytank-theme-option" id="polytank-theme-dark" onclick="POLYTANK_IO.setMapTheme('dark')">Dark</button>
+          </div>
+          <div class="polytank-menu-label" style="margin-top:10px">HUD Options</div>
+          <div id="polytank-hud-options-row">
+            <button type="button" class="polytank-theme-option" id="polytank-shape-hp-btn" onclick="POLYTANK_IO.toggleShowShapeHp()">Shape HP: Off</button>
           </div>
           <div id="polytank-dev-admin-shell">
             <div class="polytank-menu-label">Developer</div>
@@ -263,6 +269,10 @@ body.polytank-standalone #subtitle {
         <input class="polytank-sandbox-field" id="polytank-sandbox-shape-count" type="number" min="1" max="24" value="3" />
       </div>
       <div class="polytank-sandbox-row single"><button class="polytank-sandbox-action" type="button" onclick="POLYTANK_IO.spawnSandboxShape()">Spawn Shapes</button></div>
+      <div class="polytank-sandbox-row">
+        <button class="polytank-sandbox-action" type="button" onclick="POLYTANK_IO.sandboxClearShapes()">Clear All Shapes</button>
+        <button class="polytank-sandbox-action" type="button" id="polytank-sandbox-shapes-toggle" onclick="POLYTANK_IO.sandboxToggleShapes()">Disable Spawning</button>
+      </div>
       <div class="polytank-sandbox-note">Sandbox uses a compact chamber. Normal ambient bosses, shapes, and team waves stay off until you summon them.</div>
     </div>
   </div>
@@ -393,6 +403,13 @@ body.polytank-standalone #subtitle {
           <strong id="admin-scale-value">1.00x</strong>
         </div>
         <input id="admin-scale-slider" type="range" min="0.35" max="4" step="0.01" value="1.00" oninput="adminSetScale(this.value)" />
+      </div>
+      <div class="admin-cat-label">Set Level</div>
+      <div class="admin-items">
+        <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(1)">Lv 1</button>
+        <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(15)">Lv 15</button>
+        <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(30)">Lv 30</button>
+        <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(45)">Lv 45</button>
       </div>
     </div>
     <div id="admin-selected-name"></div>

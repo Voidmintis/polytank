@@ -9422,6 +9422,16 @@ function adminRefreshScaleControl(){
   if(value) value.textContent=`${adminScaleValue.toFixed(2)}x`;
 }
 
+function adminSetPlayerLevel(level){
+  if(!adminUnlocked){toast('Admin access required','#ff8866');return;}
+  if(typeof POLYTANK_IO==='undefined'||!POLYTANK_IO||!POLYTANK_IO.player){toast('No active player','#ffd38d');return;}
+  const lvl=Math.max(1,Math.min(150,Number(level)||1));
+  POLYTANK_IO.player.level=lvl;
+  if(typeof POLYTANK_IO.xpForLevel==='function') POLYTANK_IO.player.xp=POLYTANK_IO.xpForLevel(lvl);
+  if(typeof POLYTANK_IO.updateTankDerivedStats==='function') POLYTANK_IO.updateTankDerivedStats(POLYTANK_IO.player,false);
+  toast(`Player level set to ${lvl}`,'#9feaff');
+}
+
 function adminSetScale(rawValue){
   if(!adminUnlocked){toast('Admin access required','#ff8866');return;}
   const next=Math.max(0.35,Math.min(2.6,Number(rawValue)||1));
@@ -15031,7 +15041,7 @@ const POLYTANK_IO={
   H:0,
   raf:0,
   lastTime:0,
-  worldPresets:{standard:{w:9600,h:5400},sandbox:{w:2400,h:2400}},
+  worldPresets:{standard:{w:9600,h:5400},sandbox:{w:2400,h:2400},ancient:{w:9800,h:6400}},
   world:{w:9600,h:5400,midX:4800,midY:2700},
   camera:{x:0,y:0,zoom:1,targetZoom:1,minZoom:.3,maxZoom:1.85},
   keys:Object.create(null),
@@ -15048,6 +15058,17 @@ const POLYTANK_IO={
   bots:[],
   bullets:[],
   shapes:[],
+  ruins:[],
+  ancientCorruptionZones:[],
+  showShapeHp:false,
+  ancientBoss:null,
+  ancientBossTimer:900,
+  ancientCorruptionTimer:42,
+  ancientTeamCaptures:{blue:0,red:0},
+  ancientMainY:0,
+  ancientGateCenters:[],
+  ancientGateHalfWidth:220,
+  ancientVictoryTeam:'',
   guards:[],
   bases:[],
   dominators:[],
@@ -15103,7 +15124,7 @@ const POLYTANK_IO={
   breakoutCores:[],
   ctfFlags:[],
   ctfScores:{blue:0,red:0},
-  modeObjective:{dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:'',mothershipEndgame:false,endgameSpectateId:''},
+  modeObjective:{dominationTeam:'',dominationHold:0,dominationLocked:false,dominationBossSpawned:false,dominationBossId:'',dominationWinner:'',dominationArenaClosing:false,breakoutWinner:'',ctfWinner:'',mothershipEndgame:false,endgameSpectateId:''},
   waitingTransitionTimer:0,
   launchTransitionTimer:0,
   localPartyChannelName:'circle_alchemy_polytank_local_party_v1',
@@ -15188,6 +15209,7 @@ const POLYTANK_IO={
   },
   gameVariantDefs:{
     ffa:{id:'ffa',label:'Free For All',map:'Open Arena',hud:'Leaderboard, Minimap, Upgrades',teamMode:'solo'},
+    ancient:{id:'ancient',label:'Ancient Frontier',map:'Main Arena + Ancient Frontier',hud:'Ruin Tracker, Ancient XP, Minimap',teamMode:'duo'},
     '2teams':{id:'2teams',label:'2 Teams',map:'Twin Base Arena',hud:'Scoreboard, Minimap, Upgrades',teamMode:'duo'},
     '4teams':{id:'4teams',label:'4 Teams',map:'Four Corner Arena',hud:'Scoreboard, Minimap, Upgrades',teamMode:'quad'},
     maze:{id:'maze',label:'Maze',map:'Maze Corridors',hud:'Leaderboard, Minimap, Upgrades',teamMode:'duo'},
@@ -15222,10 +15244,10 @@ const POLYTANK_IO={
   menuPointer:{x:.5,y:.5,targetX:.5,targetY:.5,inside:false},
   classDefs:{
     basic:{name:'Basic Tank',desc:'Balanced starter tank.',style:'basic',barrelLengthScale:0.86},
-    twin:{name:'Twin',desc:'Two side-by-side cannons.',style:'twin',reloadScale:.88,bulletDamageScale:.82,barrelLengthScale:1.18,barrelWidthScale:1.35,bulletRadiusScale:1.15},
+    twin:{name:'Twin',desc:'Accurate dual fire — precise and mobile.',style:'twin',reloadScale:.88,bulletDamageScale:.86,barrelLengthScale:1.18,barrelWidthScale:1.35,bulletRadiusScale:1.15,spreadScale:0.42,moveSpeedScale:1.10},
     sniper:{name:'Sniper',desc:'Long range precision shots.',style:'sniper',reloadScale:1.22,bulletSpeedScale:1.55,bulletDamageScale:1.12,barrelLengthScale:1.9,barrelWidthScale:1.12,bulletRadiusScale:1.2},
-    machine_gun:{name:'Machine Gun',desc:'Fast spray fire.',style:'machine',reloadScale:.52,bulletDamageScale:.68,bulletSpeedScale:.92,barrelLengthScale:1.02,barrelWidthScale:1.75,spreadScale:2.8},
-    flank_guard:{name:'Flank Guard',desc:'Fire forward and back.',style:'flank',reloadScale:.94,barrelLengthScale:1.18,barrelWidthScale:1.28,moveSpeedScale:1.08},
+    machine_gun:{name:'Machine Gun',desc:'Wild spray suppression — devastating up close.',style:'machine',reloadScale:.52,bulletDamageScale:.68,bulletSpeedScale:.76,barrelLengthScale:1.02,barrelWidthScale:1.75,spreadScale:2.8},
+    flank_guard:{name:'Flank Guard',desc:'Omnidirectional pressure — fastest Tier 1 mobility.',style:'flank',reloadScale:.94,bulletDamageScale:1.04,barrelLengthScale:1.18,barrelWidthScale:1.28,moveSpeedScale:1.22},
     triple_shot:{name:'Triple Shot',desc:'Three forward cannons.',style:'triple',reloadScale:.96,bulletDamageScale:.92,barrelLengthScale:1.22,barrelWidthScale:1.34,bulletRadiusScale:1.16},
     quad_tank:{name:'Quad Tank',desc:'Cannons on all sides.',style:'quad',reloadScale:1.06,bulletDamageScale:.86,barrelLengthScale:1.18,barrelWidthScale:1.26},
     twin_flank:{name:'Twin Flank',desc:'Twin front and rear.',style:'twin_flank',reloadScale:.98,bulletDamageScale:.84,barrelLengthScale:1.12,barrelWidthScale:1.3},
@@ -15283,6 +15305,7 @@ const POLYTANK_IO={
     admin_dominator_gun:{name:'[ADMIN] Gun Dominator',desc:'Move as a slow Dominator platform.',style:'basic'},
     admin_dominator_destroyer:{name:'[ADMIN] Destroyer Dominator',desc:'Slow heavy Dominator shell chassis.',style:'destroyer'},
     admin_dominator_trapper:{name:'[ADMIN] Trapper Dominator',desc:'Slow trap-focused Dominator chassis.',style:'trapper'},
+    admin_dominator_apex:{name:'[ADMIN] Apex Dominator',desc:'Play as the giant mixed-barrel domination boss.',style:'destroyer'},
     admin_boss_tyrant:{name:'[ADMIN] Boss Tyrant',desc:'Play as a boss-class machine tank.',style:'machine'},
     admin_boss_overlord:{name:'[ADMIN] Boss Overlord',desc:'Play as a siege-class boss tank.',style:'machine'},
     admin_boss_rainbow:{name:'[ADMIN] Boss Rainbow',desc:'Play as a rapid spectrum boss tank.',style:'machine'},
@@ -15308,7 +15331,12 @@ const POLYTANK_IO={
     pentagon:{r:31,hp:120,xp:24,contact:18,color:'#7f94f4',region:'center',sides:5},
     hexagon:{r:40,hp:720,xp:180,contact:34,color:'#43bdd7',region:'center',sides:6},
     octagon:{r:47,hp:2880,xp:720,contact:52,color:'#ff9f45',region:'wide',sides:8},
-    decagon:{r:56,hp:14400,xp:5040,contact:76,color:'#5d2a86',region:'wide',sides:10}
+    decagon:{r:56,hp:14400,xp:5040,contact:76,color:'#5d2a86',region:'wide',sides:10},
+    ancient_square:{r:54,hp:300,xp:60,contact:22,color:'#9bc96d',region:'ancient_frontier',sides:4,ancient:true,ancientTier:'common'},
+    ancient_triangle:{r:66,hp:1120,xp:300,contact:52,color:'#8bd179',region:'ancient_frontier',sides:3,ancient:true,ancientTier:'hunter'},
+    ancient_pentagon:{r:93,hp:4200,xp:3000,contact:94,color:'#79b866',region:'ancient_frontier',sides:5,ancient:true,ancientTier:'elite'},
+    ancient_hexagon:{r:120,hp:252000,xp:94500,contact:148,color:'#5aad7c',region:'ancient_frontier',sides:6,ancient:true,ancientTier:'monument'},
+    ancient_alpha_pentagon:{r:146,hp:52000,xp:22500,contact:188,color:'#62a552',region:'ancient_frontier',sides:5,ancient:true,ancientTier:'boss'}
   },
   bind(){
     if(this.initialized) return;
@@ -15614,6 +15642,14 @@ const POLYTANK_IO={
     this.mapTheme=theme==='dark'?'dark':'light';
     try{ localStorage.setItem(this.mapThemeStorageKey,this.mapTheme); }catch(_err){}
     this.applyMapTheme();
+  },
+  toggleShowShapeHp(){
+    this.showShapeHp=!this.showShapeHp;
+    const btn=document.getElementById('polytank-shape-hp-btn');
+    if(btn){
+      btn.textContent=`Shape HP: ${this.showShapeHp?'On':'Off'}`;
+      btn.classList.toggle('active',this.showShapeHp);
+    }
   },
   animatePopup(element,className='polytank-popup-anim'){
     if(!element) return;
@@ -16189,7 +16225,7 @@ const POLYTANK_IO={
       newButton.setAttribute('onclick',canStartFreshOffline?'POLYTANK_IO.startFreshMatch()':'POLYTANK_IO.toggleModeDropdown()');
       newButton.title=canStartFreshOffline?'Discard the saved single-player run and start a new arena.':'Choose a game mode';
     }
-    if(newButton) newButton.style.display=canStartFreshOffline?'inline-flex':'';
+    if(newButton) newButton.style.display=canStartFreshOffline?'inline-flex':'none';
     if(onlineButton) onlineButton.style.display=lobbyOpen?'none':'';
     if(playButton) playButton.disabled=usingPartyServer?(!localPartyActive||!localRoom?.roomId||localRoom?.status==='active'):this.isLocalPartyGuest();
     if(newButton) newButton.disabled=this.isLocalPartyGuest();
@@ -18132,6 +18168,9 @@ const POLYTANK_IO={
   isMothershipMode(){
     return this.gameVariant==='mothership';
   },
+  isAncientMode(){
+    return this.gameVariant==='ancient';
+  },
   isSandboxMode(){
     return this.gameVariant==='sandbox';
   },
@@ -18156,6 +18195,7 @@ const POLYTANK_IO={
   getSelectableTeamsForVariant(variant=this.gameVariant){
     const key=this.normalizeGameVariant(variant);
     if(key==='4teams') return ['blue','red','green','purple'];
+    if(key==='ancient') return ['blue','red'];
     if(key==='mothership'||key==='sandbox'||key==='ffa') return ['blue'];
     return ['blue','red'];
   },
@@ -18178,11 +18218,22 @@ const POLYTANK_IO={
     return tank.team===ownerTeam;
   },
   applyWorldPreset(){
-    const preset=this.isSandboxMode()?this.worldPresets.sandbox:this.worldPresets.standard;
+    const preset=this.isSandboxMode()
+      ? this.worldPresets.sandbox
+      : this.isAncientMode()
+        ? this.worldPresets.ancient
+        : this.worldPresets.standard;
     this.world.w=preset.w;
     this.world.h=preset.h;
     this.world.midX=preset.w*0.5;
     this.world.midY=preset.h*0.5;
+    if(this.isAncientMode()){
+      this.ancientMainY=this.world.h*0.52;
+      this.ancientGateCenters=[this.world.w*0.34,this.world.w*0.66];
+    } else {
+      this.ancientMainY=0;
+      this.ancientGateCenters=[];
+    }
   },
   createMazeWalls(){
     const halfW=260;
@@ -18200,8 +18251,58 @@ const POLYTANK_IO={
       {x:this.world.midX+halfW-95,y:this.world.midY-halfH,w:95,h:halfH*2},
     ];
   },
+  randomAncientFrontierPoint(pad=320){
+    const minY=this.ancientMainY+260;
+    const maxY=this.world.h-pad;
+    const point={
+      x:this.clamp(pad+Math.random()*(this.world.w-pad*2),pad,this.world.w-pad),
+      y:this.clamp(minY+Math.random()*Math.max(80,maxY-minY),minY,maxY)
+    };
+    return point;
+  },
+  initializeAncientModeState(){
+    this.ruins=[];
+    this.ancientCorruptionZones=[];
+    this.ancientBoss=null;
+    this.ancientBossTimer=900;
+    this.ancientCorruptionTimer=30;
+    this.ancientTeamCaptures={blue:0,red:0};
+    this.ancientVictoryTeam='';
+    if(!this.isAncientMode()) return;
+    const ruinPositions=[
+      {x:this.world.w*0.18,y:this.world.h*0.66},{x:this.world.w*0.34,y:this.world.h*0.78},{x:this.world.w*0.50,y:this.world.h*0.70},
+      {x:this.world.w*0.66,y:this.world.h*0.82},{x:this.world.w*0.82,y:this.world.h*0.68},{x:this.world.w*0.27,y:this.world.h*0.58},
+      {x:this.world.w*0.50,y:this.world.h*0.90},{x:this.world.w*0.73,y:this.world.h*0.58}
+    ];
+    this.ruins=ruinPositions.map((pos,index)=>({
+      id:`ancient_ruin_${index+1}`,
+      x:pos.x,
+      y:pos.y,
+      r:94,
+      team:'neutral',
+      capture:0,
+      contestTimer:40+Math.random()*36,
+      pulse:Math.random()*Math.PI*2,
+      barTimer:0,
+    }));
+    const zoneWidth=this.world.w/3;
+    this.ancientCorruptionZones=[0,1,2].map(index=>({
+      id:`ancient_zone_${index+1}`,
+      x:index*zoneWidth,
+      y:this.ancientMainY+60,
+      w:zoneWidth,
+      h:this.world.h-(this.ancientMainY+60),
+      state:['blooming','overgrown','corrupted'][index%3],
+      timer:54+Math.random()*48,
+      intensity:0.25+Math.random()*0.4,
+    }));
+  },
+  getAncientZoneAt(x,y){
+    if(!this.isAncientMode()) return null;
+    return this.ancientCorruptionZones.find(zone=>x>=zone.x&&x<=zone.x+zone.w&&y>=zone.y&&y<=zone.y+zone.h)||null;
+  },
   setupModeObjectives(){
-    this.modeObjective={dominationTeam:'',dominationHold:0,dominationLocked:false,breakoutWinner:'',ctfWinner:'',mothershipEndgame:false,endgameSpectateId:''};
+    this.modeObjective={dominationTeam:'',dominationHold:0,dominationLocked:false,dominationBossSpawned:false,dominationBossId:'',dominationWinner:'',dominationArenaClosing:false,breakoutWinner:'',ctfWinner:'',mothershipEndgame:false,endgameSpectateId:''};
     this.mazeWalls=this.isMazeMode()?this.createMazeWalls():[];
     this.breakoutCores=[];
     this.ctfFlags=[];
@@ -18218,22 +18319,155 @@ const POLYTANK_IO={
         {team:'red',x:this.world.w-300,y:this.world.midY,homeX:this.world.w-300,homeY:this.world.midY,carrierId:'',atBase:true,returnTimer:0},
       ];
     }
+    this.initializeAncientModeState();
+  },
+  applyAncientGateConstraint(tank){
+    if(!this.isAncientMode()||!tank) return;
+    const dividerY=this.ancientMainY;
+    const margin=140;
+    const nearDivider=Math.abs(tank.y-dividerY)<=tank.r+margin;
+    if(!nearDivider) return;
+    const inGate=this.ancientGateCenters.some(center=>Math.abs(tank.x-center)<=this.ancientGateHalfWidth);
+    if(inGate) return;
+    if(tank.y<dividerY){
+      tank.y=Math.min(tank.y,dividerY-tank.r-10);
+      tank.vy=Math.min(0,tank.vy||0);
+    } else {
+      tank.y=Math.max(tank.y,dividerY+tank.r+10);
+      tank.vy=Math.max(0,tank.vy||0);
+    }
+  },
+  getAncientXpNext(level){
+    const step=Math.max(1,Math.floor(level||1));
+    return Math.round(220*Math.pow(1.18,step-1)+step*40);
+  },
+  getAncientSightRange(tank=this.player){
+    const level=Math.max(1,Math.floor(Number(tank?.ancientLevel)||1));
+    return 1400+level*180;
+  },
+  gainAncientXp(tank,amount){
+    if(!tank||!this.isAncientMode()) return;
+    tank.ancientXp=Math.max(0,Number(tank.ancientXp)||0)+Math.max(0,amount||0);
+    tank.ancientLevel=Math.max(1,Math.floor(Number(tank.ancientLevel)||1));
+    tank.ancientXpNext=Math.max(1,Number(tank.ancientXpNext)||this.getAncientXpNext(tank.ancientLevel));
+    while(tank.ancientXp>=tank.ancientXpNext){
+      tank.ancientXp-=tank.ancientXpNext;
+      tank.ancientLevel+=1;
+      tank.ancientXpNext=this.getAncientXpNext(tank.ancientLevel);
+      this.awardScore(tank,420+tank.ancientLevel*36);
+      if(tank.isPlayer) toast(`Ancient Level ${tank.ancientLevel} reached.`,'#9cff9f');
+    }
+  },
+  applyAncientEnvironmentToTank(tank,dt){
+    if(!this.isAncientMode()||!tank||tank.deadTimer>0||tank.hp<=0) return;
+    if(tank.y<this.ancientMainY) return;
+    const zone=this.getAncientZoneAt(tank.x,tank.y);
+    if(!zone) return;
+    const resistLevel=Math.floor(Math.max(0,(tank.ancientLevel||1)-1)/3);
+    const vineResistance=this.clamp(resistLevel*0.12,0,0.48);
+    if(zone.state==='overgrown'){
+      const slow=1-(0.22*(1-vineResistance));
+      tank.vx*=Math.max(0.6,slow);
+      tank.vy*=Math.max(0.6,slow);
+    }
+  },
+  spawnAncientBoss(){
+    if(!this.isAncientMode()||this.ancientBoss) return null;
+    const point=this.randomAncientFrontierPoint(420);
+    const boss=this.spawnShapeAt('ancient_alpha_pentagon',point.x,point.y);
+    if(!boss) return null;
+    boss.isAncientBoss=true;
+    boss.aiRoamAngle=Math.random()*Math.PI*2;
+    boss.roamTimer=1.2;
+    this.ancientBoss=boss;
+    this.announceServerEvent('An Ancient Presence has Awakened.','#9ee96f');
+    shake('md');
+    return boss;
+  },
+  updateAncientMode(dt){
+    if(!this.isAncientMode()) return;
+    for(const zone of this.ancientCorruptionZones){
+      zone.timer=Math.max(0,(zone.timer||0)-dt);
+      if(zone.timer<=0){
+        const states=['blooming','overgrown','corrupted'];
+        zone.state=states[Math.floor(Math.random()*states.length)];
+        zone.timer=58+Math.random()*52;
+        zone.intensity=0.24+Math.random()*0.5;
+      }
+    }
+    const living=this.livingTanks();
+    for(const ruin of this.ruins){
+      ruin.pulse=(ruin.pulse||0)+dt*(0.9+Math.random()*0.03);
+      ruin.contestTimer=Math.max(0,(ruin.contestTimer||0)-dt);
+      if(ruin.contestTimer<=0){
+        ruin.team='neutral';
+        ruin.capture=0;
+        ruin.contestTimer=46+Math.random()*34;
+      }
+      const inRange=living.filter(tank=>Math.hypot(tank.x-ruin.x,tank.y-ruin.y)<ruin.r+(tank.r||28));
+      const blueCount=inRange.filter(tank=>tank.team==='blue').length;
+      const redCount=inRange.filter(tank=>tank.team==='red').length;
+      if(blueCount&&redCount){
+        ruin.barTimer=1;
+        continue;
+      }
+      const activeTeam=blueCount>0?'blue':redCount>0?'red':'';
+      if(!activeTeam) continue;
+      const power=Math.max(1,Math.max(blueCount,redCount));
+      const direction=ruin.team===activeTeam?1:-1;
+      ruin.capture=this.clamp((ruin.capture||0)+direction*dt*power*0.34,-1,1);
+      ruin.barTimer=1.4;
+      if(Math.abs(ruin.capture)>=1&&ruin.team!==activeTeam){
+        ruin.team=activeTeam;
+        ruin.capture=activeTeam==='blue'?1:-1;
+        this.ancientTeamCaptures[activeTeam]=(this.ancientTeamCaptures[activeTeam]||0)+1;
+        this.announceServerEvent(`${activeTeam.toUpperCase()} captured a ruin (${this.ancientTeamCaptures[activeTeam]}/10).`,activeTeam==='blue'?'#8fe9ff':'#ffb0b8');
+        for(const tank of inRange){
+          if(tank.team===activeTeam){
+            this.gainTankXp(tank,320);
+            this.awardScore(tank,850);
+          }
+        }
+        if(this.ancientTeamCaptures[activeTeam]>=10&&!this.ancientVictoryTeam){
+          this.ancientVictoryTeam=activeTeam;
+          toast(`${activeTeam.toUpperCase()} wins Ancient Domination.` ,activeTeam==='blue'?'#8fe9ff':'#ffb0b8');
+          this.resetRun();
+          return;
+        }
+      }
+    }
+    this.ancientBossTimer=Math.max(0,(this.ancientBossTimer||0)-dt);
+    if(!this.ancientBoss&&this.ancientBossTimer<=0){
+      this.spawnAncientBoss();
+      this.ancientBossTimer=900;
+    }
+    if(this.ancientBoss&&(this.ancientBoss.hp||0)<=0) this.ancientBoss=null;
   },
   updateModeObjectives(dt){
-    if(this.isDominationMode()&&this.dominators.length>=2&&!this.networkRoomActive){
-      const teams=this.dominators.map(entry=>entry.team);
-      const heldTeam=teams.every(team=>team===teams[0])&&teams[0]!=='neutral'?teams[0]:'';
-      if(heldTeam&&heldTeam===this.modeObjective.dominationTeam){
-        this.modeObjective.dominationHold+=dt;
-        if(this.modeObjective.dominationHold>=12&&!this.modeObjective.dominationLocked){
-          this.modeObjective.dominationHold=12;
-          this.modeObjective.dominationLocked=true;
-          toast(`${heldTeam.toUpperCase()} secured Domination control. Match remains infinite.`,heldTeam==='blue'?'#8fe9ff':'#ffb8bf');
-        }
-      } else {
-        this.modeObjective.dominationTeam=heldTeam;
+    if(this.isAncientMode()&&!this.networkRoomActive) this.updateAncientMode(dt);
+    if(this.isDominationMode()&&!this.networkRoomActive){
+      const objectiveDominators=this.getObjectiveDominators();
+      const apexBoss=this.getDominationBoss();
+      const allCaptured=objectiveDominators.length>=2&&objectiveDominators.every(entry=>entry.team&&entry.team!=='neutral');
+      if(allCaptured&&!apexBoss&&!this.modeObjective.dominationBossSpawned) this.spawnDominationBoss();
+      if(apexBoss){
+        this.modeObjective.dominationTeam='';
         this.modeObjective.dominationHold=0;
-        this.modeObjective.dominationLocked=false;
+      } else if(objectiveDominators.length>=2){
+        const teams=objectiveDominators.map(entry=>entry.team);
+        const heldTeam=teams.every(team=>team===teams[0])&&teams[0]!=='neutral'?teams[0]:'';
+        if(heldTeam&&heldTeam===this.modeObjective.dominationTeam){
+          this.modeObjective.dominationHold+=dt;
+          if(this.modeObjective.dominationHold>=12&&!this.modeObjective.dominationLocked){
+            this.modeObjective.dominationHold=12;
+            this.modeObjective.dominationLocked=true;
+            toast(`${heldTeam.toUpperCase()} secured Domination control. Match remains infinite.`,heldTeam==='blue'?'#8fe9ff':'#ffb8bf');
+          }
+        } else {
+          this.modeObjective.dominationTeam=heldTeam;
+          this.modeObjective.dominationHold=0;
+          this.modeObjective.dominationLocked=false;
+        }
       }
     }
     if(this.isBreakoutMode()&&this.breakoutCores.length===2){
@@ -18353,6 +18587,7 @@ const POLYTANK_IO={
   getModeWheelColor(variant){
     return ({
       ffa:'#4ed0d4',
+      ancient:'#74c77d',
       '2teams':'#6ddd45',
       '4teams':'#ea4649',
       maze:'#dbc446',
@@ -18373,89 +18608,16 @@ const POLYTANK_IO={
     const order=sourceButtons.map(button=>this.normalizeGameVariant(button.getAttribute('data-polytank-mode'))).filter(Boolean);
     if(!order.length) return;
     this.modeWheelOrder=order;
-    const repeated=[];
-    for(let repeat=0;repeat<this.modeWheelLoopRepeats;repeat++){
-      for(const variant of order){
-        const def=this.getGameVariantDef(variant);
-        repeated.push(`<button type=\"button\" class=\"polytank-mode-option\" data-polytank-mode=\"${variant}\">${def?.label||variant.toUpperCase()}</button>`);
-      }
-    }
-    track.innerHTML=repeated.join('');
-    this.modeWheelStepPx=parseFloat(getComputedStyle(wheel).getPropertyValue('--polytank-mode-step'))||54;
-    const currentIndex=Math.max(0,order.findIndex(variant=>variant===this.normalizeGameVariant(this.gameVariant)));
-    this.modeWheelVirtualIndex=order.length*2+currentIndex;
+    this.modeWheelStepPx=54;
     this.renderModeWheel();
     wheel.dataset.bound='1';
-    const spinByDelta=delta=>{
-      this.spinModeWheelByDelta(delta);
-    };
-    wheel.addEventListener('wheel',event=>{
-      if(!this.menuOpen||!this.modeDropdownOpen) return;
-      event.preventDefault();
-      spinByDelta(event.deltaY/120);
-    },{passive:false});
-    wheel.addEventListener('keydown',event=>{
-      if(!this.modeDropdownOpen) return;
-      if(event.key==='ArrowDown'){
-        event.preventDefault();
-        spinByDelta(1.2);
-      } else if(event.key==='ArrowUp'){
-        event.preventDefault();
-        spinByDelta(-1.2);
-      } else if(event.key==='Enter'){
-        event.preventDefault();
-        this.lockModeWheelToNearest(true);
-      }
-    });
-    viewport.addEventListener('pointerdown',event=>{
-      if(!this.menuOpen||!this.modeDropdownOpen||this.isLocalPartyGuest()) return;
-      this.modeWheelPointerId=event.pointerId;
-      this.modeWheelDragging=true;
-      this.modeWheelVelocity=0;
-      this.modeWheelStartY=event.clientY;
-      this.modeWheelLastY=event.clientY;
-      this.modeWheelLastMoveTs=performance.now();
-      if(this.modeWheelRaf){
-        cancelAnimationFrame(this.modeWheelRaf);
-        this.modeWheelRaf=0;
-      }
-      if(viewport.setPointerCapture){
-        try{ viewport.setPointerCapture(event.pointerId); }catch(_err){}
-      }
-    });
-    viewport.addEventListener('pointermove',event=>{
-      if(this.modeWheelPointerId!==event.pointerId||this.isLocalPartyGuest()) return;
-      const now=performance.now();
-      const dy=event.clientY-this.modeWheelLastY;
-      const step=this.modeWheelStepPx||54;
-      this.modeWheelVirtualIndex-=dy/step;
-      const dt=Math.max(8,now-this.modeWheelLastMoveTs);
-      this.modeWheelVelocity=-(dy/step)/(dt/16.6667);
-      this.modeWheelLastMoveTs=now;
-      this.modeWheelLastY=event.clientY;
-      this.normalizeModeWheelVirtualIndex();
-      this.renderModeWheel();
-    });
-    const release=event=>{
-      if(this.modeWheelPointerId!==event.pointerId) return;
-      this.modeWheelPointerId=null;
-      this.modeWheelDragging=false;
-      this.startModeWheelMotion();
-    };
-    viewport.addEventListener('pointerup',release);
-    viewport.addEventListener('pointercancel',release);
     track.addEventListener('click',event=>{
       const target=event.target instanceof Element?event.target.closest('[data-polytank-mode]'):null;
       if(!target||this.isLocalPartyGuest()) return;
       event.preventDefault();
       const variant=this.normalizeGameVariant(target.getAttribute('data-polytank-mode'));
-      const index=this.modeWheelOrder.findIndex(value=>value===variant);
-      if(index<0) return;
-      const count=this.modeWheelOrder.length;
-      const base=Math.round(this.modeWheelVirtualIndex/count)*count;
-      this.modeWheelVirtualIndex=base+index;
-      this.modeWheelVelocity=0;
-      this.startModeWheelMotion();
+      if(!variant) return;
+      this.setGameVariant(variant);
     });
   },
   spinModeWheelByDelta(delta){
@@ -18475,19 +18637,12 @@ const POLYTANK_IO={
     const track=document.getElementById('polytank-mode-wheel-track');
     if(!track||!this.modeWheelOrder.length) return;
     const buttons=[...track.querySelectorAll('[data-polytank-mode]')];
-    const step=this.modeWheelStepPx||54;
-    this.normalizeModeWheelVirtualIndex();
-    track.style.transform=`translateY(calc(var(--polytank-mode-center-shift, 0px) - (${this.modeWheelVirtualIndex.toFixed(4)} * ${step}px)))`;
-    const centerIndex=Math.round(this.modeWheelVirtualIndex);
-    buttons.forEach((button,index)=>{
-      const offset=index-this.modeWheelVirtualIndex;
-      const abs=Math.abs(offset);
-      const depth=Math.min(4,Math.floor(abs+0.35));
+    const activeVariant=this.normalizeGameVariant(this.gameVariant);
+    track.style.transform='none';
+    buttons.forEach(button=>{
       button.classList.remove('mode-depth-0','mode-depth-1','mode-depth-2','mode-depth-3','mode-depth-4','wheel-above','wheel-below','active');
-      button.classList.add(`mode-depth-${depth}`);
-      if(offset<0) button.classList.add('wheel-above');
-      if(offset>0) button.classList.add('wheel-below');
-      if(index===centerIndex) button.classList.add('active');
+      const variant=this.normalizeGameVariant(button.getAttribute('data-polytank-mode'));
+      if(variant===activeVariant) button.classList.add('active');
     });
   },
   lockModeWheelToNearest(applyVariant=false){
@@ -18532,12 +18687,9 @@ const POLYTANK_IO={
   },
   toggleModeDropdown(force){
     const wheel=document.getElementById('polytank-mode-wheel');
-    this.modeDropdownOpen=typeof force==='boolean'?force:!this.modeDropdownOpen;
-    if(wheel) wheel.classList.toggle('open',this.modeDropdownOpen);
-    if(this.modeDropdownOpen){
-      this.modeWheelStepPx=parseFloat(getComputedStyle(wheel).getPropertyValue('--polytank-mode-step'))||this.modeWheelStepPx||54;
-      this.renderModeWheel();
-    }
+    this.modeDropdownOpen=true;
+    if(wheel) wheel.classList.add('open');
+    this.renderModeWheel();
   },
   showAchievementsTeaser(){
     const total=Array.isArray(ACHIEVEMENT_DEFS)?ACHIEVEMENT_DEFS.length:0;
@@ -18593,7 +18745,18 @@ const POLYTANK_IO={
     this.refreshMenuState();
   },
   populateSandboxPanel(){
-    const classOptions=Object.entries(this.classDefs).map(([classId,def])=>`<option value="${classId}">${def.name}</option>`).join('');
+    const tierGroups=[
+      {label:'Level 1 — Starter',ids:['basic']},
+      {label:'Level 15 — Tier 1',ids:['twin','sniper','machine_gun','flank_guard']},
+      {label:'Level 30 — Tier 2',ids:['triple_shot','quad_tank','twin_flank','assassin','overseer','hunter','trapper','destroyer','gunner','tri_angle','auto_3','smasher']},
+      {label:'Level 45 — Tier 3',ids:['triplet','penta_shot','spread_shot','octo_tank','auto_5','triple_twin','battleship','ranger','stalker','overlord','necromancer','manager','factory','overtrapper','predator','streamliner','tri_trapper','mega_trapper','gunner_trapper','auto_trapper','hybrid','annihilator','skimmer','rocketeer','auto_gunner','sprayer','booster','fighter','landmine','auto_smasher','spike','auto_tank']},
+      {label:'Level 45 — Reactor Tree',ids:['reactor','nova','magnetar','overdrive','supernova','solar_flare','blackstar','polarity','hyperdrive','quantum']},
+      {label:'Admin Classes',ids:['admin_dominator_gun','admin_dominator_destroyer','admin_dominator_trapper','admin_dominator_apex','admin_boss_tyrant','admin_boss_overlord','admin_boss_rainbow','admin_boss_void','admin_boss_ultimate','admin_boss_infinite']},
+    ];
+    const classOptions=tierGroups.map(group=>{
+      const opts=group.ids.filter(id=>this.classDefs[id]).map(id=>`<option value="${id}">${this.classDefs[id].name}</option>`).join('');
+      return opts?`<optgroup label="${group.label}">${opts}</optgroup>`:'';
+    }).join('');
     const shapeOptions=Object.keys(this.shapeDefs).map(kind=>`<option value="${kind}">${kind.charAt(0).toUpperCase()+kind.slice(1)}</option>`).join('');
     const bossOptions=this.bossHotkeyKeys.map(key=>`<option value="${key}">${(ADMIN_ITEMS[key]?.label)||key}</option>`).join('');
     const playerClass=document.getElementById('polytank-sandbox-player-class');
@@ -18618,6 +18781,20 @@ const POLYTANK_IO={
     if(this.sandboxPanelEl) this.sandboxPanelEl.classList.toggle('open',show&&this.sandboxPanelOpen);
     if(show&&this.sandboxPanelOpen) this.animatePopup(this.sandboxPanelEl);
     if(show) this.syncSandboxSelections();
+    const toggleBtn=document.getElementById('polytank-sandbox-shapes-toggle');
+    if(toggleBtn) toggleBtn.textContent=this.sandboxShapesEnabled===false?'Enable Spawning':'Disable Spawning';
+  },
+  sandboxClearShapes(){
+    if(!this.isSandboxMode()) return;
+    this.shapes=[];
+    toast('All shapes cleared.','#8fcaff');
+  },
+  sandboxToggleShapes(){
+    if(!this.isSandboxMode()) return;
+    this.sandboxShapesEnabled=this.sandboxShapesEnabled===false?true:false;
+    const toggleBtn=document.getElementById('polytank-sandbox-shapes-toggle');
+    if(toggleBtn) toggleBtn.textContent=this.sandboxShapesEnabled===false?'Enable Spawning':'Disable Spawning';
+    toast(this.sandboxShapesEnabled===false?'Shape spawning disabled.':'Shape spawning enabled.','#8fcaff');
   },
   toggleSandboxPanel(force){
     if(!this.isSandboxMode()) return;
@@ -18741,6 +18918,11 @@ const POLYTANK_IO={
       return;
     }
     if(event.code==='KeyH'&&adminUnlocked){
+      event.preventDefault();
+      if(this.inMatch&&this.isDominationMode()&&!this.getDominationBoss()){
+        this.spawnDominationBoss();
+        return;
+      }
       this.toggleBossPanel();
       return;
     }
@@ -19259,6 +19441,8 @@ const POLYTANK_IO={
     if(this.inMatch) this.saveProgress();
     if(this.localPartyCode) this.leaveLocalParty(true);
     this.active=false;
+    if(this.apexBossOverlayEl) this.apexBossOverlayEl.style.display='none';
+    if(this.ancientOverlayEl) this.ancientOverlayEl.style.display='none';
     this.inMatch=false;
     this.setPausedByMenu(false);
     this.pointer.down=false;
@@ -19351,6 +19535,9 @@ const POLYTANK_IO={
     tank.level=startLevel;
     tank.xp=0;
     tank.xpNext=this.getXpNextForLevel(startLevel);
+    tank.ancientXp=0;
+    tank.ancientLevel=1;
+    tank.ancientXpNext=this.getAncientXpNext(1);
     tank.points=Math.max(0,startLevel-1+this.getPermanentStartingPoints());
     tank.score=this.getScoreBaselineForLevel(startLevel);
     tank.classId='basic';
@@ -19480,6 +19667,29 @@ const POLYTANK_IO={
     toast(`Spawned ${count} ${kind}${count===1?'':'s'}.`,this.shapeDefs[kind]?.color||'#ffe27a');
   },
   createBases(){
+    if(this.isAncientMode()){
+      this.bases=[
+        {id:'ancient-blue-main',team:'blue',x:this.world.w*0.18,y:this.world.h*0.22,r:158,spawnRadius:290,label:'Blue Camp'},
+        {id:'ancient-red-main',team:'red',x:this.world.w*0.82,y:this.world.h*0.22,r:158,spawnRadius:290,label:'Red Camp'}
+      ];
+      this.guards=[];
+      this.bases.forEach(base=>{
+        for(let index=0;index<3;index++){
+          this.guards.push({
+            id:`guard_${++this.guardId}`,
+            team:base.team,
+            baseId:base.id,
+            angle:index*(Math.PI*2/3),
+            orbit:base.r+62,
+            x:base.x,
+            y:base.y,
+            aimAngle:0,
+            shotTimer:Math.random()*0.6,
+          });
+        }
+      });
+      return;
+    }
     if(this.isSandboxMode()){
       this.bases=[
         {id:'sandbox-hub',team:'blue',x:this.world.midX,y:this.world.midY,r:140,spawnRadius:240,label:'Sandbox Hub'}
@@ -19654,14 +19864,40 @@ const POLYTANK_IO={
   getBase(id){
     return this.bases.find(base=>base.id===id)||null;
   },
+  getDecagonXpValue(){
+    return Math.max(1,Number(this.shapeDefs?.decagon?.xp)||5040);
+  },
+  isApexDominator(dominator){
+    return !!dominator&&dominator.kind==='apex';
+  },
+  isHeavyApexEntity(entity){
+    if(!entity) return false;
+    if(entity.isDominator&&entity.kind==='apex') return true;
+    if(entity.adminMorphProfile&&entity.isDominator&&entity.adminMorphProfile.kind==='apex') return true;
+    return false;
+  },
+  getObjectiveDominators(){
+    return (this.dominators||[]).filter(dominator=>!this.isApexDominator(dominator));
+  },
+  getDominationBoss(){
+    return (this.dominators||[]).find(dominator=>this.isApexDominator(dominator)&&dominator.hp>0)||null;
+  },
   applyDominatorStyle(dominator){
-    const palette=dominator.team==='neutral'
-      ? {body:'#e9d969',barrel:'#a7a7aa',bullet:'#ffeb93',accent:'#4f4f52'}
-      : dominator.team==='yellow'
-        ? {body:'#f0d45e',barrel:'#a7a7aa',bullet:'#ffe777',accent:'#4f4f52'}
-      : dominator.team==='blue'
-        ? {body:'#4dbdff',barrel:'#a7a7aa',bullet:'#8ae9ff',accent:'#4f4f52'}
-        : {body:'#ff7a83',barrel:'#a7a7aa',bullet:'#ffb08b',accent:'#4f4f52'};
+    const palette=this.isApexDominator(dominator)
+      ? dominator.team==='blue'
+        ? {body:'#63c6ff',barrel:'#cad4e4',bullet:'#a2eeff',accent:'#1f3654'}
+        : dominator.team==='red'
+          ? {body:'#ff8b95',barrel:'#cad4e4',bullet:'#ffc39b',accent:'#5a2633'}
+          : dominator.team==='yellow'
+            ? {body:'#f0d45e',barrel:'#d6d9df',bullet:'#ffe777',accent:'#5c4b17'}
+            : {body:'#f2db6a',barrel:'#d9dddf',bullet:'#ffe777',accent:'#65541a'}
+      : dominator.team==='neutral'
+        ? {body:'#e9d969',barrel:'#a7a7aa',bullet:'#ffeb93',accent:'#4f4f52'}
+        : dominator.team==='yellow'
+          ? {body:'#f0d45e',barrel:'#a7a7aa',bullet:'#ffe777',accent:'#4f4f52'}
+          : dominator.team==='blue'
+            ? {body:'#4dbdff',barrel:'#a7a7aa',bullet:'#8ae9ff',accent:'#4f4f52'}
+            : {body:'#ff7a83',barrel:'#a7a7aa',bullet:'#ffb08b',accent:'#4f4f52'};
     dominator.bodyColor=palette.body;
     dominator.barrelColor=palette.barrel;
     dominator.bulletColor=palette.bullet;
@@ -19680,18 +19916,21 @@ const POLYTANK_IO={
   createDominator(config){
     const def=config||{};
     const kind=def.kind||'gun';
+    const baseGunHp=224000;
     const profile=kind==='destroyer'
       ? {reload:1.92,bulletSpeed:420,bulletDamage:1020,bulletPenetration:280,bulletRadius:38,barrelLength:252,barrelWidth:126,cannonCount:1,spread:0.001,burstInterval:0.22,maxHp:250000,r:206}
       : kind==='trapper'
         ? {reload:1,bulletSpeed:262,bulletDamage:260,bulletPenetration:320,bulletRadius:28,barrelLength:196,barrelWidth:102,cannonCount:1,spread:0.004,burstInterval:0.2,maxHp:230000,r:198}
-        : {reload:0.54,bulletSpeed:650,bulletDamage:320,bulletPenetration:150,bulletRadius:22,barrelLength:224,barrelWidth:96,cannonCount:1,spread:0.004,burstInterval:0.14,maxHp:224000,r:198};
+        : kind==='apex'
+          ? {reload:0.86,bulletSpeed:520,bulletDamage:720,bulletPenetration:520,bulletRadius:42,barrelLength:486,barrelWidth:216,cannonCount:1,spread:0.003,burstInterval:0.16,maxHp:baseGunHp*10,r:198*3}
+          : {reload:0.54,bulletSpeed:650,bulletDamage:320,bulletPenetration:150,bulletRadius:22,barrelLength:224,barrelWidth:96,cannonCount:1,spread:0.004,burstInterval:0.14,maxHp:baseGunHp,r:198};
     const dominator={
-      id:`dominator_${++this.dominatorId}`,
+      id:def.id||`dominator_${++this.dominatorId}`,
       isDominator:true,
       side:def.id||kind,
       kind,
-      label:def.label||(kind==='destroyer'?'Destroyer Dominator':kind==='trapper'?'Trapper Dominator':'Gun Dominator'),
-      team:'neutral',
+      label:def.label||(kind==='destroyer'?'Destroyer Dominator':kind==='trapper'?'Trapper Dominator':kind==='apex'?'Apex Dominator':'Gun Dominator'),
+      team:def.team||'neutral',
       x:Number.isFinite(def.x)?def.x:this.world.midX,
       y:Number.isFinite(def.y)?def.y:this.world.midY,
       r:profile.r,
@@ -19716,6 +19955,8 @@ const POLYTANK_IO={
       lastHitId:'',
       lastHitTeam:'',
       barTimer:0,
+      isDominationBoss:kind==='apex',
+      xpCreditPaid:0,
     };
     this.applyDominatorStyle(dominator);
     return dominator;
@@ -19723,6 +19964,7 @@ const POLYTANK_IO={
   captureDominator(dominator,team){
     dominator.team=team;
     dominator.hp=dominator.maxHp;
+    dominator.xpCreditPaid=0;
     dominator.shotTimer=0.9;
     dominator.barTimer=3;
     dominator.pendingBarrels=[];
@@ -19731,12 +19973,87 @@ const POLYTANK_IO={
     dominator.controlledBy='ai';
     this.applyDominatorStyle(dominator);
     if(this.controlledDominatorId===dominator.id&&this.player&&this.player.team!==team) this.controlledDominatorId='';
+    const ownerId=dominator.lastHitId||'';
+    this.awardXpToOwner(ownerId,this.getDecagonXpValue()*20);
     this.updateHud();
     if(!(this.menuOpen&&!this.inMatch)){
       flashScreen(team==='blue'?'rgba(88,210,255,.18)':team==='yellow'?'rgba(255,226,118,.2)':'rgba(255,116,116,.16)',180);
       toast(`${dominator.label} captured by ${team.toUpperCase()}.`,team==='blue'?'#68ddff':team==='yellow'?'#ffe777':'#ff9ca0');
     }
     this.announceServerEvent(`${dominator.label} taken by ${team.toUpperCase()}.`,team==='blue'?'#68ddff':team==='yellow'?'#ffe777':'#ff9ca0');
+  },
+  spawnDominationBoss(){
+    if(!this.isDominationMode()||this.getDominationBoss()) return null;
+    const dominator=this.createDominator({
+      id:'domination-apex',
+      kind:'apex',
+      label:'Apex Dominator',
+      x:this.world.midX,
+      y:this.world.midY,
+      team:'neutral',
+    });
+    dominator.shotTimer=1.2;
+    dominator.barTimer=4;
+    const clearR=dominator.r+120;
+    this.shapes=this.shapes.filter(s=>Math.hypot(s.x-dominator.x,s.y-dominator.y)>=clearR);
+    for(let index=0;index<28;index++){
+      const angle=(index/28)*Math.PI*2;
+      const speed=160+Math.random()*260;
+      this.particles.push({
+        x:dominator.x+Math.cos(angle)*(8+Math.random()*18),
+        y:dominator.y+Math.sin(angle)*(8+Math.random()*18),
+        vx:Math.cos(angle)*speed,
+        vy:Math.sin(angle)*speed,
+        life:0.34+Math.random()*0.32,
+        size:3+Math.random()*7,
+        grow:6+Math.random()*8,
+        color:index%2===0?'#ffe777':'#75631f',
+      });
+    }
+    shake('lg');
+    flashScreen('rgba(255,228,102,.45)',220);
+    setTimeout(()=>flashScreen('rgba(255,236,156,.28)',120),150);
+    setTimeout(()=>flashScreen('rgba(255,224,88,.24)',100),320);
+    this.dominators.push(dominator);
+    this.modeObjective.dominationBossSpawned=true;
+    this.modeObjective.dominationBossId=dominator.id;
+    this.modeObjective.dominationTeam='';
+    this.modeObjective.dominationHold=0;
+    this.modeObjective.dominationLocked=false;
+    toast('Apex Dominator deployed at the arena core.','#ffe777');
+    this.announceServerEvent('Apex Dominator deployed. Destroy it to win the match.','#ffe777');
+    return dominator;
+  },
+  startDominationArenaClosure(winnerTeam){
+    if(this.modeObjective.dominationArenaClosing) return;
+    this.modeObjective.dominationArenaClosing=true;
+    this.modeObjective.dominationLocked=true;
+    this.modeObjective.dominationWinner=winnerTeam;
+    this.pointer.down=false;
+    const lanes=6;
+    const verticalStep=this.world.h/(lanes+1);
+    for(let index=0;index<lanes;index++){
+      const y=verticalStep*(index+1);
+      this.spawnWipeCloser('left',y);
+      this.spawnWipeCloser('right',y);
+    }
+    this.endgameSpectateId=this.bots.find(bot=>bot.isWipeCloser)?.id||'';
+    flashScreen(winnerTeam==='blue'?'rgba(116,214,255,.24)':'rgba(255,144,144,.22)',240);
+    toast(`${winnerTeam.toUpperCase()} destroyed the Apex Dominator. Arena closing.`,winnerTeam==='blue'?'#8fe9ff':'#ffb8bf');
+    this.announceServerEvent(`${winnerTeam.toUpperCase()} destroyed the Apex Dominator. Arena Closers inbound.`,winnerTeam==='blue'?'#8fe9ff':'#ffb8bf');
+  },
+  resolveDominationBossDefeat(ownerId,ownerTeam){
+    const owner=this.getTankById(ownerId||'');
+    const winnerTeam=['blue','red','green','purple','yellow'].includes(ownerTeam)?ownerTeam:(owner?.team||'blue');
+    const apex=this.getDominationBoss();
+    if(apex){
+      this.captureDominator(apex,winnerTeam);
+      apex.controlledBy='ai';
+      apex.barTimer=4;
+    }
+    this.startDominationArenaClosure(winnerTeam);
+    this.awardScoreToOwner(ownerId||this.modeObjective.dominationBossId,28000);
+    this.awardXpToOwner(ownerId||'',this.getDecagonXpValue()*24);
   },
   createArenaBoss(key,spawnX,spawnY){
     const item=ADMIN_ITEMS[key]||{label:'Arena Boss',color:'#efe06d'};
@@ -19928,8 +20245,8 @@ const POLYTANK_IO={
       type:'dominator',
       kind,
       isDominator:true,
-      className:kind==='destroyer'?'Destroyer Dominator':kind==='trapper'?'Trapper Dominator':'Gun Dominator',
-      displayName:`${this.loadPlayerName()} • ${kind==='destroyer'?'Destroyer Dominator':kind==='trapper'?'Trapper Dominator':'Gun Dominator'}`,
+      className:kind==='destroyer'?'Destroyer Dominator':kind==='trapper'?'Trapper Dominator':kind==='apex'?'Apex Dominator':'Gun Dominator',
+      displayName:`${this.loadPlayerName()} • ${kind==='destroyer'?'Destroyer Dominator':kind==='trapper'?'Trapper Dominator':kind==='apex'?'Apex Dominator':'Gun Dominator'}`,
       level:45,
       team:base.team,
       maxHp:base.maxHp,
@@ -20056,6 +20373,7 @@ const POLYTANK_IO={
     if(classId==='admin_dominator_gun'){ this.applyAdminDominatorMorph(tank,'gun'); if(!silent) toast('Admin morph: Gun Dominator','#ffe879'); return true; }
     if(classId==='admin_dominator_destroyer'){ this.applyAdminDominatorMorph(tank,'destroyer'); if(!silent) toast('Admin morph: Destroyer Dominator','#ffe879'); return true; }
     if(classId==='admin_dominator_trapper'){ this.applyAdminDominatorMorph(tank,'trapper'); if(!silent) toast('Admin morph: Trapper Dominator','#ffe879'); return true; }
+    if(classId==='admin_dominator_apex'){ this.applyAdminDominatorMorph(tank,'apex'); if(!silent) toast('Admin morph: Apex Dominator','#ffe879'); return true; }
     if(mapping[classId]){
       this.applyAdminBossMorph(tank,mapping[classId]);
       if(!silent) toast(`Admin morph: ${this.getClassDef(classId).name.replace('[ADMIN] ','')}`,'#ffd39f');
@@ -20388,7 +20706,7 @@ const POLYTANK_IO={
     return x<this.spawnLaneWidth+pad||x>this.world.w-this.spawnLaneWidth-pad;
   },
   isInsideFriendlySpawn(tank){
-    if(this.isMothershipMode()||this.isSandboxMode()){
+    if(this.isMothershipMode()||this.isSandboxMode()||this.isAncientMode()){
       return this.bases.some(base=>base.team===tank.team&&Math.hypot(tank.x-base.x,tank.y-base.y)<base.spawnRadius);
     }
     return tank.team==='blue'
@@ -20435,6 +20753,9 @@ const POLYTANK_IO={
       level:opts.level||1,
       xp:0,
       xpNext:24,
+      ancientXp:0,
+      ancientXpNext:220,
+      ancientLevel:1,
       xpCreditPaid:0,
       points:opts.points||0,
       upgrades:{regen:0,maxHealth:0,bodyDamage:0,bulletSpeed:0,bulletPenetration:0,bulletDamage:0,reload:0,moveSpeed:0},
@@ -20626,7 +20947,9 @@ const POLYTANK_IO={
     tank.bodyDamage=(16+tank.level*0.9+upgrades.bodyDamage*5.5)*(def.bodyDamageScale||1);
     tank.bodyPenetration=(0.22+upgrades.bodyDamage*0.065+upgrades.maxHealth*0.02+Math.floor(tank.level/18)*0.045)*(def.bodyPenetrationScale||1);
     tank.bulletSpeed=(510+tank.level*5+upgrades.bulletSpeed*50)*(def.bulletSpeedScale||1);
-    tank.bulletPenetration=(0.18+upgrades.bulletPenetration*0.16+Math.floor(tank.level/18)*0.07)*(def.bulletPenetrationScale||1);
+    tank.bulletPenetration=upgrades.bulletPenetration>0
+      ? (0.18+upgrades.bulletPenetration*0.16+Math.floor(tank.level/18)*0.07)*(def.bulletPenetrationScale||1)
+      : 0;
     tank.bulletDamage=(13+tank.level*0.8+upgrades.bulletDamage*4.5)*(def.bulletDamageScale||1);
     tank.reload=Math.max(0.08,0.46*Math.pow(0.92,upgrades.reload)*(def.reloadScale||1));
     tank.moveSpeed=((tank.isBot?188:212)+Math.max(0,10-tank.level)*1.6+upgrades.moveSpeed*18)*(def.moveSpeedScale||1);
@@ -20889,7 +21212,7 @@ const POLYTANK_IO={
     toast('Mothership command engaged.','#ffe777');
   },
   respawnTank(tank){
-    if(this.isMothershipMode()&&this.mothershipEndgame){
+    if((this.isMothershipMode()&&this.mothershipEndgame)||this.modeObjective.dominationArenaClosing){
       if(tank.isPlayer) return;
       tank._remove=true;
       return;
@@ -21051,10 +21374,24 @@ const POLYTANK_IO={
   gainTankXp(tank,amount){
     if(!tank||tank.deadTimer>0||tank.specialRole==='arenaCloser'||tank.specialRole==='mothership'||tank.specialRole==='teamCloser'||tank.specialRole==='wildCloser') return;
     amount*=3;
+    if(this.isAncientMode()&&tank.level>=45){
+      let ancientAmount=amount;
+      const zone=this.getAncientZoneAt(tank.x,tank.y);
+      if(zone?.state==='blooming') ancientAmount*=1.24;
+      if(zone?.state==='corrupted') ancientAmount*=1.34;
+      this.gainAncientXp(tank,ancientAmount);
+      return;
+    }
     tank.xp+=amount;
     while(tank.xp>=tank.xpNext){
       tank.xp-=tank.xpNext;
       tank.level+=1;
+      if(this.isAncientMode()&&tank.level>45){
+        tank.level=45;
+        this.gainAncientXp(tank,tank.xp+tank.xpNext);
+        tank.xp=0;
+        break;
+      }
       tank.points+=1;
       tank.xpNext=Math.round(tank.xpNext*1.2+8);
       this.awardScore(tank,160+tank.level*22);
@@ -21161,6 +21498,7 @@ const POLYTANK_IO={
     if(this.isSandboxMode()) return 'sandbox-hub';
     if(this.isMothershipMode()) return 'blue-center';
     if(this.isFreeForAllMode()) return 'ffa-center';
+    if(this.isAncientMode()) return team==='red'?'ancient-red-main':'ancient-blue-main';
     if(this.isFourTeamMode()) return `${team}-base`;
     return team==='red'?'red-north':'blue-north';
   },
@@ -21223,10 +21561,10 @@ const POLYTANK_IO={
     this.particles=[];
     this.matchClock=0;
     this.alphaSpawnTimer=0;
-    this.ambientBossTimer=this.isMothershipMode()?10:0;
+    this.ambientBossTimer=this.isMothershipMode()?10:(this.isAncientMode()?24:0);
     this.mothershipEndgame=false;
     this.endgameSpectateId='';
-    this.centerBoss=this.isSandboxMode()?null:this.createCenterBoss();
+    this.centerBoss=(this.isSandboxMode()||this.isAncientMode())?null:this.createCenterBoss();
     this.summonedBosses=[];
     this.cageWall=this.isMothershipMode()?this.createMothershipCageWall():null;
     this.enemyMothership=this.isMothershipMode()?this.createEncounterMothership():null;
@@ -21278,7 +21616,7 @@ const POLYTANK_IO={
       const standIns=(this.localPartyState.members||[]).filter(member=>member&&member.id!==this.localPartyClientId);
       standIns.forEach((member,index)=>this.spawnLocalPartyStandIn(member,index));
     }
-    if(!this.isMothershipMode()&&!this.isSandboxMode()&&!this.isFreeForAllMode()&&!this.isFourTeamMode()){
+    if(!this.isMothershipMode()&&!this.isSandboxMode()&&!this.isFreeForAllMode()&&!this.isFourTeamMode()&&!this.isAncientMode()){
       this.spawnTeamCloser('blue');
       this.spawnTeamCloser('red');
     }
@@ -21576,11 +21914,18 @@ const POLYTANK_IO={
     let x=this.world.midX;
     let y=this.world.midY;
     for(let attempt=0;attempt<60;attempt++){
-      if(region==='left') x=pad+Math.random()*(this.world.midX-pad*2);
+      if(region==='ancient_frontier'){
+        const point=this.randomAncientFrontierPoint(Math.max(220,pad));
+        x=point.x;
+        y=point.y;
+      } else if(region==='ancient_main'){
+        x=pad+Math.random()*(this.world.w-pad*2);
+        y=pad+Math.random()*Math.max(120,this.ancientMainY-pad*2);
+      } else if(region==='left') x=pad+Math.random()*(this.world.midX-pad*2);
       else if(region==='right') x=this.world.midX+pad+Math.random()*(this.world.w-this.world.midX-pad*2);
       else if(region==='center') x=this.world.midX-900+Math.random()*1800;
       else x=pad+Math.random()*(this.world.w-pad*2);
-      y=pad+Math.random()*(this.world.h-pad*2);
+      if(region!=='ancient_frontier'&&region!=='ancient_main') y=pad+Math.random()*(this.world.h-pad*2);
       if(Math.hypot(x-this.world.midX,y-this.world.midY)>(region==='center'?200:120)) break;
     }
     return {x,y};
@@ -21591,6 +21936,8 @@ const POLYTANK_IO={
     return this.spawnShapeAt(kind,point.x,point.y);
   },
   spawnShapeAt(kind,x,y){
+    const apexDom=this.getDominationBoss();
+    if(apexDom&&Math.hypot(x-apexDom.x,y-apexDom.y)<apexDom.r+160) return null;
     const definition=this.shapeDefs[kind]||this.shapeDefs.square;
     this.shapes.push({
       id:`shape_${++this.shapeId}`,
@@ -21611,11 +21958,42 @@ const POLYTANK_IO={
       lastHitId:'',
       lastHitTeam:'',
       barTimer:0,
+      ancient:!!definition.ancient,
+      ancientTier:definition.ancientTier||'',
+      aiRoamAngle:Math.random()*Math.PI*2,
+      roamTimer:0.6+Math.random()*1.2,
     });
     return this.shapes[this.shapes.length-1];
   },
   maintainShapePopulation(){
     if(this.isMothershipMode()&&this.mothershipEndgame) return;
+    if(this.isSandboxMode()&&this.sandboxShapesEnabled===false) return;
+    if(this.isAncientMode()){
+      const counts={square:0,triangle:0,pentagon:0,hexagon:0,octagon:0,decagon:0,ancient_square:0,ancient_triangle:0,ancient_pentagon:0,ancient_alpha_pentagon:0};
+      this.shapes.forEach(shape=>{ counts[shape.kind]=(counts[shape.kind]||0)+1; });
+      const bloomZones=this.ancientCorruptionZones.filter(zone=>zone.state==='blooming').length;
+      const overgrownZones=this.ancientCorruptionZones.filter(zone=>zone.state==='overgrown').length;
+      const corruptedZones=this.ancientCorruptionZones.filter(zone=>zone.state==='corrupted').length;
+      const normalTargets={square:54,triangle:22,pentagon:12,hexagon:5,octagon:4,decagon:2};
+      const ancientTargets={
+        ancient_square:18+bloomZones*8,
+        ancient_triangle:10+bloomZones*3+overgrownZones*2,
+        ancient_pentagon:6+bloomZones*2+corruptedZones*2,
+        ancient_hexagon:2+corruptedZones*1,
+        ancient_alpha_pentagon:this.ancientBoss?1:0,
+      };
+      while(counts.square<normalTargets.square){ this.spawnShape('square','ancient_main'); counts.square++; }
+      while(counts.triangle<normalTargets.triangle){ this.spawnShape('triangle','ancient_main'); counts.triangle++; }
+      while(counts.pentagon<normalTargets.pentagon){ this.spawnShape('pentagon','ancient_main'); counts.pentagon++; }
+      while(counts.hexagon<normalTargets.hexagon){ this.spawnShape('hexagon','ancient_main'); counts.hexagon++; }
+      while(counts.octagon<normalTargets.octagon){ this.spawnShape('octagon','ancient_main'); counts.octagon++; }
+      while(counts.decagon<normalTargets.decagon){ this.spawnShape('decagon','ancient_main'); counts.decagon++; }
+      while(counts.ancient_square<ancientTargets.ancient_square){ this.spawnShape('ancient_square','ancient_frontier'); counts.ancient_square++; }
+      while(counts.ancient_triangle<ancientTargets.ancient_triangle){ this.spawnShape('ancient_triangle','ancient_frontier'); counts.ancient_triangle++; }
+      while(counts.ancient_pentagon<ancientTargets.ancient_pentagon){ this.spawnShape('ancient_pentagon','ancient_frontier'); counts.ancient_pentagon++; }
+      while((counts.ancient_hexagon||0)<ancientTargets.ancient_hexagon){ this.spawnShape('ancient_hexagon','ancient_frontier'); counts.ancient_hexagon=(counts.ancient_hexagon||0)+1; }
+      return;
+    }
     const counts={square:0,triangle:0,pentagon:0,hexagon:0,octagon:0,decagon:0};
     this.shapes.forEach(shape=>{ counts[shape.kind]=(counts[shape.kind]||0)+1; });
     const targets=this.isSandboxMode()
@@ -22048,6 +22426,25 @@ const POLYTANK_IO={
       }
       return barrels;
     }
+    if(dominator.kind==='apex'){
+      const barrels=[];
+      barrels.push(this.makeBarrel(0,0,1.2,1.36,1.18,.9,.54,1.8,'circle',1.45,1.55));
+      barrels.push(this.makeBarrel(-0.035,-110,1.08,0.72,0.62,1.06,.88,0.82,'circle',1.06,0.96));
+      barrels.push(this.makeBarrel(0.035,110,1.08,0.72,0.62,1.06,.88,0.82,'circle',1.06,0.96));
+      const trapCount=6;
+      for(let index=0;index<trapCount;index++){
+        const angle=(index/trapCount)*Math.PI*2;
+        barrels.push(this.makeBarrel(angle,0,1.02,1.08,0.82,.6,.62,1.2,'triangle',2.7,1.2));
+      }
+      const satCount=12;
+      for(let index=0;index<satCount;index++){
+        const angle=(index/satCount)*Math.PI*2;
+        const sat=this.makeBarrel(angle,0,0.44,0.38,0.025,1.2,0.4,0.38,'circle',1.8,0.4);
+        sat.isSatellite=true;
+        barrels.push(sat);
+      }
+      return barrels;
+    }
     return [
       this.makeBarrel(0,0,1.05,1,1,1,.86,1.05,'circle',1.12,1.06),
     ];
@@ -22139,6 +22536,10 @@ const POLYTANK_IO={
     this.updateShapes(dt);
     this.updateModeObjectives(dt);
     this.updateTankContacts(dt);
+    if(this.isAncientMode()){
+      this.applyAncientEnvironmentToTank(this.player,dt);
+      for(const bot of this.bots) this.applyAncientEnvironmentToTank(bot,dt);
+    }
     this.checkYellowVictory();
     this.updateParticles(dt);
     this.updateDamageNumbers(dt);
@@ -22301,7 +22702,8 @@ const POLYTANK_IO={
   canDamageCageWall(ownerId,ownerTeam){
     if(ownerTeam==='blue') return true;
     const owner=this.getTankById(ownerId);
-    return !!owner&&(owner.specialRole==='mothership'||this.isArenaCloserLike(owner));
+    if(owner&&(owner.specialRole==='mothership'||this.isArenaCloserLike(owner)||(owner.isDominator&&owner.kind==='apex'))) return true;
+    return !!(this.dominators?.find(d=>d.id===ownerId&&this.isApexDominator(d)));
   },
   damageCageWall(amount,ownerId,ownerTeam){
     if(this.networkRoomActive) return false;
@@ -22416,12 +22818,12 @@ const POLYTANK_IO={
     this.bots.push(tank);
     return tank;
   },
-  spawnWipeCloser(side){
+  spawnWipeCloser(side,y=this.world.midY){
     const spawnX=side==='left'?-140:this.world.w+140;
     const closer=this.createTank('yellow',{
       id:`wipe_closer_${side}_${++this.tankId}`,
       x:spawnX,
-      y:this.world.midY,
+      y,
       isBot:true,
       baseId:null,
       invuln:3,
@@ -22431,6 +22833,9 @@ const POLYTANK_IO={
     closer.specialRole='arenaCloser';
     closer.isWipeCloser=true;
     closer.sweepDir=side==='left'?1:-1;
+    closer.pathOffset=Math.random()*Math.PI*2;
+    closer.pathAmp=140+Math.random()*180;
+    closer.pathRate=0.52+Math.random()*0.5;
     closer.respawnBaseId=null;
     closer.raidTimer=999999;
     closer.raidCooldown=0;
@@ -22452,29 +22857,40 @@ const POLYTANK_IO={
     toast('Arena Closers inbound. No respawns remain.','#ffe777');
   },
   updateMothershipEndgame(dt){
-    if(!this.isMothershipMode()||!this.mothershipEndgame) return;
+    if(!this.mothershipEndgame&&!this.modeObjective.dominationArenaClosing) return;
     const wipeClosers=this.bots.filter(bot=>bot.isWipeCloser&&bot.deadTimer<=0&&!bot._remove);
     for(const closer of wipeClosers){
       closer.invuln=Math.max(closer.invuln||0,2);
-      closer.aimAngle=closer.sweepDir>0?0:Math.PI;
-      closer.x+=closer.sweepDir*closer.moveSpeed*dt*1.2;
-      closer.y=this.world.midY+Math.sin(this.matchClock*0.7+(closer.sweepDir>0?0:Math.PI))*180;
-      const purgeRadius=520;
+      closer.x+=closer.sweepDir*closer.moveSpeed*dt*0.95;
+      closer.y=this.world.midY+Math.sin(this.matchClock*(closer.pathRate||0.7)+(closer.pathOffset||0))*Math.max(100,closer.pathAmp||180);
+      const localTarget=this.chooseBotTarget(closer);
+      if(localTarget&&localTarget.entity){
+        closer.aimAngle=Math.atan2(localTarget.entity.y-closer.y,localTarget.entity.x-closer.x);
+        if(closer.shotTimer<=0&&localTarget.distance<1800) this.fireTank(closer);
+      } else {
+        closer.aimAngle=closer.sweepDir>0?0:Math.PI;
+      }
+      const purgeRadius=280;
       for(let shapeIndex=this.shapes.length-1;shapeIndex>=0;shapeIndex--){
         const shape=this.shapes[shapeIndex];
-        if(Math.hypot(shape.x-closer.x,shape.y-closer.y)<purgeRadius+shape.r) this.destroyShape(shapeIndex,shape,closer.id,'neutral');
-      }
-      this.guards=this.guards.filter(guard=>Math.hypot(guard.x-closer.x,guard.y-closer.y)>=purgeRadius+30);
-      for(const dominator of this.dominators){
-        if(Math.hypot(dominator.x-closer.x,dominator.y-closer.y)<purgeRadius+dominator.r) this.damageDominator(dominator,dominator.maxHp*12,closer.id,closer.team);
-      }
-      if(this.centerBoss&&this.centerBoss.hp>0&&Math.hypot(this.centerBoss.x-closer.x,this.centerBoss.y-closer.y)<purgeRadius+this.centerBoss.r) this.destroyCenterBoss();
-      for(const boss of this.summonedBosses){
-        if(boss.hp>0&&Math.hypot(boss.x-closer.x,boss.y-closer.y)<purgeRadius+boss.r) this.destroySummonedBoss(boss);
+        if(Math.hypot(shape.x-closer.x,shape.y-closer.y)<purgeRadius+shape.r){
+          shape.hp-=160*dt;
+          shape.lastHitId=closer.id;
+          shape.lastHitTeam='yellow';
+          shape.barTimer=1.1;
+          if(shape.hp<=0) this.destroyShape(shapeIndex,shape,closer.id,'yellow');
+        }
       }
       for(const tank of [this.player,...this.bots]){
         if(!tank||tank.id===closer.id||tank.deadTimer>0||tank.hp<=0) continue;
-        if(Math.hypot(tank.x-closer.x,tank.y-closer.y)<purgeRadius+Math.max(40,tank.r)) this.damageTank(tank,closer.maxHp,closer.id,'neutral');
+        if(Math.hypot(tank.x-closer.x,tank.y-closer.y)<purgeRadius+Math.max(40,tank.r)) this.damageTank(tank,190*dt,closer.id,'yellow');
+      }
+      for(const dominator of this.dominators){
+        if(Math.hypot(dominator.x-closer.x,dominator.y-closer.y)<purgeRadius+dominator.r) this.damageDominator(dominator,380*dt,closer.id,'yellow');
+      }
+      if(this.centerBoss&&this.centerBoss.hp>0&&Math.hypot(this.centerBoss.x-closer.x,this.centerBoss.y-closer.y)<purgeRadius+this.centerBoss.r) this.damageArenaBoss(this.centerBoss,300*dt,closer.id,'yellow');
+      for(const boss of this.summonedBosses){
+        if(boss.hp>0&&Math.hypot(boss.x-closer.x,boss.y-closer.y)<purgeRadius+boss.r) this.damageArenaBoss(boss,300*dt,closer.id,'yellow');
       }
     }
   },
@@ -22601,21 +23017,31 @@ const POLYTANK_IO={
     const controlledDominator=this.getControlledDominator();
     let moveX=0;
     let moveY=0;
-    if(!controlledDominator){
-      if(this.keys.KeyW||this.keys.ArrowUp) moveY-=1;
-      if(this.keys.KeyS||this.keys.ArrowDown) moveY+=1;
-      if(this.keys.KeyA||this.keys.ArrowLeft) moveX-=1;
-      if(this.keys.KeyD||this.keys.ArrowRight) moveX+=1;
-      if(this.mobileControlsEnabled&&this.mobileLeftStick.magnitude>0.04){
-        moveX+=this.mobileLeftStick.x;
-        moveY+=this.mobileLeftStick.y;
-      }
+    if(this.keys.KeyW||this.keys.ArrowUp) moveY-=1;
+    if(this.keys.KeyS||this.keys.ArrowDown) moveY+=1;
+    if(this.keys.KeyA||this.keys.ArrowLeft) moveX-=1;
+    if(this.keys.KeyD||this.keys.ArrowRight) moveX+=1;
+    if(this.mobileControlsEnabled&&this.mobileLeftStick.magnitude>0.04){
+      moveX+=this.mobileLeftStick.x;
+      moveY+=this.mobileLeftStick.y;
+    }
+    if(controlledDominator&&controlledDominator.hp>0&&!controlledDominator.fadingOut){
+      const domLength=Math.hypot(moveX,moveY)||1;
+      const domMoveSpeed=Math.max(120,(controlledDominator.moveSpeed||200)*0.9);
+      const domTargetVX=moveX?moveX/domLength*domMoveSpeed:0;
+      const domTargetVY=moveY?moveY/domLength*domMoveSpeed:0;
+      this.applyTankDrive(controlledDominator,domTargetVX,domTargetVY,dt,5.8,2.2);
+      this.integrateTankVelocity(controlledDominator,dt,controlledDominator.r,this.world.w-controlledDominator.r,controlledDominator.r,this.world.h-controlledDominator.r);
+      this.resolveTankMazeCollisions(controlledDominator);
+      this.constrainTankToCageWall(controlledDominator);
     }
     this.handleHyperdriveDashInput(this.player,moveX,moveY,dt);
-    const moveLength=Math.hypot(moveX,moveY)||1;
+    const playerMoveX=controlledDominator?0:moveX;
+    const playerMoveY=controlledDominator?0:moveY;
+    const moveLength=Math.hypot(playerMoveX,playerMoveY)||1;
     const activeMoveSpeed=this.getTankCurrentMoveSpeed(this.player);
-    const targetVX=moveX?moveX/moveLength*activeMoveSpeed:0;
-    const targetVY=moveY?moveY/moveLength*activeMoveSpeed:0;
+    const targetVX=playerMoveX?playerMoveX/moveLength*activeMoveSpeed:0;
+    const targetVY=playerMoveY?playerMoveY/moveLength*activeMoveSpeed:0;
     this.applyTankDrive(this.player,targetVX,targetVY,dt,6.9,2.2);
     this.integrateTankVelocity(this.player,dt,this.player.r,this.world.w-this.player.r,this.player.r,this.world.h-this.player.r);
     this.resolveTankMazeCollisions(this.player);
@@ -22677,7 +23103,14 @@ const POLYTANK_IO={
     this.bots=this.bots.filter(bot=>!bot._remove);
   },
   updateDominators(dt){
+    const apexBoss=this.getDominationBoss();
     for(const dominator of this.dominators){
+      if(dominator.fadingOut){
+        dominator.fadeTimer=Math.max(0,(dominator.fadeTimer||0)-dt);
+        dominator.barTimer=0;
+        if(dominator.fadeTimer<=0) dominator._remove=true;
+        continue;
+      }
       const shouldHitCage=this.isMothershipMode()&&this.cageWall&&!this.cageWall.released&&dominator.team==='blue'&&dominator.controlledBy!=='player';
       if(shouldHitCage){
         const wallX=this.clamp(dominator.x,this.cageWall.x1+120,this.cageWall.x2-120);
@@ -22693,6 +23126,10 @@ const POLYTANK_IO={
       if(shouldHitCage) continue;
       let target=null;
       let targetDistance=Infinity;
+      if(apexBoss&&apexBoss.id!==dominator.id&&apexBoss.hp>0){
+        target=apexBoss;
+        targetDistance=Math.hypot(apexBoss.x-dominator.x,apexBoss.y-dominator.y);
+      }
       for(const tank of this.livingTanks()){
         if(tank.team===dominator.team&&dominator.team!=='neutral') continue;
         const distance=Math.hypot(tank.x-dominator.x,tank.y-dominator.y);
@@ -22714,8 +23151,14 @@ const POLYTANK_IO={
       }
       if(dominator.controlledBy==='player'&&this.controlledDominatorId!==dominator.id) dominator.controlledBy='ai';
     }
+    this.dominators=this.dominators.filter(dominator=>!dominator._remove);
   },
   chooseBotTarget(bot){
+    const apexBoss=this.getDominationBoss();
+    if(apexBoss&&apexBoss.hp>0&&apexBoss.id!==bot.id){
+      const apexDistance=Math.hypot(apexBoss.x-bot.x,apexBoss.y-bot.y);
+      if(apexDistance<4200) return {type:'dominator',entity:apexBoss,distance:apexDistance};
+    }
     if(this.isFreeForAllMode()||this.isFourTeamMode()){
       let bestEnemy=null;
       let bestEnemyDistance=Infinity;
@@ -23030,6 +23473,17 @@ const POLYTANK_IO={
           y:tank.y+Math.sin(spreadAngle)*Math.max(0,(barrel.isSummonBarrel?(tank.r*(tank.renderScale||.42))+18:(tank.r*(tank.renderScale||.42))+42)+((barrel.isSummonBarrel?(tank.r*(tank.renderScale||.42))*0.5:(tank.r*(tank.renderScale||.42))*0.28)*(barrel.lengthScale||1))-recoil),
         }
       : this.getBarrelTip(tank,spreadAngle,barrel.lateral,barrel.lengthScale,recoil);
+    const baseDamage=tank.bulletDamage*barrel.damageScale;
+    const penetrationLevel=this.clamp(Number(tank?.upgrades?.bulletPenetration)||0,0,Number(this.upgradeMaxLevel)||10);
+    const maxPenetrationHits=this.isArenaCloserLike(tank)
+      ? 80
+      : tank.specialRole==='mothership'
+        ? 120
+        : tank.isDominator
+          ? 36
+          : tank.isArenaBoss
+            ? 20
+            : penetrationLevel;
     const bullet={
       id:`bullet_${++this.bulletId}`,
       x:tip.x,
@@ -23038,9 +23492,10 @@ const POLYTANK_IO={
       vy:Math.sin(spreadAngle)*tank.bulletSpeed*barrel.speedScale,
       speed:tank.bulletSpeed*barrel.speedScale,
       r:tank.bulletRadius*barrel.bulletScale*1.08*heavyClassScale,
-      damage:tank.bulletDamage*barrel.damageScale,
+      damage:baseDamage,
+      baseDamage,
       penetration:tank.bulletPenetration*barrel.penetrationScale,
-      hp:this.isArenaCloserLike(tank)?3750:(tank.specialRole==='mothership'?999999:(tank.isDominator?28:tank.bulletPenetration*barrel.penetrationScale)),
+      hp:this.isArenaCloserLike(tank)?3750:(tank.specialRole==='mothership'?999999:(tank.isDominator?28:Math.max(0.35,tank.bulletPenetration*barrel.penetrationScale))),
       ownerId:tank.id,
       ownerTeam:tank.team,
       color:tank.bulletColor,
@@ -23055,10 +23510,16 @@ const POLYTANK_IO={
       massive:this.isArenaCloserLike(tank)||tank.specialRole==='mothership'||tank.isDominator||(tank.isArenaBoss&&tank.bulletRadius>=12),
       shape:barrel.shape,
       curve:Math.random()<0.48?0:(Math.random()-0.5)*(tank.specialRole==='mothership'?0.12:0.28),
-      penetrationDropPct:this.getPenetrationDamageDropPctForTank(tank),
+      maxPenetrationHits,
+      penetrationMinMultiplier:0.1,
       penetrationHits:0,
     };
     this.applyClassBulletTraits(tank,bullet);
+    if(barrel.isSatellite&&tank.isDominator&&tank.kind==='apex'){
+      bullet.homing=true;
+      bullet.homingTurn=2.8;
+      bullet.homingTankOnly=true;
+    }
     this.bullets.push(bullet);
     this.kickBarrelRecoil(tank,index,recoilKick);
     if(!tank.specialRole||tank.specialRole==='mothershipMinion'||tank.specialRole==='mothershipThrall'){
@@ -23079,11 +23540,14 @@ const POLYTANK_IO={
   },
   applyBulletPenetrationDamageDrop(bullet){
     if(!bullet) return true;
-    const dropPct=this.getBulletPenetrationDamageDropPct(bullet);
-    const nextDamage=Math.max(0,(Number(bullet.damage)||0)*(1-dropPct));
-    bullet.damage=nextDamage;
-    bullet.penetrationHits=(bullet.penetrationHits||0)+1;
-    return nextDamage<=0.05;
+    const base=Math.max(0.01,Number(bullet.baseDamage)||Number(bullet.damage)||0.01);
+    const nextHits=(bullet.penetrationHits||0)+1;
+    bullet.penetrationHits=nextHits;
+    const floor=this.clamp(Number(bullet.penetrationMinMultiplier)||0.1,0.1,1);
+    const decay=Math.max(floor,Math.pow(0.5,nextHits));
+    bullet.damage=Math.max(base*floor,base*decay);
+    const maxHits=Math.max(0,Math.floor(Number(bullet.maxPenetrationHits)||0));
+    return nextHits>maxHits;
   },
   startBulletHitFade(bullet){
     if(!bullet||bullet.hitFading) return false;
@@ -23111,12 +23575,7 @@ const POLYTANK_IO={
   },
   spendBulletDurability(bullet,cost){
     if(!bullet) return true;
-    const impactCost=Math.max(0.08,Number.isFinite(cost)?cost:0.08);
-    if(Number.isFinite(bullet.hp)) bullet.hp-=impactCost;
-    else bullet.hp=(bullet.penetration||0)-impactCost;
-    bullet.penetration-=impactCost;
-    const damageDepleted=this.applyBulletPenetrationDamageDrop(bullet);
-    return bullet.penetration<=0||bullet.hp<=0||damageDepleted;
+    return this.applyBulletPenetrationDamageDrop(bullet);
   },
   spawnBulletImpactEffect(x,y,color,size=1){
     const scale=Math.max(0.6,size||1);
@@ -23154,12 +23613,14 @@ const POLYTANK_IO={
         bestDistance=distance;
       }
     }
-    for(const shape of this.shapes){
-      if(shape.hp<=0) continue;
-      const distance=Math.hypot(shape.x-bullet.x,shape.y-bullet.y);
-      if(distance<bestDistance){
-        best={kind:'shape',entity:shape};
-        bestDistance=distance;
+    if(!bullet.homingTankOnly){
+      for(const shape of this.shapes){
+        if(shape.hp<=0) continue;
+        const distance=Math.hypot(shape.x-bullet.x,shape.y-bullet.y);
+        if(distance<bestDistance){
+          best={kind:'shape',entity:shape};
+          bestDistance=distance;
+        }
       }
     }
     bullet.homingTargetKind=best?.kind||'';
@@ -23448,7 +23909,7 @@ const POLYTANK_IO={
           this.spawnDamageNumber(bullet.x,bullet.y,bullet.damage,this.darkenColor(shape.color,.88));
           this.spawnBulletImpactEffect(bullet.x,bullet.y,shape.color,Math.max(0.8,(shape.r||18)/22));
           if(shape.hp<=0) this.destroyShape(shapeIndex,shape,bullet.ownerId,bullet.ownerTeam);
-          remove=this.spendBulletDurability(bullet,Math.max(0.8,Math.min(2.6,(shape.r||18)/24)));
+          remove=this.spendBulletDurability(bullet,this.clamp((shape.r||18)/240,0.05,0.30));
         }
       }
       if(remove){ this.startBulletHitFade(bullet); continue; }
@@ -23492,7 +23953,7 @@ const POLYTANK_IO={
           break;
         }
       }
-      if(remove||bullet.penetration<=0||bullet.hp<=0) this.startBulletHitFade(bullet);
+      if(remove) this.startBulletHitFade(bullet);
     }
   },
   damageTank(tank,amount,ownerId,ownerTeam){
@@ -23514,14 +23975,37 @@ const POLYTANK_IO={
   },
   damageDominator(dominator,amount,ownerId,ownerTeam){
     if(!dominator||amount<=0) return false;
-    dominator.hp=Math.max(0,dominator.hp-amount*0.18);
+    if(dominator.fadingOut) return false;
+    const actualDamage=Math.min(dominator.hp,amount);
+    dominator.hp=Math.max(0,dominator.hp-amount);
     dominator.barTimer=2.7;
     dominator.damageFlash=1;
     dominator.lastHitId=ownerId||'';
     dominator.lastHitTeam=ownerTeam||'';
-    this.spawnDamageNumber(dominator.x,dominator.y-dominator.r*.3,amount*.18,'#ffe78c');
+    dominator.xpCreditPaid=Math.max(0,Number(dominator.xpCreditPaid)||0);
+    this.awardDamageXp(dominator,ownerId,actualDamage,this.getDecagonXpValue()*1.5);
+    this.spawnDamageNumber(dominator.x,dominator.y-dominator.r*.3,amount,'#ffe78c');
     if(dominator.hp<=0){
+      if(this.isApexDominator(dominator)){
+        this.resolveDominationBossDefeat(ownerId||dominator.lastHitId,ownerTeam||dominator.lastHitTeam);
+        dominator.hp=dominator.maxHp;
+        dominator.barTimer=4;
+        dominator.damageFlash=1;
+        this.spawnBurst(dominator.x,dominator.y,dominator.bodyColor,34,320);
+        return true;
+      }
       const owner=this.getTankById(ownerId||dominator.lastHitId);
+      if(owner&&this.isHeavyApexEntity(owner)){
+        dominator.hp=0;
+        dominator.fadingOut=true;
+        dominator.fadeTimer=2.6;
+        dominator.fadeDuration=2.6;
+        dominator.controlledBy='ai';
+        dominator.barTimer=0;
+        this.spawnBurst(dominator.x,dominator.y,dominator.bodyColor,18,170);
+        this.announceServerEvent(`${dominator.label} was destroyed by the Apex Dominator.`, '#ffe777');
+        return true;
+      }
       const fallbackTeam=owner&&['blue','red','green','purple','yellow'].includes(owner.team)?owner.team:'neutral';
       let captureTeam=['blue','red','green','purple','yellow'].includes(ownerTeam)?ownerTeam:fallbackTeam;
       if(owner&&owner.specialRole==='arenaCloser') captureTeam='yellow';
@@ -23533,6 +24017,7 @@ const POLYTANK_IO={
       if(captureTeam==='neutral'){
         dominator.team='neutral';
         dominator.hp=dominator.maxHp;
+        dominator.xpCreditPaid=0;
         dominator.controlledBy='ai';
         dominator.barTimer=3;
         this.applyDominatorStyle(dominator);
@@ -23541,6 +24026,7 @@ const POLYTANK_IO={
       } else if(enemyOwned&&!forcedYellowCapture){
         dominator.team='neutral';
         dominator.hp=dominator.maxHp;
+        dominator.xpCreditPaid=0;
         dominator.controlledBy='ai';
         dominator.barTimer=3;
         this.applyDominatorStyle(dominator);
@@ -23701,6 +24187,12 @@ const POLYTANK_IO={
     });
     this.spawnBurst(shape.x,shape.y,shape.color,12,230);
     this.awardScoreToOwner(ownerId||shape.lastHitId,Math.round(shape.xp*7.5));
+    if(this.isAncientMode()&&shape.kind==='ancient_alpha_pentagon'){
+      this.ancientBoss=null;
+      this.ancientBossTimer=900;
+      this.announceServerEvent('Ancient Presence defeated. Frontier stirs again.','#aee48d');
+      this.awardScoreToOwner(ownerId||shape.lastHitId,18000);
+    }
     if(shape.kind==='decagon') this.awardPermanentShards(4,'Decagon');
     if(!(this.menuOpen&&!this.inMatch)&&SFX.orbExplode) SFX.orbExplode();
     if(this.player&&(ownerId===this.player.id||(shape.lastHitId&&shape.lastHitId===this.player.id))){
@@ -23722,12 +24214,35 @@ const POLYTANK_IO={
     for(let shapeIndex=this.shapes.length-1;shapeIndex>=0;shapeIndex--){
       const shape=this.shapes[shapeIndex];
       shape.barTimer=Math.max(0,(shape.barTimer||0)-dt);
+      if(shape.ancient){
+        const zone=this.getAncientZoneAt(shape.x,shape.y);
+        const speedBoost=zone?.state==='blooming'?1.08:zone?.state==='corrupted'?1.16:1;
+        if(shape.kind==='ancient_triangle'||shape.kind==='ancient_alpha_pentagon'){
+          const target=liveTanks
+            .filter(tank=>tank&&tank.deadTimer<=0)
+            .sort((left,right)=>Math.hypot(left.x-shape.x,left.y-shape.y)-Math.hypot(right.x-shape.x,right.y-shape.y))[0]||null;
+          if(target){
+            const angle=Math.atan2(target.y-shape.y,target.x-shape.x);
+            const accel=(shape.kind==='ancient_alpha_pentagon'?36:58)*speedBoost;
+            shape.vx+=(Math.cos(angle)*accel-shape.vx)*Math.min(1,dt*1.8);
+            shape.vy+=(Math.sin(angle)*accel-shape.vy)*Math.min(1,dt*1.8);
+          }
+        }
+        if(zone?.state==='overgrown'){
+          shape.vx*=1-dt*0.12;
+          shape.vy*=1-dt*0.12;
+        }
+      }
       shape.x+=shape.vx*dt;
       shape.y+=shape.vy*dt;
       if(shape.x<shape.r){ shape.x=shape.r; shape.vx=Math.abs(shape.vx); }
       if(shape.x>this.world.w-shape.r){ shape.x=this.world.w-shape.r; shape.vx=-Math.abs(shape.vx); }
       if(shape.y<shape.r){ shape.y=shape.r; shape.vy=Math.abs(shape.vy); }
       if(shape.y>this.world.h-shape.r){ shape.y=this.world.h-shape.r; shape.vy=-Math.abs(shape.vy); }
+      if(this.isAncientMode()&&shape.ancient&&shape.y<this.ancientMainY+shape.r+80){
+        shape.y=this.ancientMainY+shape.r+80;
+        shape.vy=Math.abs(shape.vy);
+      }
       shape.rotation+=shape.spin*dt;
       for(const tank of liveTanks){
         const tankRadius=this.getTankHitRadius(tank); // Get tank radius
@@ -23737,11 +24252,12 @@ const POLYTANK_IO={
         if(overlap>0){
           const normalX=(tank.x-shape.x)/(distance||1);
           const normalY=(tank.y-shape.y)/(distance||1);
+          const zoneContactBoost=this.isAncientMode()&&shape.ancient&&this.getAncientZoneAt(shape.x,shape.y)?.state==='corrupted'?1.28:1;
           const penetration=tank.bodyPenetration||1;
           const pushScale=Math.max(0.08,0.38/penetration);
           tank.x+=normalX*overlap*pushScale;
           tank.y+=normalY*overlap*pushScale;
-          this.damageTank(tank,shape.contact*dt*(3.2/Math.max(1,penetration*0.75)),shape.id,'neutral');
+          this.damageTank(tank,shape.contact*zoneContactBoost*dt*(3.2/Math.max(1,penetration*0.75)),shape.id,'neutral');
           const shapeDamage=tank.bodyDamage*dt*(1.1+penetration*0.22);
           const actualDamage=Math.min(shape.hp,shapeDamage);
           shape.hp-=shapeDamage;
@@ -23765,6 +24281,8 @@ const POLYTANK_IO={
         const first=tanks[firstIndex];
         const second=tanks[secondIndex];
         if(first.specialRole==='mothership'||second.specialRole==='mothership') continue; // Skip if either tank is a mothership
+        const firstHeavyApex=this.isHeavyApexEntity(first);
+        const secondHeavyApex=this.isHeavyApexEntity(second);
         const firstRadius=this.getTankHitRadius(first);
         const secondRadius=this.getTankHitRadius(second);
         const distance=Math.hypot(first.x-second.x,first.y-second.y);
@@ -23772,6 +24290,18 @@ const POLYTANK_IO={
         if(overlap>0){
           const normalX=(first.x-second.x)/(distance||1);
           const normalY=(first.y-second.y)/(distance||1);
+          if(firstHeavyApex&&!secondHeavyApex){
+            second.x-=normalX*overlap*1.08;
+            second.y-=normalY*overlap*1.08;
+            if(!this.areTanksAllied(first,second)) this.damageTank(second,first.bodyDamage*dt*1.1,first.id,first.team);
+            continue;
+          }
+          if(secondHeavyApex&&!firstHeavyApex){
+            first.x+=normalX*overlap*1.08;
+            first.y+=normalY*overlap*1.08;
+            if(!this.areTanksAllied(first,second)) this.damageTank(first,second.bodyDamage*dt*1.1,second.id,second.team);
+            continue;
+          }
           const firstPen=first.bodyPenetration||1;
           const secondPen=second.bodyPenetration||1;
           const totalPen=firstPen+secondPen;
@@ -23797,10 +24327,16 @@ const POLYTANK_IO={
           const normalX=(tank.x-dominator.x)/(distance||1);
           const normalY=(tank.y-dominator.y)/(distance||1);
           const penetration=tank.bodyPenetration||1;
-          tank.x+=normalX*overlap*Math.max(0.12,0.46/penetration);
-          tank.y+=normalY*overlap*Math.max(0.12,0.46/penetration);
-          this.damageTank(tank,46*dt/Math.max(1,penetration*0.55),dominator.id,dominator.team);
-          this.damageDominator(dominator,tank.bodyDamage*dt*(0.38+penetration*0.14),tank.id,tank.team);
+          if(this.isApexDominator(dominator)){
+            tank.x+=normalX*overlap*Math.max(0.35,0.9/Math.max(0.5,penetration));
+            tank.y+=normalY*overlap*Math.max(0.35,0.9/Math.max(0.5,penetration));
+            this.damageTank(tank,86*dt/Math.max(1,penetration*0.5),dominator.id,dominator.team);
+          } else {
+            tank.x+=normalX*overlap*Math.max(0.12,0.46/penetration);
+            tank.y+=normalY*overlap*Math.max(0.12,0.46/penetration);
+            this.damageTank(tank,46*dt/Math.max(1,penetration*0.55),dominator.id,dominator.team);
+            this.damageDominator(dominator,tank.bodyDamage*dt*(0.38+penetration*0.14),tank.id,tank.team);
+          }
         }
       }
       for(const boss of this.getArenaBosses()){
@@ -23818,6 +24354,7 @@ const POLYTANK_IO={
       }
       tank.x=this.clamp(tank.x,tank.r,this.world.w-tank.r);
       tank.y=this.clamp(tank.y,tank.r,this.world.h-tank.r);
+      this.applyAncientGateConstraint(tank);
     }
   },
   updateParticles(dt){
@@ -23915,6 +24452,15 @@ const POLYTANK_IO={
   },
   zoneLabel(){
     if(this.player&&this.player.specialRole==='arenaCloser') return 'Arena Closing';
+    if(this.isAncientMode()){
+      if(this.player.y<this.ancientMainY-120) return 'Main Arena';
+      if(this.player.y<this.ancientMainY+120){
+        const nearGate=this.ancientGateCenters.some(center=>Math.abs(this.player.x-center)<=this.ancientGateHalfWidth+140);
+        return nearGate?'Vine Gate':'Ancient Divider';
+      }
+      const zone=this.getAncientZoneAt(this.player.x,this.player.y);
+      return zone?`Ancient Frontier • ${zone.state.charAt(0).toUpperCase()+zone.state.slice(1)}`:'Ancient Frontier';
+    }
     if(this.isSandboxMode()) return this.isInsideFriendlySpawn(this.player)?'Sandbox Spawn':'Sandbox Chamber';
     if(this.isFreeForAllMode()) return 'Free For All Arena';
     if(this.isFourTeamMode()) return `${(this.player?.team||this.getPlayerSpawnTeam()).toUpperCase()} Quadrant`;
@@ -23964,34 +24510,50 @@ const POLYTANK_IO={
     const purpleAlive=this.bots.filter(bot=>bot.team==='purple'&&bot.deadTimer<=0).length+(this.player.deadTimer<=0&&this.player.team==='purple'?1:0);
     const yellowAlive=this.bots.filter(bot=>bot.team==='yellow'&&bot.deadTimer<=0).length+(this.player.deadTimer<=0&&this.player.team==='yellow'?1:0);
     const dominatorCounts={blue:0,red:0,green:0,purple:0,yellow:0,neutral:0};
-    for(const dominator of this.dominators){
+    for(const dominator of this.getObjectiveDominators()){
       const team=dominatorCounts[dominator.team]!==undefined?dominator.team:'neutral';
       dominatorCounts[team]+=1;
     }
+    const dominationBoss=this.getDominationBoss();
     const centerBossText=this.centerBoss&&this.centerBoss.hp>0?`${Math.max(0,Math.round(this.centerBoss.hp))} HP`:this.centerBoss?`Respawn ${this.formatTime(this.centerBoss.respawnTimer)}`:'Offline';
     const summonText=this.summonedBosses.length?`${this.summonedBosses.length} live`:'None';
     const xpRatio=this.player.xpNext?this.clamp(this.player.xp/this.player.xpNext,0,1):0;
+    const ancientRatio=this.player.ancientXpNext?this.clamp((this.player.ancientXp||0)/this.player.ancientXpNext,0,1):0;
     const nextCheckpoint=this.getNextClassCheckpoint(this.player);
     this.syncTeamButtons();
     setText('polytank-team',this.player.specialRole==='arenaCloser'?'CLOSER':this.player.team.toUpperCase());
     setText('polytank-class',this.player.className);
     setText('polytank-level',String(this.player.level));
-    setText('polytank-xp',`${Math.floor(this.player.xp)} / ${this.player.xpNext}`);
+    setText('polytank-xp',this.isAncientMode()&&this.player.level>=45
+      ? `Ancient ${Math.floor(this.player.ancientXp||0)} / ${Math.floor(this.player.ancientXpNext||0)}`
+      : `${Math.floor(this.player.xp)} / ${this.player.xpNext}`);
     setText('polytank-score',(this.player.score||0).toLocaleString());
     setText('polytank-health',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Disconnected - Spectating Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
     setText('polytank-event',this.summonedBosses.length?`SUMMON x${this.summonedBosses.length}`:'MID ALPHA');
     setText('polytank-points',String(this.player.points));
     setText('polytank-level-name',this.player.displayName);
-    setText('polytank-level-next',`Lvl ${this.player.level} • Score ${(this.player.score||0).toLocaleString()}`);
+    setText('polytank-level-next',this.isAncientMode()&&this.player.level>=45
+      ? `Lvl 45 • Ancient Lvl ${this.player.ancientLevel||1} • Score ${(this.player.score||0).toLocaleString()}`
+      : `Lvl ${this.player.level} • Score ${(this.player.score||0).toLocaleString()}`);
     setText('polytank-level-progress',`Lvl ${this.player.level} Tank`);
     setText('polytank-level-percent',this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0?'Spectating Arena Closers':(this.player.deadTimer>0?`Respawn ${this.player.deadTimer.toFixed(1)}s`:`HP ${Math.ceil(this.player.hp)} / ${this.player.maxHp}`));
     this.syncMobileUpgradeBadge();
     if(this.overlayEl) this.overlayEl.classList.toggle('death-spectate-clean',this.player.deadTimer>0&&!!this.deathSpectateTargetId&&this.deathSpectateUiHidden);
     const fill=document.getElementById('polytank-level-fill');
-    if(fill) fill.style.width=`${xpRatio*100}%`;
+    if(fill) fill.style.width=`${(this.isAncientMode()&&this.player.level>=45?ancientRatio:xpRatio)*100}%`;
     const detail=document.getElementById('polytank-detail-body');
     if(detail){
       const lines=[
+        ...(this.isAncientMode()?[(()=>{
+          const nearest=this.ruins
+            .map(ruin=>({ruin,distance:Math.hypot((this.player?.x||0)-ruin.x,(this.player?.y||0)-ruin.y)}))
+            .sort((left,right)=>left.distance-right.distance)[0];
+          const radarRange=Math.max(900,this.getAncientSightRange(this.player)*0.75);
+          const label=nearest&&nearest.distance<=radarRange
+            ? `${Math.round(nearest.distance)}m to ${nearest.ruin.team==='neutral'?'neutral':nearest.ruin.team.toUpperCase()} ruin`
+            : 'No ruins in radar range';
+          return ['Explorer Radar',label];
+        })()]:[]),
         ['Mode',variant.label],
         ['Zone',this.zoneLabel()],
         ['Blue Team',`${blueAlive} tanks active`],
@@ -24002,13 +24564,20 @@ const POLYTANK_IO={
         ['Dominators',this.usesDominators()?`B${dominatorCounts.blue} R${dominatorCounts.red} G${dominatorCounts.green} P${dominatorCounts.purple} Y${dominatorCounts.yellow} N${dominatorCounts.neutral}`:'Disabled'],
         ['Mid Alpha',centerBossText],
         ['Summons',summonText],
-        ['Objective',this.gameVariant==='tag'?'Defeat enemies to pull them onto your team.':this.gameVariant==='breakout'?'Break the enemy core.':this.gameVariant==='ctf'?'Steal the flag and return it.':this.gameVariant==='domination'?'Hold all dominators for 12 seconds.':this.gameVariant==='maze'?'Use walls for ambush and cover.':this.isFreeForAllMode()?'Outscore everyone.':'Control the arena.'],
-        ...(this.isDominationMode()&&this.modeObjective.dominationTeam?[['Dom Hold',`${this.modeObjective.dominationTeam.toUpperCase()} ${Math.ceil(Math.max(0,12-this.modeObjective.dominationHold))}s`]]:[]),
+        ['Objective',this.gameVariant==='tag'?'Defeat enemies to pull them onto your team.':this.gameVariant==='breakout'?'Break the enemy core.':this.gameVariant==='ctf'?'Steal the flag and return it.':this.gameVariant==='domination'?(dominationBoss?'Destroy the Apex Dominator to win.':this.modeObjective.dominationArenaClosing?`${(this.modeObjective.dominationWinner||'').toUpperCase()} won. Arena Closers purging survivors.`:'Hold all dominators or force the Apex Dominator phase.'):this.gameVariant==='ancient'?'Capture ruins (first to 10), hunt Ancient bosses, and survive corruption zones.':this.gameVariant==='maze'?'Use walls for ambush and cover.':this.isFreeForAllMode()?'Outscore everyone.':'Control the arena.'],
+        ...(this.isDominationMode()&&this.modeObjective.dominationTeam&&!dominationBoss?[['Dom Hold',`${this.modeObjective.dominationTeam.toUpperCase()} ${Math.ceil(Math.max(0,12-this.modeObjective.dominationHold))}s`]]:[]),
+        ...(this.isDominationMode()&&dominationBoss?[['Apex Dominator',`${Math.round(Math.max(0,dominationBoss.hp)).toLocaleString()} HP`]]:[]),
         ...(this.isBreakoutMode()&&this.breakoutCores.length?[[
           'Core HP',
           this.breakoutCores.map(core=>`${core.team.toUpperCase()} ${Math.round(Math.max(0,core.hp)).toLocaleString()}`).join(' / ')
         ]]:[]),
         ...(this.isCtfMode()?[['Flag Score',`${this.ctfScores.blue} - ${this.ctfScores.red}`]]:[]),
+        ...(this.isAncientMode()?[['Ruin Captures',`BLUE ${this.ancientTeamCaptures.blue||0} • RED ${this.ancientTeamCaptures.red||0} / 10`]]:[]),
+        ...(this.isAncientMode()&&this.ancientBoss?[['Ancient Hunt','Boss active in Frontier. Explore to locate it.']]:[]),
+        ...(this.isAncientMode()&&!this.ancientBoss?[[
+          'Ancient Hunt',
+          `Next awakening in ${this.formatTime(this.ancientBossTimer||0)}`
+        ]]:[]),
         ['Controls',`${this.controlledDominatorId?'F leave Dominator':'F control Dominator'} • C Auto Spin ${this.autoSpinEnabled?'ON':'OFF'} • E Auto Fire ${this.autoFireEnabled?'ON':'OFF'}${this.player?.specialRole==='mothership'?' • R Summon':''}`],
       ];
       detail.innerHTML=lines.map(([label,value])=>`<div class='polytank-detail-line'><span>${label}</span><strong>${value}</strong></div>`).join('');
@@ -24036,6 +24605,83 @@ const POLYTANK_IO={
     });
     this.syncUpgradeDock('left');
     this.renderClassChoicePanel();
+    this.syncApexBossOverlay();
+    this.syncAncientProgressOverlay();
+  },
+  ensureApexBossOverlay(){
+    if(this.apexBossOverlayEl&&document.body.contains(this.apexBossOverlayEl)) return this.apexBossOverlayEl;
+    const shell=document.createElement('div');
+    shell.id='polytank-apex-boss-overlay';
+    shell.style.position='fixed';
+    shell.style.left='50%';
+    shell.style.top='8px';
+    shell.style.transform='translateX(-50%)';
+    shell.style.width='min(94vw,980px)';
+    shell.style.padding='8px 12px';
+    shell.style.border='2px solid rgba(255,231,120,.82)';
+    shell.style.borderRadius='12px';
+    shell.style.background='rgba(18,16,8,.9)';
+    shell.style.boxShadow='0 10px 28px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,243,168,.18)';
+    shell.style.pointerEvents='none';
+    shell.style.zIndex='99999';
+    shell.style.display='none';
+    shell.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;color:#ffe777;font:900 13px Orbitron,monospace;letter-spacing:.08em;text-transform:uppercase"><span id="polytank-apex-boss-title">Apex Dominator</span><span id="polytank-apex-boss-hp">0 / 0</span></div><div style="margin-top:7px;height:16px;border-radius:999px;background:rgba(70,61,25,.7);overflow:hidden;border:1px solid rgba(255,236,155,.35)"><div id="polytank-apex-boss-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#fff4ba 0%,#ffe777 46%,#f7cd4f 100%);"></div></div>';
+    document.body.appendChild(shell);
+    this.apexBossOverlayEl=shell;
+    return shell;
+  },
+  syncApexBossOverlay(){
+    const shell=this.ensureApexBossOverlay();
+    const apex=this.isDominationMode()?this.getDominationBoss():null;
+    if(!apex||apex.hp<=0){
+      shell.style.display='none';
+      return;
+    }
+    const title=shell.querySelector('#polytank-apex-boss-title');
+    const hp=shell.querySelector('#polytank-apex-boss-hp');
+    const fill=shell.querySelector('#polytank-apex-boss-fill');
+    const ratio=this.clamp((apex.hp||0)/Math.max(1,apex.maxHp||1),0,1);
+    if(title) title.textContent=`Apex Dominator • ${String(apex.team||'neutral').toUpperCase()}`;
+    if(hp) hp.textContent=`${Math.round(Math.max(0,apex.hp||0)).toLocaleString()} / ${Math.round(Math.max(1,apex.maxHp||1)).toLocaleString()}`;
+    if(fill) fill.style.width=`${(ratio*100).toFixed(2)}%`;
+    shell.style.display='block';
+  },
+  ensureAncientProgressOverlay(){
+    if(this.ancientOverlayEl&&document.body.contains(this.ancientOverlayEl)) return this.ancientOverlayEl;
+    const shell=document.createElement('div');
+    shell.id='polytank-ancient-overlay';
+    shell.style.position='fixed';
+    shell.style.left='50%';
+    shell.style.top='62px';
+    shell.style.transform='translateX(-50%)';
+    shell.style.width='min(90vw,760px)';
+    shell.style.padding='7px 11px';
+    shell.style.border='1px solid rgba(151,221,124,.68)';
+    shell.style.borderRadius='10px';
+    shell.style.background='rgba(14,24,12,.9)';
+    shell.style.boxShadow='0 8px 22px rgba(0,0,0,.42), inset 0 0 0 1px rgba(180,244,150,.11)';
+    shell.style.pointerEvents='none';
+    shell.style.zIndex='99998';
+    shell.style.display='none';
+    shell.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;color:#aef49c;font:800 12px Orbitron,monospace;letter-spacing:.07em;text-transform:uppercase"><span id="polytank-ancient-title">Ancient Progress</span><span id="polytank-ancient-xp">0 / 0</span></div><div style="margin-top:6px;height:12px;border-radius:999px;background:rgba(65,96,54,.68);overflow:hidden;border:1px solid rgba(176,230,146,.26)"><div id="polytank-ancient-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#d7ffb8 0%,#9ee96f 45%,#67bf53 100%);"></div></div>';
+    document.body.appendChild(shell);
+    this.ancientOverlayEl=shell;
+    return shell;
+  },
+  syncAncientProgressOverlay(){
+    const shell=this.ensureAncientProgressOverlay();
+    if(!this.isAncientMode()||!this.player||this.player.level<45){
+      shell.style.display='none';
+      return;
+    }
+    const title=shell.querySelector('#polytank-ancient-title');
+    const xp=shell.querySelector('#polytank-ancient-xp');
+    const fill=shell.querySelector('#polytank-ancient-fill');
+    const ratio=this.clamp((this.player.ancientXp||0)/Math.max(1,this.player.ancientXpNext||1),0,1);
+    if(title) title.textContent=`Ancient Lvl ${this.player.ancientLevel||1}`;
+    if(xp) xp.textContent=`${Math.floor(this.player.ancientXp||0)} / ${Math.floor(this.player.ancientXpNext||0)}`;
+    if(fill) fill.style.width=`${(ratio*100).toFixed(2)}%`;
+    shell.style.display='block';
   },
   lerpValue(start,end,t){
     return start+(end-start)*this.clamp(t,0,1);
@@ -24216,6 +24862,23 @@ const POLYTANK_IO={
   },
   drawTerritories(){
     const view=this.getViewSize();
+    if(this.isAncientMode()){
+      const dividerY=this.worldToScreen(0,this.ancientMainY).y;
+      this.ctx.fillStyle='rgba(214,220,230,.08)';
+      this.ctx.fillRect(0,0,view.w,Math.max(0,dividerY));
+      this.ctx.fillStyle='rgba(109,166,91,.14)';
+      this.ctx.fillRect(0,dividerY,view.w,view.h-dividerY);
+      this.ctx.fillStyle='rgba(90,140,78,.36)';
+      this.ctx.fillRect(0,dividerY-42,view.w,84);
+      for(const gateCenter of this.ancientGateCenters){
+        const gx=this.worldToScreen(gateCenter,0).x;
+        const gateW=this.ancientGateHalfWidth*2;
+        this.ctx.clearRect(gx-gateW*0.5,dividerY-50,gateW,100);
+        this.ctx.fillStyle='rgba(140,205,120,.22)';
+        this.ctx.fillRect(gx-gateW*0.5,dividerY-56,gateW,112);
+      }
+      return;
+    }
     if(this.isSandboxMode()){
       const topLeft=this.worldToScreen(0,0);
       const bottomRight=this.worldToScreen(this.world.w,this.world.h);
@@ -24276,6 +24939,52 @@ const POLYTANK_IO={
     this.ctx.fillRect(right.x-this.spawnLaneWidth,0,this.spawnLaneWidth,view.h);
   },
   drawModeGeometry(){
+    if(this.isAncientMode()){
+      const dividerY=this.worldToScreen(0,this.ancientMainY).y;
+      this.ctx.save();
+      for(const zone of this.ancientCorruptionZones){
+        const topLeft=this.worldToScreen(zone.x,zone.y);
+        const bottomRight=this.worldToScreen(zone.x+zone.w,zone.y+zone.h);
+        const width=bottomRight.x-topLeft.x;
+        const height=bottomRight.y-topLeft.y;
+        if(zone.state==='blooming') this.ctx.fillStyle='rgba(129,214,104,.11)';
+        else if(zone.state==='overgrown') this.ctx.fillStyle='rgba(90,146,72,.15)';
+        else this.ctx.fillStyle='rgba(128,82,148,.12)';
+        this.ctx.fillRect(topLeft.x,topLeft.y,width,height);
+      }
+      this.ctx.strokeStyle='rgba(90,138,82,.5)';
+      this.ctx.lineWidth=8;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0,dividerY);
+      this.ctx.lineTo(this.W,dividerY);
+      this.ctx.stroke();
+      for(const center of this.ancientGateCenters){
+        const gateX=this.worldToScreen(center,0).x;
+        const gateW=this.ancientGateHalfWidth*2;
+        this.ctx.fillStyle='rgba(122,191,102,.18)';
+        this.ctx.fillRect(gateX-gateW*0.5,dividerY-90,gateW,180);
+        this.ctx.strokeStyle='rgba(159,219,137,.5)';
+        this.ctx.lineWidth=3;
+        this.ctx.strokeRect(gateX-gateW*0.5,dividerY-90,gateW,180);
+      }
+      for(const ruin of this.ruins){
+        const screen=this.worldToScreen(ruin.x,ruin.y);
+        const team=ruin.team;
+        const color=team==='blue'?'#8fdfff':team==='red'?'#ffb2bb':'#c8d7b4';
+        this.ctx.beginPath();
+        this.ctx.arc(screen.x,screen.y,ruin.r*0.58,0,Math.PI*2);
+        this.ctx.fillStyle='rgba(34,43,34,.5)';
+        this.ctx.fill();
+        this.ctx.strokeStyle=color;
+        this.ctx.lineWidth=4;
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.arc(screen.x,screen.y,ruin.r*0.24,0,Math.PI*2);
+        this.ctx.fillStyle='rgba(210,236,188,.24)';
+        this.ctx.fill();
+      }
+      this.ctx.restore();
+    }
     if(this.isMazeMode()&&this.mazeWalls.length){
       for(const wall of this.mazeWalls){
         const topLeft=this.worldToScreen(wall.x,wall.y);
@@ -24374,7 +25083,86 @@ const POLYTANK_IO={
       this.ctx.stroke();
     }
     this.ctx.restore();
+    if(shape.ancient){
+      const pulse=0.45+Math.sin((this.matchClock||0)*2.1+(shape.rotation||0))*0.35;
+      this.ctx.save();
+      this.ctx.translate(screen.x,screen.y);
+      this.ctx.rotate(shape.rotation*0.7);
+      this.ctx.strokeStyle='rgba(64,88,54,.95)';
+      this.ctx.lineWidth=Math.max(2.5,renderRadius*0.1);
+      if(shape.kind==='ancient_square'){
+        this.ctx.beginPath();
+        this.ctx.moveTo(0,-renderRadius*0.42);
+        this.ctx.lineTo(renderRadius*0.42,0);
+        this.ctx.lineTo(0,renderRadius*0.42);
+        this.ctx.lineTo(-renderRadius*0.42,0);
+        this.ctx.closePath();
+        this.ctx.stroke();
+        this.ctx.lineWidth=Math.max(2,renderRadius*0.08);
+        this.ctx.beginPath();
+        this.ctx.moveTo(-renderRadius*0.58,-renderRadius*0.58);
+        this.ctx.lineTo(-renderRadius*0.18,-renderRadius*0.18);
+        this.ctx.moveTo(renderRadius*0.58,-renderRadius*0.58);
+        this.ctx.lineTo(renderRadius*0.18,-renderRadius*0.18);
+        this.ctx.moveTo(renderRadius*0.58,renderRadius*0.58);
+        this.ctx.lineTo(renderRadius*0.18,renderRadius*0.18);
+        this.ctx.moveTo(-renderRadius*0.58,renderRadius*0.58);
+        this.ctx.lineTo(-renderRadius*0.18,renderRadius*0.18);
+        this.ctx.stroke();
+      } else if(shape.kind==='ancient_triangle'){
+        const pA={x:0,y:-renderRadius*0.54};
+        const pB={x:renderRadius*0.46,y:renderRadius*0.28};
+        const pC={x:-renderRadius*0.46,y:renderRadius*0.28};
+        this.ctx.beginPath();
+        this.ctx.moveTo((pA.x+pB.x+pC.x)/3,(pA.y+pB.y+pC.y)/3-renderRadius*0.18);
+        this.ctx.lineTo(renderRadius*0.18,renderRadius*0.09);
+        this.ctx.lineTo(-renderRadius*0.18,renderRadius*0.09);
+        this.ctx.closePath();
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.moveTo(0,-renderRadius*0.12);
+        this.ctx.lineTo(pA.x,pA.y*0.88);
+        this.ctx.moveTo(renderRadius*0.16,renderRadius*0.09);
+        this.ctx.lineTo(pB.x*0.88,pB.y*0.88);
+        this.ctx.moveTo(-renderRadius*0.16,renderRadius*0.09);
+        this.ctx.lineTo(pC.x*0.88,pC.y*0.88);
+        this.ctx.stroke();
+      } else {
+        const sides=shape.sides||5;
+        this.ctx.beginPath();
+        for(let index=0;index<sides;index++){
+          const angle=index/sides*Math.PI*2-Math.PI*0.5;
+          const x=Math.cos(angle)*renderRadius*0.52;
+          const y=Math.sin(angle)*renderRadius*0.52;
+          if(index===0) this.ctx.moveTo(x,y);
+          else this.ctx.lineTo(x,y);
+        }
+        this.ctx.closePath();
+        this.ctx.stroke();
+      }
+      this.ctx.fillStyle=`rgba(168,255,150,${0.14+pulse*0.28})`;
+      for(let index=0;index<4;index++){
+        const angle=(index/4)*Math.PI*2+(this.matchClock||0)*0.38;
+        this.ctx.beginPath();
+        this.ctx.arc(Math.cos(angle)*renderRadius*0.34,Math.sin(angle)*renderRadius*0.34,Math.max(2,renderRadius*0.08),0,Math.PI*2);
+        this.ctx.fill();
+      }
+      this.ctx.restore();
+    }
     if(!dying&&(shape.hp<shape.maxHp||shape.barTimer>0)) this.drawHealthBar(screen.x,screen.y+renderRadius+12,Math.max(34,renderRadius*2.2),shape.hp/shape.maxHp,this.darkenColor(shapeColor,.82),`shape_${shape.id}`);
+    if(!dying&&this.showShapeHp&&shape.maxHp>0){
+      const hpText=`${Math.max(0,Math.ceil(shape.hp))}/${shape.maxHp}`;
+      this.ctx.save();
+      this.ctx.textAlign='center';
+      this.ctx.font=`900 ${Math.max(9,Math.min(13,renderRadius*0.28))}px Orbitron,monospace`;
+      this.ctx.lineJoin='round';
+      this.ctx.strokeStyle='rgba(10,14,20,.95)';
+      this.ctx.lineWidth=4;
+      this.ctx.strokeText(hpText,screen.x,screen.y-renderRadius-8);
+      this.ctx.fillStyle='#ffffff';
+      this.ctx.fillText(hpText,screen.x,screen.y-renderRadius-8);
+      this.ctx.restore();
+    }
   },
   drawTriangleGuard(guard){
     const view=this.getViewSize();
@@ -24452,11 +25240,22 @@ const POLYTANK_IO={
     this.ctx.restore();
   },
   drawEncounterObjectiveBar(){
-    if(!this.isMothershipMode()) return;
+    const dominationApex=this.isDominationMode()?this.getDominationBoss():null;
+    if(!this.isMothershipMode()&&!dominationApex) return;
     const rows=[];
+    if(dominationApex){
+      const apexRatio=this.clamp((dominationApex.hp||0)/Math.max(1,dominationApex.maxHp||1),0,1);
+      rows.push({
+        label:'APEX DOMINATOR',
+        ratio:apexRatio,
+        sub:`Team ${String(dominationApex.team||'neutral').toUpperCase()} • Core threat active`,
+        detail:`${Math.round(Math.max(0,dominationApex.hp||0)).toLocaleString()} / ${Math.round(Math.max(1,dominationApex.maxHp||1)).toLocaleString()} HP`,
+        accent:'#ffe777'
+      });
+    }
     if(this.mothershipEndgame){
       rows.push({label:'ARENA CLOSERS',ratio:1,sub:'Arena purge active',detail:'No respawns remain',accent:'#ffe777'});
-    } else {
+    } else if(this.isMothershipMode()) {
       if(this.cageWall){
         const wallRatio=this.cageWall.released?0:(this.cageWall.hp/this.cageWall.maxHp);
         rows.push({
@@ -24480,11 +25279,12 @@ const POLYTANK_IO={
       }
     }
     if(!rows.length) return;
-    const width=Math.min(this.W*.72,820);
+    const apexOnly=!!dominationApex&&!this.isMothershipMode();
+    const width=apexOnly?Math.min(this.W*.94,980):Math.min(this.W*.72,820);
     const x=this.W*0.5-width*0.5;
-    const rowHeight=48;
+    const rowHeight=apexOnly?58:48;
     const height=20+rows.length*rowHeight+10;
-    const y=Math.max(14,this.H-height-96);
+    const y=apexOnly?8:Math.max(14,this.H-height-96);
     this.ctx.save();
     this.ctx.fillStyle='rgba(8,11,15,.88)';
     this.ctx.beginPath();
@@ -24616,8 +25416,10 @@ const POLYTANK_IO={
     const domBarrelStroke=this.tintColor(this.brightenColor(domBarrelColor,.12),'#1d2732',.23+hitTint*.1);
     const domAccentStroke=this.tintColor(this.brightenColor(domAccentColor,.12),'#1d2732',.23+hitTint*.1);
     const bodyRadius=dominator.r*0.82;
+    const fadeRatio=dominator.fadingOut?this.clamp((dominator.fadeTimer||0)/Math.max(0.01,dominator.fadeDuration||1),0,1):1;
 
     this.ctx.save();
+    this.ctx.globalAlpha=fadeRatio;
     this.ctx.translate(screen.x,screen.y);
     const platePoints=[];
     for(let side=0;side<6;side++){
@@ -24692,8 +25494,9 @@ const POLYTANK_IO={
     this.ctx.fillStyle='rgba(255,255,255,.85)';
     this.ctx.font='700 16px Orbitron,monospace';
     this.ctx.textAlign='center';
-    this.ctx.fillText(dominator.controlledBy==='player'?'CONTROLLED':'DOMINATOR',screen.x,screen.y-dominator.r-20);
+    this.ctx.fillText(dominator.fadingOut?'FADING':(dominator.controlledBy==='player'?'CONTROLLED':'DOMINATOR'),screen.x,screen.y-dominator.r-20);
     if(dominator.hp<dominator.maxHp||dominator.barTimer>0) this.drawHealthBar(screen.x,screen.y+dominator.r+15,dominator.r*2.6,dominator.hp/dominator.maxHp,this.darkenColor(domBodyColor,.84),`dom_${dominator.id}`);
+    this.ctx.globalAlpha=1;
   },
   drawMothership(tank,screen){
     const renderRadius=tank.r*(tank.renderScale||.42);
@@ -24901,6 +25704,19 @@ const POLYTANK_IO={
       if(!tank?.isPartyReal||tank.deadTimer>0||tank.hp<=0) continue;
       this.drawScreenPointer(tank.x,tank.y,'#ffe777',(tank.displayName||'REAL').slice(0,12));
     }
+    if(this.isAncientMode()&&this.player){
+      const sightRange=this.getAncientSightRange(this.player);
+      if(this.ancientBoss&&this.ancientBoss.hp>0){
+        const bossDist=Math.hypot(this.ancientBoss.x-this.player.x,this.ancientBoss.y-this.player.y);
+        if(bossDist<=sightRange) this.drawScreenPointer(this.ancientBoss.x,this.ancientBoss.y,'#9ee96f','ANCIENT PRESENCE');
+      }
+      if((this.player.ancientLevel||1)>=4){
+        const nearestRuin=this.ruins
+          .map(ruin=>({ruin,distance:Math.hypot(ruin.x-this.player.x,ruin.y-this.player.y)}))
+          .sort((left,right)=>left.distance-right.distance)[0];
+        if(nearestRuin&&nearestRuin.distance<=Math.max(900,sightRange*0.75)) this.drawScreenPointer(nearestRuin.ruin.x,nearestRuin.ruin.y,'#c8ebb4','RUIN');
+      }
+    }
     const leader=this.renderLeaderId?this.getTankById(this.renderLeaderId):null;
     if(leader&&leader.id!==this.player.id&&leader.deadTimer<=0) this.drawScreenPointer(leader.x,leader.y,'#ffe27a','LEADER');
   },
@@ -25017,6 +25833,206 @@ const POLYTANK_IO={
     drawOutlined(`Respawn in ${this.player.deadTimer.toFixed(1)}s  •  C to spectate`,centerX,buttonY+98,'600 11px Orbitron,monospace');
     this.ctx.restore();
   },
+  _classBodyPoints(r,style){
+    switch(style){
+      case 'sniper': case 'solar_flare': return [{x:0,y:-r*1.1},{x:r*0.58,y:0},{x:0,y:r*1.1},{x:-r*0.58,y:0}];
+      case 'assassin': case 'quantum': return [{x:0,y:-r*1.14},{x:r*0.48,y:0},{x:0,y:r*1.14},{x:-r*0.48,y:0}];
+      case 'hunter': return [{x:0,y:-r*1.06},{x:r*0.62,y:0},{x:0,y:r*1.06},{x:-r*0.62,y:0}];
+      case 'twin_flank': return [{x:0,y:-r*1.06},{x:r*0.9,y:0},{x:0,y:r*1.06},{x:-r*0.9,y:0}];
+      case 'machine': case 'overdrive':{const s=r*0.82,b=r*0.26;return[{x:-s+b,y:-s},{x:s-b,y:-s},{x:s,y:-s+b},{x:s,y:s-b},{x:s-b,y:s},{x:-s+b,y:s},{x:-s,y:s-b},{x:-s,y:-s+b}];}
+      case 'destroyer': case 'hybrid': case 'nova': case 'skimmer': case 'rocketeer': case 'annihilator': case 'supernova':{const d=r*0.88;return[{x:-d,y:-d},{x:d,y:-d},{x:d,y:d},{x:-d,y:d}];}
+      case 'flank': case 'triplet': case 'triple_twin': return Array.from({length:6},(_,i)=>{const a=i/6*Math.PI*2;return{x:Math.cos(a)*r,y:Math.sin(a)*r};});
+      case 'triple': case 'reactor': case 'tri_angle': case 'trapper': case 'tri_trapper': case 'mega_trapper': return Array.from({length:3},(_,i)=>{const a=-Math.PI/2+i/3*Math.PI*2,k=r*1.08;return{x:Math.cos(a)*k,y:Math.sin(a)*k};});
+      case 'quad': case 'octo': return Array.from({length:8},(_,i)=>{const a=i/8*Math.PI*2+Math.PI/8;return{x:Math.cos(a)*r,y:Math.sin(a)*r};});
+      case 'penta': case 'controller': case 'trapper_controller': return Array.from({length:5},(_,i)=>{const a=-Math.PI/2+i/5*Math.PI*2;return{x:Math.cos(a)*r,y:Math.sin(a)*r};});
+      case 'gunner': case 'gunner_trapper': return [{x:-r*0.92,y:-r*0.62},{x:r*0.92,y:-r*0.62},{x:r*0.92,y:r*0.62},{x:-r*0.92,y:r*0.62}];
+      case 'predator': case 'streamliner': return [{x:0,y:-r*1.1},{x:r*0.52,y:-r*0.5},{x:r*0.52,y:r*0.5},{x:0,y:r*1.1},{x:-r*0.52,y:r*0.5},{x:-r*0.52,y:-r*0.5}];
+      case 'smasher': return Array.from({length:6},(_,i)=>{const a=Math.PI/6+i/6*Math.PI*2;return{x:Math.cos(a)*r,y:Math.sin(a)*r};});
+      default: return null;
+    }
+  },
+  drawTankClassBody(cx,cy,r,style,aimAngle,bodyColor,strokeColor,shadowBlur,alpha){
+    const ctx=this.ctx;
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fillStyle=bodyColor;
+    ctx.shadowColor=bodyColor;
+    ctx.shadowBlur=shadowBlur;
+    ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=strokeColor;
+    ctx.lineWidth=3.1;
+    ctx.stroke();
+    ctx.restore();
+  },
+  drawBarrelDecoration(style,length,width,tankR){
+    const ctx=this.ctx;
+    const tipX=tankR*0.08+length;
+    const midX=tankR*0.08+length*0.64;
+    switch(style){
+      case 'sniper': case 'assassin': case 'hunter': case 'predator': case 'quantum': case 'ranger': case 'stalker': case 'solar_flare': case 'streamliner':{
+        // Scope ring at 64% of barrel length
+        const rx=midX-width*0.46; const rw=width*0.92; const rh=width;
+        ctx.fillStyle='rgba(36,44,58,.88)';
+        ctx.beginPath(); ctx.roundRect(rx,-rh*0.5,rw,rh,rw*0.5); ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1.5;
+        ctx.stroke();
+        ctx.fillStyle='rgba(140,210,255,.72)';
+        ctx.beginPath(); ctx.arc(midX,0,width*0.26,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'machine': case 'overdrive': case 'sprayer':{
+        // Muzzle suppressor rings at tip
+        for(let i=0;i<3;i++){
+          const rx2=tipX-width*(0.22+i*0.18);
+          ctx.strokeStyle=`rgba(255,255,255,${0.32-i*0.08})`; ctx.lineWidth=Math.max(1.5,width*0.22);
+          ctx.beginPath(); ctx.moveTo(rx2,-width*0.62); ctx.lineTo(rx2,width*0.62); ctx.stroke();
+        }
+        break;
+      }
+      case 'destroyer': case 'hybrid': case 'annihilator': case 'nova': case 'supernova': case 'skimmer': case 'rocketeer':{
+        // Heavy muzzle brake ring
+        const brakeW=width*1.42; const brakeX=tipX-brakeW*0.5;
+        ctx.fillStyle='rgba(22,28,38,.9)';
+        ctx.beginPath(); ctx.roundRect(brakeX,-brakeW*0.5,brakeW,brakeW,brakeW*0.12); ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=2;
+        ctx.stroke();
+        ctx.fillStyle='rgba(80,90,105,.78)';
+        ctx.beginPath(); ctx.arc(tipX-brakeW*0.25,0,brakeW*0.22,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(80,90,105,.78)';
+        ctx.beginPath(); ctx.arc(tipX-brakeW*0.7,0,brakeW*0.22,0,Math.PI*2); ctx.fill();
+        break;
+      }
+      case 'trapper': case 'tri_trapper': case 'mega_trapper': case 'overtrapper': case 'gunner_trapper': case 'auto_trapper':{
+        // Hexagonal trap-mouth at barrel tip
+        const pts=[];
+        for(let i=0;i<6;i++){const a=i/6*Math.PI*2+Math.PI/6;pts.push({x:tipX+Math.cos(a)*width*0.68,y:Math.sin(a)*width*0.68});}
+        this.roundedPolygonPath(pts,width*0.14);
+        ctx.fillStyle='rgba(38,50,44,.88)'; ctx.fill();
+        ctx.strokeStyle='rgba(140,230,190,.45)'; ctx.lineWidth=1.8; ctx.stroke();
+        break;
+      }
+      case 'gunner': case 'auto_gunner':{
+        // Three thin rings along barrel shaft
+        for(let i=0;i<3;i++){
+          const rx3=tankR*0.08+length*(0.35+i*0.22);
+          ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=Math.max(1.2,width*0.38);
+          ctx.beginPath(); ctx.moveTo(rx3,-width*0.52); ctx.lineTo(rx3,width*0.52); ctx.stroke();
+        }
+        break;
+      }
+      case 'tri_angle': case 'booster': case 'fighter': case 'hyperdrive':{
+        // Rear nozzle cone at base of barrel (barrel.angle≈π so this shows at back)
+        if(length>0){
+          ctx.fillStyle='rgba(255,180,60,.62)';
+          ctx.beginPath(); ctx.moveTo(tankR*0.08,-width*0.42); ctx.lineTo(tankR*0.08,width*0.42); ctx.lineTo(tankR*0.08-width*0.7,0); ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+      default: break;
+    }
+  },
+  drawTankClassDetail(cx,cy,r,style,aimAngle,alpha){
+    const ctx=this.ctx;
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(aimAngle);
+    ctx.globalAlpha=alpha;
+    switch(style){
+      case 'twin': case 'polarity':
+        for(const ox of [-r*0.28,r*0.28]){
+          ctx.beginPath(); ctx.arc(ox,0,r*0.18,0,Math.PI*2);
+          ctx.fillStyle='rgba(255,255,255,.88)'; ctx.fill();
+          ctx.strokeStyle='rgba(80,94,112,.7)'; ctx.lineWidth=1.5; ctx.stroke();
+        }
+        break;
+      case 'sniper': case 'solar_flare':
+        ctx.beginPath(); ctx.moveTo(0,-r*0.26); ctx.lineTo(r*0.16,0); ctx.lineTo(0,r*0.26); ctx.lineTo(-r*0.16,0); ctx.closePath();
+        ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'assassin': case 'quantum': case 'hunter':
+        ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(0,0,r*0.3,0,Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-r*0.1,0); ctx.lineTo(r*0.1,0); ctx.moveTo(0,-r*0.1); ctx.lineTo(0,r*0.1); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,r*0.1,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'machine': case 'overdrive':
+        ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(-r*0.28,0); ctx.lineTo(r*0.28,0); ctx.moveTo(0,-r*0.28); ctx.lineTo(0,r*0.28); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,r*0.22,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'destroyer': case 'hybrid': case 'skimmer': case 'rocketeer':
+        ctx.beginPath(); ctx.arc(0,0,r*0.42,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,.32)'; ctx.lineWidth=3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,r*0.2,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'annihilator': case 'supernova': case 'nova':
+        for(const rr of [r*0.5,r*0.3]){ctx.beginPath(); ctx.arc(0,0,rr,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=2.5; ctx.stroke();}
+        ctx.beginPath(); ctx.arc(0,0,r*0.16,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'flank': case 'twin_flank':
+        ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(r*0.28,0); ctx.lineTo(r*0.14,-r*0.2); ctx.moveTo(r*0.28,0); ctx.lineTo(r*0.14,r*0.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-r*0.28,0); ctx.lineTo(-r*0.14,-r*0.2); ctx.moveTo(-r*0.28,0); ctx.lineTo(-r*0.14,r*0.2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,r*0.18,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'triple': case 'triplet': case 'triple_twin':
+        ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2.5;
+        for(let i=0;i<3;i++){const a=-Math.PI/2+i/3*Math.PI*2; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*r*0.38,Math.sin(a)*r*0.38); ctx.stroke();}
+        ctx.beginPath(); ctx.arc(0,0,r*0.18,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'tri_angle': case 'trapper': case 'tri_trapper': case 'mega_trapper':
+        ctx.beginPath(); ctx.arc(0,0,r*0.2,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(-r*0.32,-r*0.1); ctx.lineTo(-r*0.16,-r*0.1); ctx.moveTo(-r*0.36,r*0.1); ctx.lineTo(-r*0.16,r*0.1); ctx.stroke();
+        break;
+      case 'quad': case 'octo':
+        ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(-r*0.28,0); ctx.lineTo(r*0.28,0); ctx.moveTo(0,-r*0.28); ctx.lineTo(0,r*0.28); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,r*0.16,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'penta':
+        ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=2;
+        for(let i=0;i<5;i++){const a=-Math.PI/2+i/5*Math.PI*2; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*r*0.38,Math.sin(a)*r*0.38); ctx.stroke();}
+        ctx.beginPath(); ctx.arc(0,0,r*0.16,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'controller': case 'trapper_controller':
+        ctx.beginPath(); ctx.arc(0,0,r*0.2,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=2;
+        for(let i=0;i<4;i++){const a=i/4*Math.PI*2; ctx.beginPath(); ctx.arc(Math.cos(a)*r*0.5,Math.sin(a)*r*0.5,r*0.1,0,Math.PI*2); ctx.stroke();}
+        break;
+      case 'gunner': case 'gunner_trapper':
+        ctx.strokeStyle='rgba(255,255,255,.62)'; ctx.lineWidth=2.5;
+        for(const dy of [-r*0.2,0,r*0.2]){ctx.beginPath(); ctx.moveTo(-r*0.28,dy); ctx.lineTo(r*0.28,dy); ctx.stroke();}
+        break;
+      case 'streamliner':
+        ctx.beginPath(); ctx.ellipse(0,0,r*0.14,r*0.3,0,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'predator':
+        for(const[ox,oy] of [[0,-r*0.28],[r*0.2,r*0.18],[-r*0.2,r*0.18]]){ctx.beginPath(); ctx.arc(ox,oy,r*0.1,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fill();}
+        break;
+      case 'smasher':
+        ctx.strokeStyle='rgba(255,255,255,.52)'; ctx.lineWidth=2;
+        for(let i=0;i<6;i++){const a=i/6*Math.PI*2; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*0.48,Math.sin(a)*r*0.48); ctx.lineTo(Math.cos(a)*r*0.22,Math.sin(a)*r*0.22); ctx.stroke();}
+        ctx.beginPath(); ctx.arc(0,0,r*0.2,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'spread':
+        ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2;
+        for(let i=0;i<5;i++){const a=(i-2)*0.22-Math.PI/2; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*0.18,Math.sin(a)*r*0.18); ctx.lineTo(Math.cos(a)*r*0.44,Math.sin(a)*r*0.44); ctx.stroke();}
+        ctx.beginPath(); ctx.arc(0,0,r*0.2,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      case 'reactor':
+        ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=2.5;
+        for(let i=0;i<3;i++){const a=-Math.PI/2+i/3*Math.PI*2; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*r*0.36,Math.sin(a)*r*0.36); ctx.stroke();}
+        ctx.beginPath(); ctx.arc(0,0,r*0.18,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        break;
+      default:
+        ctx.beginPath(); ctx.arc(0,0,r*0.34,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
+        ctx.strokeStyle='rgba(94,106,121,.76)'; ctx.lineWidth=2; ctx.stroke();
+    }
+    ctx.restore();
+  },
   drawTank(tank,isPlayer){
     if(this.networkRoomActive&&tank.hp<=0) return;
     if(tank.deadTimer>0) return;
@@ -25115,20 +26131,11 @@ const POLYTANK_IO={
       this.roundRectPath(tank.r*0.08-recoil,barrel.lateral-width*0.5,length,width,width*0.5);
       this.ctx.fill();
       this.ctx.stroke();
+      this.drawBarrelDecoration(def.style||'basic',length-recoil,width,tank.r);
       this.ctx.restore();
     });
     this.ctx.restore();
-    this.ctx.beginPath();
-    this.ctx.arc(screen.x,screen.y,tank.r,0,Math.PI*2);
-    this.ctx.fillStyle=bodyColor;
-    this.ctx.shadowColor=bodyColor;
-    this.ctx.shadowBlur=isPlayer?13:7;
-    this.ctx.globalAlpha=alpha;
-    this.ctx.fill();
-    this.ctx.shadowBlur=0;
-    this.ctx.strokeStyle=bodyStrokeColor;
-    this.ctx.lineWidth=3.1;
-    this.ctx.stroke();
+    this.drawTankClassBody(screen.x,screen.y,tank.r,def.style||'basic',tank.aimAngle,bodyColor,bodyStrokeColor,isPlayer?13:7,alpha);
     // ── Body skin animated effects ───────────────────────────────────
     if(isPlayer&&this.activeSkins){
       const t=Date.now()*0.001;
@@ -25200,13 +26207,7 @@ const POLYTANK_IO={
       this.ctx.globalAlpha=alpha;
     }
     // ── End body skin effects ─────────────────────────────────────────
-    this.ctx.beginPath();
-    this.ctx.arc(screen.x,screen.y,tank.r*0.34,0,Math.PI*2);
-    this.ctx.fillStyle='rgba(255,255,255,.9)';
-    this.ctx.fill();
-    this.ctx.strokeStyle='rgba(94,106,121,.76)';
-    this.ctx.lineWidth=2;
-    this.ctx.stroke();
+    this.drawTankClassDetail(screen.x,screen.y,tank.r,def.style||'basic',tank.aimAngle,alpha);
     this.ctx.globalAlpha=1;
     if(tank.hp<tank.maxHp||tank.barTimer>0) this.drawHealthBar(screen.x,screen.y+tank.r+12,tank.r*2.45,tank.hp/tank.maxHp,this.darkenColor(bodyColor,.84),`tank_${tank.id}`);
     if(tank.invuln>0){
@@ -25391,6 +26392,31 @@ const POLYTANK_IO={
       ctx.strokeStyle='rgba(218,225,235,.28)';
       ctx.lineWidth=2;
       ctx.strokeRect(0,0,width,height);
+    } else if(this.isAncientMode()){
+      const dividerY=this.ancientMainY*scaleY;
+      ctx.fillStyle='rgba(220,226,234,.1)';
+      ctx.fillRect(0,0,width,dividerY);
+      ctx.fillStyle='rgba(112,170,88,.13)';
+      ctx.fillRect(0,dividerY,width,height-dividerY);
+      ctx.fillStyle='rgba(98,152,82,.45)';
+      ctx.fillRect(0,dividerY-2,width,4);
+      for(const center of this.ancientGateCenters){
+        const gateW=this.ancientGateHalfWidth*2*scaleX;
+        const gx=center*scaleX;
+        ctx.clearRect(gx-gateW*0.5,dividerY-3,gateW,6);
+      }
+      const radarUnlocked=(this.player?.ancientLevel||1)>=4;
+      const radarRange=Math.max(900,this.getAncientSightRange(this.player)*0.75);
+      if(radarUnlocked){
+        for(const ruin of this.ruins){
+          const distance=Math.hypot((this.player?.x||0)-ruin.x,(this.player?.y||0)-ruin.y);
+          if(distance>radarRange) continue;
+          ctx.fillStyle=ruin.team==='blue'?'#8fdfff':ruin.team==='red'?'#ffadb8':'#d4dfc3';
+          ctx.beginPath();
+          ctx.arc(ruin.x*scaleX,ruin.y*scaleY,2.8,0,Math.PI*2);
+          ctx.fill();
+        }
+      }
     } else if(this.isMothershipMode()){
       ctx.fillStyle='rgba(70,185,255,.12)';
       ctx.fillRect(0,0,width,height);
@@ -25500,6 +26526,8 @@ const POLYTANK_IO={
       this.drawpolytankPointers();
       this.drawDamageNumbers();
     }
+    this.syncApexBossOverlay();
+    this.syncAncientProgressOverlay();
     this.renderMinimap();
   },
 };
@@ -30125,7 +31153,7 @@ const __copilotExposeNames = [
   'advGo','advLaunchToMars','advNextMission','advResetProgress','advReturnToEarth','advShowMap',
   'ofActivateLaser','ofClearAll','ofMissionDeploy','ofMissionSelect','ofMissionSetMode','ofPickBoss','ofPickMothership','ofPickRandomize','ofRandomizePrompt','ofReset','ofSelectOrb','ofShowBossPicker','ofShowCelestial','ofShowCustomFusions','ofShowMainOrbs','ofShowSummonPicker','ofStartBattle','ofSummonBoss','ofToggleDelete','ofToggleMissionPanel','ofToggleSpawnPanel','ofToggleZoom',
   'adminAnnihilateAll','adminCheckCode','adminPlayAsArenaCloser','adminPlayAsMothership','adminRemoveTestBoss','adminSelect','adminSummon','adminToggle','adminToggleTestBoss','adminUnlockAllSignals','adminUnlockAllSkins','adminUnlockMissionBosses',
-  'adminSetScale',
+  'adminSetScale','adminSetPlayerLevel',
   'FUSION_MODE','IFUSION','OPS','RL','QL','ScifiNav','SKINS','CREATOR','POLYTANK_IO','TUTORIAL'
 ];
 if (typeof window !== 'undefined') {
