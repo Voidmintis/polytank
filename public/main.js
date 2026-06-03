@@ -16593,7 +16593,7 @@ const POLYTANK_IO={
         if(!authoritative||authoritative.ownerId!==localBullet.ownerId) continue;
         const distance=Math.hypot((authoritative.x||0)-(localBullet.x||0),(authoritative.y||0)-(localBullet.y||0));
         if(distance>Math.max(72,(localBullet.r||0)*5.5)) continue;
-        const angleDelta=Math.abs(this.normalizeAngle((authoritative.angle||0)-(localBullet.angle||0)));
+        const angleDelta=Math.abs(this.wrapAngle((authoritative.angle||0)-(localBullet.angle||0)));
         if(angleDelta>0.42) continue;
         matchedAuthoritative.add(index);
         matched=true;
