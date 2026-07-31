@@ -15301,7 +15301,7 @@ const POLYTANK_IO={
   guardId:0,
   dominatorId:0,
   bossEntityId:0,
-  bossHotkeyKeys:['polytank_alpha','fallen_twin','fallen_destroyer','fallen_overlord','fallen_octo','fallen_necromancer','beta_pentagon'],
+  bossHotkeyKeys:['polytank_alpha','fallen_twin','fallen_destroyer','fallen_overlord','fallen_octo','fallen_necromancer','beta_pentagon','beta_hexagon'],
   teamStyles:{
     blue:{body:'#44c3ff',barrel:'#deefff',bullet:'#88e9ff',zone:'rgba(70,185,255,.11)',spawn:'rgba(80,200,255,.2)',mini:'#66cdff'},
     red:{body:'#ff666f',barrel:'#ffd7c6',bullet:'#ffb385',zone:'rgba(255,90,102,.1)',spawn:'rgba(255,110,126,.2)',mini:'#ff8b92'},
@@ -15486,11 +15486,9 @@ const POLYTANK_IO={
     const tierIndex=Math.max(0,POLYTANK_PROGRESSION_TIERS.indexOf(normalizedTier));
     return this.clamp(tierIndex*POLYTANK_PROGRESSION_ROMANS.length+this.normalizeProgressionRank(rank),1,POLYTANK_PROGRESSION_TIERS.length*POLYTANK_PROGRESSION_ROMANS.length);
   },
+  BOSS_TIER_UNLOCK_MAP:{default_7:'adventure',adventure_7:'apocalypse'},
   createDefaultRpgProfile(){
-    const unlocked={};
-    POLYTANK_PROGRESSION_TIERS.forEach(tier=>{
-      unlocked[tier]=POLYTANK_PROGRESSION_ROMANS.map((_roman,index)=>`${tier}_${index+1}`);
-    });
+    const unlocked={default:POLYTANK_PROGRESSION_ROMANS.map((_roman,index)=>`default_${index+1}`),adventure:[],apocalypse:[]};
     return {
       version:1,
       selectedNodeId:'default_1',
@@ -15506,13 +15504,18 @@ const POLYTANK_IO={
     const base=this.createDefaultRpgProfile();
     const next=profile&&typeof profile==='object'?{...base,...profile}:{...base};
     next.unlocked=next.unlocked&&typeof next.unlocked==='object'?next.unlocked:{...base.unlocked};
+    next.bossKills=next.bossKills&&typeof next.bossKills==='object'?next.bossKills:{};
     POLYTANK_PROGRESSION_TIERS.forEach(tier=>{
       const raw=Array.isArray(next.unlocked[tier])?next.unlocked[tier]:base.unlocked[tier];
       next.unlocked[tier]=raw.filter(nodeId=>POLYTANK_PROGRESSION_NODES[nodeId]);
-      if(!next.unlocked[tier].length) next.unlocked[tier]=[this.getProgressionNodeId(tier,1)];
+      if(!next.unlocked[tier].length&&tier==='default') next.unlocked[tier]=[this.getProgressionNodeId(tier,1)];
+    });
+    Object.entries(this.BOSS_TIER_UNLOCK_MAP).forEach(([bossNodeId,unlockedTier])=>{
+      if(next.bossKills[bossNodeId]&&!next.unlocked[unlockedTier].length){
+        next.unlocked[unlockedTier]=POLYTANK_PROGRESSION_ROMANS.map((_roman,index)=>`${unlockedTier}_${index+1}`);
+      }
     });
     next.nodeProgress=next.nodeProgress&&typeof next.nodeProgress==='object'?next.nodeProgress:{};
-    next.bossKills=next.bossKills&&typeof next.bossKills==='object'?next.bossKills:{};
     next.emeralds=Math.max(0,Math.round(Number(next.emeralds)||0));
     const inventory=next.inventory&&typeof next.inventory==='object'?next.inventory:{};
     inventory.capacity=Math.max(12,Math.round(Number(inventory.capacity)||48));
@@ -15740,7 +15743,7 @@ const POLYTANK_IO={
     const rarity=this.getLootRarityForLevel(node.effectiveLevel);
     const cap=this.getLootItemLevelCap(node.tier,node.rank);
     const floorRatio={square:0.34,triangle:0.46,pentagon:0.58,hexagon:0.7,octagon:0.82,decagon:0.9}[shape?.kind]||0.34;
-    const itemLevel=Math.max(1,Math.min(cap,Math.round(cap*(floorRatio+(1-floorRatio)*Math.random()))));
+    const itemLevel=Math.max(1,Math.min(cap,Math.round(cap*(floorRatio+(1-floorRatio)*Math.pow(Math.random(),2)))));
     return this.buildInventoryItem(slot,itemLevel,rarity,shape?.kind||'square');
   },
   createAdminGearItem(slot='barrel',itemLevel=1,rarity='legendary'){
@@ -16039,10 +16042,23 @@ const POLYTANK_IO={
       if(!unlocked.includes(nodeId)) unlocked.push(nodeId);
       this.rpgProfile.unlocked[node.tier]=unlocked;
     }
+    const unlockedTier=this.BOSS_TIER_UNLOCK_MAP[nodeId];
+    if(unlockedTier){
+      this.rpgProfile.unlocked[unlockedTier]=POLYTANK_PROGRESSION_ROMANS.map((_roman,index)=>`${unlockedTier}_${index+1}`);
+    }
     this.saveRpgProfile();
+  },
+  isBossGateNode(tier,rank){
+    return (tier==='default'&&rank===7)||(tier==='adventure'&&rank===7);
+  },
+  getBossGateNodeName(tier){
+    return tier==='adventure'?this.ADVENTURE_BOSS_NAME:this.DEFAULT_BOSS_NAME;
   },
   isDefaultBossPending(){
     return this.progressionTier==='default'&&this.progressionRank===7&&!this.isBossNodeDefeated('default_7');
+  },
+  isAdventureBossPending(){
+    return this.progressionTier==='adventure'&&this.progressionRank===7&&!this.isBossNodeDefeated('adventure_7');
   },
   isProgressionNodeUnlocked(nodeId){
     const node=POLYTANK_PROGRESSION_NODES[nodeId];
@@ -16336,7 +16352,7 @@ const POLYTANK_IO={
       nodeEl.classList.toggle('unlocked',unlocked);
       nodeEl.classList.toggle('locked',!unlocked);
       nodeEl.classList.toggle('passed',!!nodeData&&nodeData.effectiveLevel<node.effectiveLevel);
-      nodeEl.classList.toggle('boss-pending',!!nodeData?.isBoss&&!this.isBossNodeDefeated(nodeId));
+      nodeEl.classList.toggle('boss-pending',!!nodeData&&this.isBossGateNode(nodeData.tier,nodeData.rank)&&!this.isBossNodeDefeated(nodeId));
       if(active&&options.flash!==false){
         nodeEl.classList.remove('snap-flash');
         void nodeEl.offsetWidth;
@@ -17242,13 +17258,14 @@ const POLYTANK_IO={
         ?'Connecting to the room server...'
         :'Start a room or join by code')
       :(pausedSession?'Press Esc to resume the match':'Press Enter to deploy or resume');
-    const bossPending=!pausedSession&&!localPartyActive&&this.isDefaultBossPending();
+    const bossPending=!pausedSession&&!localPartyActive&&(this.isDefaultBossPending()||this.isAdventureBossPending());
+    const bossPendingLabel=this.isAdventureBossPending()?'Fight Adventure Boss':'Fight Default Boss';
     if(playButton){
       playButton.textContent=pausedSession
         ?'Resume Match'
         :(localPartyActive&&usingPartyServer
           ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
-          :(bossPending?'Fight Default Boss':(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play'))));
+          :(bossPending?bossPendingLabel:(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play'))));
       playButton.classList.toggle('boss-pending',bossPending);
     }
     if(leaveMatchButton){
@@ -19819,8 +19836,12 @@ const POLYTANK_IO={
       return opts?`<optgroup label="${group.label}">${opts}</optgroup>`:'';
     }).join('');
     const shapeOptions=Object.keys(this.shapeDefs).map(kind=>`<option value="${kind}">${kind.charAt(0).toUpperCase()+kind.slice(1)}</option>`).join('');
-    const sandboxBossKeys=this.bossHotkeyKeys.filter(key=>key!=='beta_pentagon'||adminUnlocked||this.isBossNodeDefeated('default_7'));
-    const bossOptions=sandboxBossKeys.map(key=>`<option value="${key}">${key==='beta_pentagon'?this.DEFAULT_BOSS_NAME:(ADMIN_ITEMS[key]?.label)||key}</option>`).join('');
+    const sandboxBossKeys=this.bossHotkeyKeys.filter(key=>{
+      if(key==='beta_pentagon') return adminUnlocked||this.isBossNodeDefeated('default_7');
+      if(key==='beta_hexagon') return adminUnlocked||this.isBossNodeDefeated('adventure_7');
+      return true;
+    });
+    const bossOptions=sandboxBossKeys.map(key=>`<option value="${key}">${key==='beta_pentagon'?this.DEFAULT_BOSS_NAME:key==='beta_hexagon'?this.ADVENTURE_BOSS_NAME:(ADMIN_ITEMS[key]?.label)||key}</option>`).join('');
     const playerClass=document.getElementById('polytank-sandbox-player-class');
     const aiClass=document.getElementById('polytank-sandbox-ai-class');
     const shapeSelect=document.getElementById('polytank-sandbox-shape');
@@ -20194,6 +20215,7 @@ const POLYTANK_IO={
       : '';
     const summonList=this.specialTankPanelOpen?'':this.bossHotkeyKeys.map(key=>{
       if(key==='beta_pentagon') return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.hotkeySummonBoss('${key}')">${this.DEFAULT_BOSS_NAME}</button>`;
+      if(key==='beta_hexagon') return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.hotkeySummonBoss('${key}')">${this.ADVENTURE_BOSS_NAME}</button>`;
       const item=ADMIN_ITEMS[key];
       if(!item) return '';
       return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.hotkeySummonBoss('${key}')">${item.label}</button>`;
@@ -20414,7 +20436,8 @@ const POLYTANK_IO={
       toast('Polytank.io progress restored.','#9feaff');
       return;
     }
-    if(!options.bossReplayChoiceMade&&!this.inMatch&&this.progressionTier==='default'&&this.progressionRank===7&&this.isBossNodeDefeated('default_7')){
+    const replayGateNodeId=this.progressionTier==='default'&&this.progressionRank===7?'default_7':(this.progressionTier==='adventure'&&this.progressionRank===7?'adventure_7':'');
+    if(!options.bossReplayChoiceMade&&!this.inMatch&&replayGateNodeId&&this.isBossNodeDefeated(replayGateNodeId)){
       this.showBossReplayChoice();
       return;
     }
@@ -20431,7 +20454,8 @@ const POLYTANK_IO={
       this.setUpgradeDockVisible(false,'left');
       this.setZoom(1,true);
       this.resize();
-      this.bossEncounterActive=this.progressionTier==='default'&&this.progressionRank===7&&(!!options.forceBossReplay||!this.isBossNodeDefeated('default_7'));
+      this.bossEncounterActive=!!replayGateNodeId&&(!!options.forceBossReplay||!this.isBossNodeDefeated(replayGateNodeId));
+      this.bossEncounterKind=this.progressionTier==='adventure'?'adventure':'default';
       this.resetRun();
       this.syncVariantUi();
       this.lastTime=performance.now();
@@ -20456,12 +20480,13 @@ const POLYTANK_IO={
       this.spawnArenaBoss(key);
       return;
     }
-    if(key==='beta_pentagon'){
+    if(key==='beta_pentagon'||key==='beta_hexagon'){
       const angle=Math.random()*Math.PI*2;
       const distance=260+Math.random()*340;
       const spawnX=this.clamp((this.player?.x||this.world.midX)+Math.cos(angle)*distance,620,this.world.w-620);
       const spawnY=this.clamp((this.player?.y||this.world.midY)+Math.sin(angle)*distance,360,this.world.h-360);
-      const boss=this.createDefaultBossEntity(spawnX,spawnY);
+      const boss=key==='beta_hexagon'?this.createAdventureBossEntity(spawnX,spawnY):this.createDefaultBossEntity(spawnX,spawnY);
+      if(key==='beta_hexagon'&&!this.bossHazardZones) this.bossHazardZones=[];
       this.summonedBosses.push(boss);
       flashScreen('rgba(127,148,244,.18)',140);
       toast(`Boss spawned: ${boss.label}.`,boss.bulletColor);
@@ -20752,13 +20777,15 @@ const POLYTANK_IO={
   spawnSandboxBoss(){
     if(!this.isSandboxMode()) return null;
     const key=document.getElementById('polytank-sandbox-boss')?.value||'polytank_alpha';
-    if(key==='beta_pentagon'){
-      if(!adminUnlocked&&!this.isBossNodeDefeated('default_7')){
-        toast('Defeat the Beta Pentagon in Default VII first.','#ffd38d');
+    if(key==='beta_pentagon'||key==='beta_hexagon'){
+      const gateNodeId=key==='beta_hexagon'?'adventure_7':'default_7';
+      if(!adminUnlocked&&!this.isBossNodeDefeated(gateNodeId)){
+        toast(`Defeat the ${key==='beta_hexagon'?this.ADVENTURE_BOSS_NAME:this.DEFAULT_BOSS_NAME} first.`,'#ffd38d');
         return null;
       }
       const point=this.getSandboxSpawnPoint(900);
-      const boss=this.createDefaultBossEntity(point.x,point.y);
+      const boss=key==='beta_hexagon'?this.createAdventureBossEntity(point.x,point.y):this.createDefaultBossEntity(point.x,point.y);
+      if(key==='beta_hexagon'&&!this.bossHazardZones) this.bossHazardZones=[];
       this.summonedBosses.push(boss);
       flashScreen('rgba(127,148,244,.18)',140);
       toast(`Boss spawned: ${boss.label}.`,boss.bulletColor);
@@ -22686,7 +22713,8 @@ const POLYTANK_IO={
   },
   resetRun(){
     if(this.bossEncounterActive){
-      this.setupDefaultBossArena();
+      if(this.bossEncounterKind==='adventure') this.setupAdventureBossArena();
+      else this.setupDefaultBossArena();
       return;
     }
     this.applyWorldPreset();
@@ -22789,6 +22817,8 @@ const POLYTANK_IO={
     bossBoss.label=this.DEFAULT_BOSS_NAME;
     bossBoss.bodyColor=this.DEFAULT_BOSS_GRAY_COLOR;
     bossBoss.bulletColor=this.DEFAULT_BOSS_LIVE_COLOR;
+    bossBoss.grayColor=this.DEFAULT_BOSS_GRAY_COLOR;
+    bossBoss.liveColor=this.DEFAULT_BOSS_LIVE_COLOR;
     bossBoss.awakenFade=0;
     bossBoss.giantShotTimer=4.5;
     bossBoss.fastShotTimer=2.2;
@@ -22873,6 +22903,210 @@ const POLYTANK_IO={
     this.updateHud();
     this.syncUpgradeDock('left');
   },
+  ADVENTURE_BOSS_NAME:'Beta Hexagon',
+  ADVENTURE_BOSS_LIVE_COLOR:'#43bdd7',
+  ADVENTURE_BOSS_GRAY_COLOR:'#8f9096',
+  ADVENTURE_BOSS_MAX_HP:3000000,
+  createAdventureBossEntity(x,y){
+    const bossBoss=this.createArenaBoss('polytank_alpha',x,y);
+    bossBoss.id=`adventure_boss_encounter_${++this.bossEntityId}`;
+    bossBoss.isAdventureBoss=true;
+    bossBoss.polygonSides=6;
+    bossBoss.dormant=true;
+    bossBoss.spawnX=x;
+    bossBoss.spawnY=y;
+    bossBoss.r=132*5.5;
+    bossBoss.maxHp=this.ADVENTURE_BOSS_MAX_HP;
+    bossBoss.hp=this.ADVENTURE_BOSS_MAX_HP;
+    bossBoss.moveSpeed=12;
+    bossBoss.label=this.ADVENTURE_BOSS_NAME;
+    bossBoss.bodyColor=this.ADVENTURE_BOSS_GRAY_COLOR;
+    bossBoss.bulletColor=this.ADVENTURE_BOSS_LIVE_COLOR;
+    bossBoss.grayColor=this.ADVENTURE_BOSS_GRAY_COLOR;
+    bossBoss.liveColor=this.ADVENTURE_BOSS_LIVE_COLOR;
+    bossBoss.awakenFade=0;
+    bossBoss.cannonCooldown=3.5;
+    bossBoss.cannonAngle=0;
+    bossBoss.cannonTelegraph=0;
+    bossBoss.hazardCooldown=4;
+    bossBoss.summonTimer=9;
+    bossBoss.deathPhase='';
+    bossBoss.deathTimer=0;
+    return bossBoss;
+  },
+  setupAdventureBossArena(){
+    this.world={w:4200,h:5200,midX:2100,midY:2600};
+    this.camera.minZoom=.28;
+    this.bullets=[];
+    this.shapes=[];
+    this.dyingShapes=[];
+    this.worldDrops=[];
+    this.worldDropId=0;
+    this.bots=[];
+    this.dominators=[];
+    this.particles=[];
+    this.matchClock=0;
+    this.alphaSpawnTimer=0;
+    this.ambientBossTimer=0;
+    this.mothershipEndgame=false;
+    this.centerBoss=null;
+    this.summonedBosses=[];
+    this.cageWall=null;
+    this.enemyMothership=null;
+    this.alphaPentagon=null;
+    this.controlledDominatorId='';
+    this.fallenBossClaim='';
+    this.deathSpectateTargetId='';
+    this.healthBarState={};
+    this.pendingClassChoice=null;
+    this.bossArenaDecor=[];
+    this.bossArenaDebris=[];
+    this.bossHazardZones=[];
+    const bossSpawnY=this.world.midY-2000;
+    this.bossArenaContainment={x:this.world.midX,y:bossSpawnY,r:900};
+    this.bossArenaCage={x1:this.world.midX-560,x2:this.world.midX+560,y1:bossSpawnY-340,y2:bossSpawnY+340};
+    this.bossEncounterVictoryShown=false;
+    const victory=document.getElementById('of-victory');
+    if(victory) victory.style.display='none';
+    const boss=document.getElementById('polytank-boss-victory');
+    if(boss) boss.style.display='none';
+    const backBtn=document.getElementById('polytank-explore-back-btn');
+    if(backBtn) backBtn.style.display='none';
+    const hud=document.getElementById('polytank-encounter-hud');
+    if(hud) hud.style.display='none';
+    this.bases=[{id:'boss_spawn',x:this.world.midX,y:this.world.midY+1360,team:'blue'}];
+    this.usedBotNames=new Set([this.loadPlayerName().toLowerCase()]);
+    this.player=this.createTank('blue',{id:'player',x:this.world.midX,y:this.world.midY+1360,isPlayer:true,baseId:'boss_spawn',invuln:2.2,displayName:this.loadPlayerName()});
+    this.preparePlayerForFreshRun(this.player);
+    this.updateTankDerivedStats(this.player,true);
+    for(let index=0;index<8;index++){
+      const angle=(index/8)*Math.PI*2;
+      this.bossArenaDecor.push({
+        kind:index%3===0?'ancient_alpha_pentagon':'ancient_hexagon',
+        x:this.world.midX+Math.cos(angle)*(420+Math.random()*140),
+        y:bossSpawnY+Math.sin(angle)*180,
+        r:index%3===0?70:52,
+        rotation:Math.random()*Math.PI*2,
+      });
+    }
+    for(let index=0;index<12;index++){
+      const point=this.randomAround(this.world.midX,this.world.midY+400,1500);
+      this.spawnShapeAt('hexagon',this.clamp(point.x,140,this.world.w-140),this.clamp(point.y,140,this.world.h-140));
+    }
+    this.summonedBosses.push(this.createAdventureBossEntity(this.world.midX,bossSpawnY));
+    this.applyAutoZoomForTank(this.player,true);
+    this.updateCamera();
+    this.updateHud();
+    this.syncUpgradeDock('left');
+  },
+  updateAdventureBossEncounter(dt,boss){
+    if(this.player&&this.player.deadTimer<=0){
+      boss.cannonTelegraph=Math.max(0,(boss.cannonTelegraph||0)-dt);
+      if(boss.cannonTelegraph>0){
+        boss.cannonAngle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
+        if(boss.cannonTelegraph<=dt){
+          const angle=boss.cannonAngle;
+          this.bullets.push({
+            id:`bullet_${++this.bulletId}`,
+            x:boss.x+Math.cos(angle)*(boss.r+220),
+            y:boss.y+Math.sin(angle)*(boss.r+220),
+            vx:Math.cos(angle)*150,
+            vy:Math.sin(angle)*150,
+            r:132,
+            damage:2100,
+            penetration:1,
+            hp:1,
+            ownerId:boss.id,
+            ownerTeam:'neutral',
+            color:'#43bdd7',
+            life:5,
+            maxLife:5,
+            massive:true,
+            isHexBomb:true,
+            spinRotation:0,
+          });
+        }
+      } else {
+        boss.cannonCooldown=Math.max(0,(boss.cannonCooldown||0)-dt);
+        if(boss.cannonCooldown<=0&&Math.random()<0.5){
+          boss.cannonTelegraph=1.1;
+          boss.cannonCooldown=6+Math.random()*3;
+        } else if(boss.cannonCooldown<=0){
+          boss.cannonCooldown=2+Math.random()*2;
+        }
+      }
+      for(const bullet of this.bullets){
+        if(!bullet.isHexBomb||bullet.exploded) continue;
+        bullet.spinRotation=(bullet.spinRotation||0)+dt*8;
+        const hitPlayer=Math.hypot(bullet.x-this.player.x,bullet.y-this.player.y)<this.getTankHitRadius(this.player)+bullet.r;
+        if(hitPlayer||bullet.life<=0.05){
+          bullet.exploded=true;
+          bullet.life=0;
+          for(let index=0;index<4;index++){
+            const fragAngle=(index/4)*Math.PI*2+Math.random()*0.4;
+            this.bullets.push({
+              id:`bullet_${++this.bulletId}`,
+              x:bullet.x,
+              y:bullet.y,
+              vx:Math.cos(fragAngle)*380,
+              vy:Math.sin(fragAngle)*380,
+              speed:380,
+              r:24,
+              damage:300,
+              penetration:3.5,
+              hp:3.5,
+              ownerId:boss.id,
+              ownerTeam:'neutral',
+              color:'#8fe0f0',
+              isHexShard:true,
+              life:3.4,
+              maxLife:3.4,
+              homing:true,
+              homingTurn:3.2,
+              homingTargetKind:'',
+              homingTargetId:'',
+              homingTankOnly:true,
+              homingLifespan:3,
+              isDefaultBossBolt:true,
+            });
+          }
+        }
+      }
+      boss.hazardCooldown=Math.max(0,(boss.hazardCooldown||0)-dt);
+      if(boss.hazardCooldown<=0){
+        const point=this.randomAround(this.world.midX,this.world.midY+400,1600);
+        this.bossHazardZones.push({
+          x:this.clamp(point.x,200,this.world.w-200),
+          y:this.clamp(point.y,200,this.world.h-200),
+          r:170,
+          life:12,
+        });
+        boss.hazardCooldown=7+Math.random()*3;
+      }
+      let inHazard=false;
+      for(const zone of this.bossHazardZones){
+        zone.life-=dt;
+        const dist=Math.hypot(this.player.x-zone.x,this.player.y-zone.y);
+        if(dist<zone.r) inHazard=true;
+      }
+      if(inHazard){
+        this._hazardDamageTick=Math.max(0,(this._hazardDamageTick||0)-dt);
+        if(this._hazardDamageTick<=0){
+          this.damageTank(this.player,((this.player.maxHp||400)*0.05)/Math.max(1,this.getNonPlayerDamageMultiplier()),boss.id,'neutral');
+          this._hazardDamageTick=0.5;
+        }
+      } else {
+        this._hazardDamageTick=0;
+      }
+      if(inHazard&&this._hazardPrevX!=null){
+        this.player.x=this._hazardPrevX+(this.player.x-this._hazardPrevX)*0.55;
+        this.player.y=this._hazardPrevY+(this.player.y-this._hazardPrevY)*0.55;
+      }
+      this._hazardPrevX=this.player.x;
+      this._hazardPrevY=this.player.y;
+      this.bossHazardZones=this.bossHazardZones.filter(zone=>zone.life>0);
+    }
+  },
   fireDefaultBossFastBullets(boss){
     for(let index=-1;index<=1;index+=2){
       const angle=(boss.aimAngle||0)+index*0.16;
@@ -22903,10 +23137,10 @@ const POLYTANK_IO={
     }
   },
   updateDefaultBossEncounter(dt){
-    const boss=this.summonedBosses.find(entry=>entry&&entry.isDefaultBoss);
-    if(!boss){
-      return;
-    }
+    const bosses=this.summonedBosses.filter(entry=>entry&&(entry.isDefaultBoss||entry.isAdventureBoss));
+    for(const boss of bosses) this.processBossEncounter(dt,boss);
+  },
+  processBossEncounter(dt,boss){
     for(const bullet of this.bullets){
       if(bullet.isDefaultBossBolt&&bullet.homing&&bullet.homingLifespan!=null){
         bullet.homingLifespan-=dt;
@@ -22918,7 +23152,7 @@ const POLYTANK_IO={
       boss.hp=Math.min(boss.hp,1);
       const pulseScale=1+Math.sin(this.matchClock*10)*0.06;
       boss.r=(boss.deathBaseR||boss.r)*pulseScale;
-      boss.bodyColor=Math.sin(this.matchClock*20)>0?'#ffffff':this.DEFAULT_BOSS_LIVE_COLOR;
+      boss.bodyColor=Math.sin(this.matchClock*20)>0?'#ffffff':boss.liveColor;
       if(boss.deathTimer<=0) this.finishDefaultBossDeath(boss);
       return;
     }
@@ -22938,15 +23172,17 @@ const POLYTANK_IO={
         boss.awakenFade=0;
         shake('lg');
         flashScreen('rgba(127,148,244,.32)',220);
-        toast(`${this.DEFAULT_BOSS_NAME} awakens!`,'#7f94f4');
+        toast(`${boss.label} awakens!`,'#7f94f4');
         const hud=document.getElementById('polytank-encounter-hud');
         if(hud) hud.style.display='';
+        const nameEl=document.getElementById('polytank-encounter-name');
+        if(nameEl) nameEl.textContent=boss.label;
       }
       return;
     }
     if(boss.awakenFade<1){
       boss.awakenFade=Math.min(1,boss.awakenFade+dt/1.2);
-      boss.bodyColor=this.tintColor(this.DEFAULT_BOSS_GRAY_COLOR,this.DEFAULT_BOSS_LIVE_COLOR,boss.awakenFade);
+      boss.bodyColor=this.tintColor(boss.grayColor,boss.liveColor,boss.awakenFade);
     }
     const hudFill=document.getElementById('polytank-encounter-fill');
     if(hudFill) hudFill.style.width=`${this.clamp((boss.hp/boss.maxHp)*100,0,100)}%`;
@@ -22969,6 +23205,10 @@ const POLYTANK_IO={
           entry.y=zone.y+Math.sin(angle)*(zone.r+entry.r);
         }
       }
+    }
+    if(boss.isAdventureBoss){
+      this.updateAdventureBossEncounter(dt,boss);
+      return;
     }
     if(this.player&&this.player.deadTimer<=0){
       boss.giantShotTimer=Math.max(0,(boss.giantShotTimer||0)-dt);
@@ -23034,6 +23274,7 @@ const POLYTANK_IO={
     boss.deathPhase='done';
     flashScreen('rgba(255,255,255,.96)',360);
     shake('lg');
+    const debrisSides=boss.isAdventureBoss?8:5;
     for(let index=0;index<40;index++){
       const angle=Math.random()*Math.PI*2;
       const dist=Math.random()*boss.r*1.4;
@@ -23042,8 +23283,8 @@ const POLYTANK_IO={
         y:boss.y+Math.sin(angle)*dist,
         r:14+Math.random()*30,
         rotation:Math.random()*Math.PI*2,
-        color:Math.random()<0.5?this.DEFAULT_BOSS_LIVE_COLOR:'#6f7480',
-        sides:Math.random()<0.5?5:3,
+        color:Math.random()<0.5?boss.liveColor:'#6f7480',
+        sides:debrisSides,
       });
     }
     this.summonedBosses=this.summonedBosses.filter(entry=>entry!==boss);
@@ -23051,12 +23292,17 @@ const POLYTANK_IO={
   },
   triggerDefaultBossVictory(boss){
     this.bossEncounterVictoryShown=true;
-    this.markBossNodeDefeated('default_7');
+    const nodeId=boss.isAdventureBoss?'adventure_7':'default_7';
+    this.markBossNodeDefeated(nodeId);
     for(let index=0;index<24;index++){
       this.spawnBurst(boss.x+(Math.random()-0.5)*boss.r*1.6,boss.y+(Math.random()-0.5)*boss.r*1.6,'#3a3a3f',18,180);
     }
     const hud=document.getElementById('polytank-encounter-hud');
     if(hud) hud.style.display='none';
+    const titleEl=document.getElementById('polytank-boss-victory-title');
+    if(titleEl) titleEl.textContent=boss.isAdventureBoss?'Apocalypse Mode Unlocked':'Adventure Mode Unlocked';
+    const subEl=document.getElementById('polytank-boss-victory-sub');
+    if(subEl) subEl.textContent=`You defeated the ${boss.label}.`;
     const popup=document.getElementById('polytank-boss-victory');
     if(popup) popup.style.display='flex';
   },
@@ -23078,7 +23324,7 @@ const POLYTANK_IO={
     ctx.restore();
   },
   drawBossArenaDecor(){
-    if(!this.summonedBosses.some(entry=>entry&&entry.isDefaultBoss)&&!this.bossArenaCage) return;
+    if(!this.summonedBosses.some(entry=>entry&&(entry.isDefaultBoss||entry.isAdventureBoss))&&!this.bossArenaCage) return;
     const ctx=this.ctx;
     if(this.bossArenaCage){
       const cage=this.bossArenaCage;
@@ -23146,6 +23392,44 @@ const POLYTANK_IO={
         ctx.fillRect(0,-70,4200,140);
         ctx.restore();
       }
+    }
+    const hexBoss=this.summonedBosses.find(entry=>entry&&entry.isAdventureBoss);
+    if(hexBoss&&hexBoss.cannonTelegraph>0){
+      const cannonAngle=hexBoss.cannonAngle||0;
+      const tipScreen=this.worldToScreen(hexBoss.x+Math.cos(cannonAngle)*(hexBoss.r+40),hexBoss.y+Math.sin(cannonAngle)*(hexBoss.r+40));
+      ctx.save();
+      ctx.translate(tipScreen.x,tipScreen.y);
+      ctx.rotate(cannonAngle);
+      ctx.fillStyle='#43bdd7';
+      ctx.fillRect(0,-30,90,60);
+      ctx.strokeStyle='#166877';
+      ctx.lineWidth=4;
+      ctx.strokeRect(0,-30,90,60);
+      ctx.restore();
+    }
+    for(const zone of this.bossHazardZones||[]){
+      const screen=this.worldToScreen(zone.x,zone.y);
+      ctx.save();
+      ctx.globalAlpha=0.35+0.15*Math.sin(this.matchClock*6);
+      ctx.fillStyle='rgba(67,189,215,.5)';
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,zone.r,0,Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha=0.8;
+      ctx.strokeStyle='#2fa0b8';
+      ctx.lineWidth=4;
+      ctx.setLineDash([10,8]);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for(const bullet of this.bullets){
+      if(!bullet.isHexBomb||bullet.exploded) continue;
+      const screen=this.worldToScreen(bullet.x,bullet.y);
+      ctx.save();
+      ctx.translate(screen.x,screen.y);
+      ctx.rotate(bullet.spinRotation||0);
+      this.drawPolygonAt(0,0,bullet.r,6,0,'#43bdd7','#166877',3);
+      ctx.restore();
     }
   },
   exploreAfterBoss(){
@@ -25211,7 +25495,7 @@ const POLYTANK_IO={
     this.summonedBosses=this.summonedBosses.filter(boss=>boss&&boss.hp>0);
   },
   updateArenaBossEntity(boss,dt,isCenter){
-    if(boss.isDefaultBoss&&(boss.dormant||boss.deathPhase)){
+    if((boss.isDefaultBoss||boss.isAdventureBoss)&&(boss.dormant||boss.deathPhase)){
       boss.barTimer=Math.max(0,(boss.barTimer||0)-dt);
       return;
     }
@@ -25243,7 +25527,7 @@ const POLYTANK_IO={
       }
       if(target){
         boss.aimAngle=Math.atan2(target.y-boss.y,target.x-boss.x);
-        if(boss.shotTimer<=0&&!boss.isDefaultBoss){
+        if(boss.shotTimer<=0&&!boss.isDefaultBoss&&!boss.isAdventureBoss){
           for(let shardIndex=0;shardIndex<5;shardIndex++){
             const angle=boss.aimAngle+(shardIndex-2)*0.12;
             this.bullets.push({
@@ -25266,7 +25550,7 @@ const POLYTANK_IO={
           boss.shotTimer=isCenter?1.15:1.45;
         }
       }
-      if(boss.radialTimer<=0&&!boss.isDefaultBoss){
+      if(boss.radialTimer<=0&&!boss.isDefaultBoss&&!boss.isAdventureBoss){
         for(let index=0;index<10;index++){
           const angle=(index/10)*Math.PI*2+(boss.rotation||0);
           this.bullets.push({
@@ -25288,7 +25572,7 @@ const POLYTANK_IO={
         }
         boss.radialTimer=isCenter?4.1:5.3;
       }
-      if(boss.summonTimer<=0){
+      if(boss.summonTimer<=0&&!boss.isAdventureBoss){
         const ringCount=boss.isDefaultBoss?9:(isCenter?6:3);
         const ringRadius=isCenter?boss.r+156:boss.r+110;
         for(let index=0;index<ringCount;index++){
@@ -26920,8 +27204,9 @@ const POLYTANK_IO={
         this.ctx.translate(screen.x,screen.y);
         this.ctx.rotate(boss.rotation||0);
         const points=[];
-        for(let side=0;side<5;side++){
-          const angle=(side/5)*Math.PI*2-Math.PI*0.5;
+        const polySides=boss.polygonSides||5;
+        for(let side=0;side<polySides;side++){
+          const angle=(side/polySides)*Math.PI*2-Math.PI*0.5;
           points.push({x:Math.cos(angle)*boss.r,y:Math.sin(angle)*boss.r});
         }
         this.roundedPolygonPath(points,boss.r*0.18);
