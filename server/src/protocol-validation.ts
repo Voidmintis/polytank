@@ -21,6 +21,10 @@ function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function isProgressionTier(value: unknown): value is 'default' | 'adventure' | 'apocalypse' {
+  return value === 'default' || value === 'adventure' || value === 'apocalypse';
+}
+
 export function parseClientMessage(raw: string):
   | { ok: true; message: ClientMessage }
   | { ok: false; error: ValidationFailure } {
@@ -163,11 +167,19 @@ function isRoomSettings(value: unknown): value is {
   gameVariant: string;
   aiEnabled: boolean;
   hostTeam: string;
+  progressionTier: 'default' | 'adventure' | 'apocalypse';
+  progressionRank: number;
+  missionId: string;
+  difficultyLevel: number;
 } {
   return (
     isRecord(value) &&
     isString(value.gameVariant) &&
     isBoolean(value.aiEnabled) &&
-    isString(value.hostTeam)
+    isString(value.hostTeam) &&
+    isProgressionTier(value.progressionTier) &&
+    isNumber(value.progressionRank) &&
+    isString(value.missionId) &&
+    isNumber(value.difficultyLevel)
   );
 }

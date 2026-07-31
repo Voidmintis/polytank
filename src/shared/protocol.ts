@@ -133,10 +133,16 @@ export interface RoomRosterEntry {
   isHost: boolean;
 }
 
+export type ProgressionTier = 'default' | 'adventure' | 'apocalypse';
+
 export interface RoomSettings {
   gameVariant: string;
   aiEnabled: boolean;
   hostTeam: string;
+  progressionTier: ProgressionTier;
+  progressionRank: number;
+  missionId: string;
+  difficultyLevel: number;
 }
 
 export type RoomAccess = 'private' | 'public';

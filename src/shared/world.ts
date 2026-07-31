@@ -40,6 +40,7 @@ export interface PlayerState {
   reload: number;
   bulletRadius: number;
   isBot: boolean;
+  botDifficultyMultiplier?: number;
 }
 
 export interface RoomState {

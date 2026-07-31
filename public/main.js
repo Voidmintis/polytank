@@ -9432,6 +9432,28 @@ function adminSetPlayerLevel(level){
   toast(`Player level set to ${lvl}`,'#9feaff');
 }
 
+function adminSpawnGear(){
+  if(!adminUnlocked){toast('Admin access required','#ff8866');return;}
+  if(typeof POLYTANK_IO==='undefined'||!POLYTANK_IO){toast('Inventory unavailable','#ffd38d');return;}
+  const slotEl=document.getElementById('admin-gear-slot');
+  const rarityEl=document.getElementById('admin-gear-rarity');
+  const levelEl=document.getElementById('admin-gear-level');
+  const slot=slotEl?.value||'barrel';
+  const rarity=rarityEl?.value||'legendary';
+  const level=Math.max(1,Math.min(300,Math.round(Number(levelEl?.value)||1)));
+  if(levelEl) levelEl.value=String(level);
+  const item=typeof POLYTANK_IO.createAdminGearItem==='function'
+    ? POLYTANK_IO.createAdminGearItem(slot,level,rarity)
+    : null;
+  if(!item||typeof POLYTANK_IO.addInventoryItem!=='function' || !POLYTANK_IO.addInventoryItem(item)){
+    toast('Inventory full or gear creation failed','#ffb36b');
+    return;
+  }
+  if(typeof POLYTANK_IO.openInventory==='function') POLYTANK_IO.openInventory();
+  if(typeof POLYTANK_IO.selectInventoryItem==='function') POLYTANK_IO.selectInventoryItem(item.id);
+  toast(`${item.name} added to inventory`,'#6df7a7');
+}
+
 function adminSetScale(rawValue){
   if(!adminUnlocked){toast('Admin access required','#ff8866');return;}
   const next=Math.max(0.35,Math.min(2.6,Number(rawValue)||1));
@@ -15028,6 +15050,66 @@ const polytank_SKINS_DATA={
   ],
 };
 
+const POLYTANK_PROGRESSION_TIERS=['default','adventure','apocalypse'];
+const POLYTANK_PROGRESSION_TIER_META={
+  default:{label:'Default',accent:'#7fd1ff',summary:'Baseline threat calibration. A clean read on the arena before the world starts mutating.'},
+  adventure:{label:'Adventure',accent:'#7effc8',summary:'Enemy plating and payout curves step up. This is where the loot hunt begins.'},
+  apocalypse:{label:'Apocalypse',accent:'#ff9b5d',summary:'Endgame threat band. Every node assumes optimized builds and high-risk routing.'},
+};
+const POLYTANK_PROGRESSION_ROMANS=['I','II','III','IV','V','VI','VII'];
+const POLYTANK_LOOT_LEVEL_CAPS={
+  default:[10,20,30,40,50,60,70],
+  adventure:[75,100,125,150,175,200,225],
+  apocalypse:[200,215,230,245,260,275,290],
+};
+const POLYTANK_PROGRESSION_NODES=(()=>{
+  const entries={};
+  POLYTANK_PROGRESSION_TIERS.forEach((tier,tierIndex)=>{
+    POLYTANK_PROGRESSION_ROMANS.forEach((roman,index)=>{
+      const rank=index+1;
+      const nodeId=`${tier}_${rank}`;
+      entries[nodeId]={
+        id:nodeId,
+        tier,
+        rank,
+        roman,
+        label:`${POLYTANK_PROGRESSION_TIER_META[tier].label} ${roman}`,
+        effectiveLevel:tierIndex*POLYTANK_PROGRESSION_ROMANS.length+rank,
+        isBoss:rank===POLYTANK_PROGRESSION_ROMANS.length,
+      };
+    });
+  });
+  return entries;
+})();
+const POLYTANK_INVENTORY_SLOTS=['hull','barrel','relic'];
+const POLYTANK_INVENTORY_ARTIFACT_SLOTS=[0,1,2];
+const POLYTANK_INVENTORY_SLOT_META={
+  hull:{label:'Armor',shortLabel:'Hull',badge:'A',adminLabel:'Hull Armor'},
+  barrel:{label:'Melee',shortLabel:'Primary',badge:'P',adminLabel:'Primary Barrel'},
+  relic:{label:'Ranged',shortLabel:'Support',badge:'R',adminLabel:'Support Rig'},
+  artifact:{label:'Artifact',shortLabel:'Artifact',badge:'X',adminLabel:'Artifact'},
+};
+const POLYTANK_LOOT_RARITY_META={
+  common:{label:'Common',color:'#9aa6b7',power:1},
+  rare:{label:'Rare',color:'#57c7ff',power:1.18},
+  epic:{label:'Epic',color:'#c17bff',power:1.42},
+  legendary:{label:'Legendary',color:'#ffb45f',power:1.72},
+};
+const POLYTANK_LOOT_SLOT_POOLS={
+  square:['barrel','barrel','hull'],
+  triangle:['barrel','artifact','relic'],
+  pentagon:['hull','hull','barrel','relic','artifact'],
+  hexagon:['hull','relic','relic','artifact'],
+  octagon:['barrel','relic','artifact','artifact'],
+  decagon:['hull','barrel','relic','artifact','artifact'],
+};
+const POLYTANK_LOOT_NAME_POOLS={
+  hull:['Armor Plate','Riot Shield','Kevlar Vest','Steel Casing'],
+  barrel:['Shotgun','Rifle','Cannon','Machine Gun'],
+  relic:['Compass','Wristwatch','Toolbox','Backpack'],
+  artifact:['Medallion','Wallet','Keychain','Badge'],
+};
+
 const POLYTANK_IO={
   active:false,
   initialized:false,
@@ -15041,7 +15123,7 @@ const POLYTANK_IO={
   H:0,
   raf:0,
   lastTime:0,
-  worldPresets:{standard:{w:9600,h:5400},sandbox:{w:2400,h:2400},ancient:{w:9800,h:6400}},
+  worldPresets:{standard:{w:9600,h:5400},sandbox:{w:6000,h:6000},ancient:{w:9800,h:6400}},
   world:{w:9600,h:5400,midX:4800,midY:2700},
   camera:{x:0,y:0,zoom:1,targetZoom:1,minZoom:.3,maxZoom:1.85},
   keys:Object.create(null),
@@ -15108,10 +15190,29 @@ const POLYTANK_IO={
   nameStorageKey:'circle_alchemy_polytank_name_v1',
   mapThemeStorageKey:'circle_alchemy_polytank_map_theme_v1',
   progressStorageKey:'circle_alchemy_polytank_progress_v1',
+  rpgProfileStorageKey:'circle_alchemy_polytank_rpg_profile_v1',
   circleMetaStorageKey:'circle_alchemy_polytank_meta_v1',
+  difficultyStorageKey:'circle_alchemy_polytank_difficulty_v1',
   mapTheme:'light',
+  rpgProfile:null,
+  progressionTier:'default',
+  progressionRank:1,
+  progressionMissionId:'default_1',
+  difficultyLevel:1,
+  difficultyRomanNumerals:[...POLYTANK_PROGRESSION_ROMANS],
+  difficultyLeverPointerId:null,
+  difficultyLeverDragging:false,
+  difficultyLeverDragChanged:false,
+  difficultyTierMenuOpen:false,
+  progressionTooltipTimer:0,
   settingsPanelOpen:false,
   skinsShopOpen:false,
+  inventoryOpen:false,
+  inventoryFocusItemId:'',
+  inventoryFilter:'all',
+  inventoryPreviewRaf:0,
+  inventoryPreviewTick:0,
+  inventoryArtifactFocus:0,
   skinsStorageKey:'circle_alchemy_polytank_skins_v2',
   activeSkins:{body:'default',cannon:'default',bullet:'default',frame:'none'},
   skinsTab:'body',
@@ -15186,6 +15287,8 @@ const POLYTANK_IO={
   cageWall:null,
   enemyMothership:null,
   dyingShapes:[],
+  worldDrops:[],
+  worldDropId:0,
   damageNumbers:[],
   renderLeaderId:'',
   adminRole:'',
@@ -15198,7 +15301,7 @@ const POLYTANK_IO={
   guardId:0,
   dominatorId:0,
   bossEntityId:0,
-  bossHotkeyKeys:['polytank_alpha','fallen_twin','fallen_destroyer','fallen_overlord','fallen_octo','fallen_necromancer'],
+  bossHotkeyKeys:['polytank_alpha','fallen_twin','fallen_destroyer','fallen_overlord','fallen_octo','fallen_necromancer','beta_pentagon'],
   teamStyles:{
     blue:{body:'#44c3ff',barrel:'#deefff',bullet:'#88e9ff',zone:'rgba(70,185,255,.11)',spawn:'rgba(80,200,255,.2)',mini:'#66cdff'},
     red:{body:'#ff666f',barrel:'#ffd7c6',bullet:'#ffb385',zone:'rgba(255,90,102,.1)',spawn:'rgba(255,110,126,.2)',mini:'#ff8b92'},
@@ -15208,19 +15311,22 @@ const POLYTANK_IO={
     yellow:{body:'#f0d45e',barrel:'#f4f0b7',bullet:'#ffe777',zone:'rgba(255,226,118,.06)',spawn:'rgba(255,226,118,.12)',mini:'#ffe777'}
   },
   gameVariantDefs:{
-    ffa:{id:'ffa',label:'Free For All',map:'Open Arena',hud:'Leaderboard, Minimap, Upgrades',teamMode:'solo'},
-    ancient:{id:'ancient',label:'Ancient Frontier',map:'Main Arena + Ancient Frontier',hud:'Ruin Tracker, Ancient XP, Minimap',teamMode:'duo'},
-    '2teams':{id:'2teams',label:'2 Teams',map:'Twin Base Arena',hud:'Scoreboard, Minimap, Upgrades',teamMode:'duo'},
-    '4teams':{id:'4teams',label:'4 Teams',map:'Four Corner Arena',hud:'Scoreboard, Minimap, Upgrades',teamMode:'quad'},
-    maze:{id:'maze',label:'Maze',map:'Maze Corridors',hud:'Leaderboard, Minimap, Upgrades',teamMode:'duo'},
-    sandbox:{id:'sandbox',label:'Sandbox',map:'Compact Test Room',hud:'Sandbox Menu, Minimap, Upgrades',teamMode:'solo'},
-    domination:{id:'domination',label:'Domination',map:'Twin Base Arena',hud:'Objective Bar, Minimap, Upgrades',teamMode:'duo'},
-    tag:{id:'tag',label:'Tag',map:'Twin Base Arena',hud:'Team Tracker, Minimap, Upgrades',teamMode:'duo'},
-    breakout:{id:'breakout',label:'Breakout',map:'Siege Lanes',hud:'Core Bar, Minimap, Upgrades',teamMode:'duo'},
-    ctf:{id:'ctf',label:'Capture the Flag',map:'Twin Base Arena',hud:'Flag Score, Minimap, Upgrades',teamMode:'duo'},
-    mothership:{id:'mothership',label:'Mothership',map:'Blue Siege vs Caged Mothership',hud:'Boss Bar, Minimap, Upgrades',teamMode:'boss'},
+    ffa:{id:'ffa',label:'Free For All',map:'Open Arena',hud:'Leaderboard, Minimap, Upgrades',teamMode:'solo',recommendedPower:1},
+    ancient:{id:'ancient',label:'Ancient Frontier',map:'Main Arena + Ancient Frontier',hud:'Ruin Tracker, Ancient XP, Minimap',teamMode:'duo',recommendedPower:42},
+    '2teams':{id:'2teams',label:'2 Teams',map:'Twin Base Arena',hud:'Scoreboard, Minimap, Upgrades',teamMode:'duo',recommendedPower:10},
+    '4teams':{id:'4teams',label:'4 Teams',map:'Four Corner Arena',hud:'Scoreboard, Minimap, Upgrades',teamMode:'quad',recommendedPower:18},
+    maze:{id:'maze',label:'Maze',map:'Maze Corridors',hud:'Leaderboard, Minimap, Upgrades',teamMode:'duo',recommendedPower:22},
+    sandbox:{id:'sandbox',label:'Sandbox',map:'Compact Test Room',hud:'Sandbox Menu, Minimap, Upgrades',teamMode:'solo',recommendedPower:1},
+    domination:{id:'domination',label:'Domination',map:'Twin Base Arena',hud:'Objective Bar, Minimap, Upgrades',teamMode:'duo',recommendedPower:30},
+    tag:{id:'tag',label:'Tag',map:'Twin Base Arena',hud:'Team Tracker, Minimap, Upgrades',teamMode:'duo',recommendedPower:16},
+    breakout:{id:'breakout',label:'Breakout',map:'Siege Lanes',hud:'Core Bar, Minimap, Upgrades',teamMode:'duo',recommendedPower:34},
+    ctf:{id:'ctf',label:'Capture the Flag',map:'Twin Base Arena',hud:'Flag Score, Minimap, Upgrades',teamMode:'duo',recommendedPower:26},
+    mothership:{id:'mothership',label:'Mothership',map:'Blue Siege vs Caged Mothership',hud:'Boss Bar, Minimap, Upgrades',teamMode:'boss',recommendedPower:70},
   },
-  upgradeMaxLevel:10,
+  get upgradeMaxLevel(){
+    const tier=this.normalizeProgressionTier(this.progressionTier);
+    return tier==='adventure'?15:tier==='apocalypse'?20:10;
+  },
   upgradeUnlockLevel:5,
   upgradeOrder:['regen','maxHealth','bodyDamage','bulletSpeed','bulletPenetration','bulletDamage','reload','moveSpeed'],
   permaUpgradeOrder:['spawnLevel','startingPoints','hardenedHull','coreBallistics','kineticFeed','survivorProtocol'],
@@ -15335,13 +15441,921 @@ const POLYTANK_IO={
     ancient_square:{r:54,hp:300,xp:60,contact:22,color:'#9bc96d',region:'ancient_frontier',sides:4,ancient:true,ancientTier:'common'},
     ancient_triangle:{r:66,hp:1120,xp:300,contact:52,color:'#8bd179',region:'ancient_frontier',sides:3,ancient:true,ancientTier:'hunter'},
     ancient_pentagon:{r:93,hp:4200,xp:3000,contact:94,color:'#79b866',region:'ancient_frontier',sides:5,ancient:true,ancientTier:'elite'},
-    ancient_hexagon:{r:120,hp:252000,xp:94500,contact:148,color:'#5aad7c',region:'ancient_frontier',sides:6,ancient:true,ancientTier:'monument'},
-    ancient_alpha_pentagon:{r:146,hp:52000,xp:22500,contact:188,color:'#62a552',region:'ancient_frontier',sides:5,ancient:true,ancientTier:'boss'}
+    ancient_hexagon:{r:120,hp:52000,xp:94500,contact:148,color:'#5aad7c',region:'ancient_frontier',sides:6,ancient:true,ancientTier:'monument'},
+    ancient_alpha_pentagon:{r:396,hp:220000,xp:22500,contact:188,color:'#62a552',region:'ancient_frontier',sides:5,ancient:true,ancientTier:'boss'}
+  },
+  normalizeProgressionTier(value){
+    const key=String(value||'').trim().toLowerCase();
+    return POLYTANK_PROGRESSION_TIERS.includes(key)?key:'default';
+  },
+  normalizeProgressionRank(value){
+    return this.clamp(Math.round(Number(value)||1),1,POLYTANK_PROGRESSION_ROMANS.length);
+  },
+  getProgressionNodeId(tier=this.progressionTier,rank=this.progressionRank){
+    return `${this.normalizeProgressionTier(tier)}_${this.normalizeProgressionRank(rank)}`;
+  },
+  getProgressionNode(tier=this.progressionTier,rank=this.progressionRank){
+    return POLYTANK_PROGRESSION_NODES[this.getProgressionNodeId(tier,rank)]||POLYTANK_PROGRESSION_NODES.default_1;
+  },
+  getLootItemLevelCap(tier=this.progressionTier,rank=this.progressionRank){
+    const normalizedTier=this.normalizeProgressionTier(tier);
+    const caps=POLYTANK_LOOT_LEVEL_CAPS[normalizedTier]||POLYTANK_LOOT_LEVEL_CAPS.default;
+    return Math.max(1,Math.min(300,caps[this.normalizeProgressionRank(rank)-1]||caps[0]||10));
+  },
+  getClosestUnlockedProgressionNode(tier=this.progressionTier,preferredRank=this.progressionRank){
+    const normalizedTier=this.normalizeProgressionTier(tier);
+    const desiredRank=this.normalizeProgressionRank(preferredRank);
+    const unlocked=Array.isArray(this.rpgProfile?.unlocked?.[normalizedTier])?this.rpgProfile.unlocked[normalizedTier]:[];
+    const candidates=unlocked
+      .map(nodeId=>POLYTANK_PROGRESSION_NODES[nodeId])
+      .filter(node=>node&&node.tier===normalizedTier)
+      .sort((left,right)=>Math.abs(left.rank-desiredRank)-Math.abs(right.rank-desiredRank)||left.rank-right.rank);
+    return candidates[0]||this.getProgressionNode(normalizedTier,1);
+  },
+  getProgressionTierFromLevel(level=this.difficultyLevel){
+    const normalized=this.normalizeDifficultyLevel(level);
+    const tierIndex=this.clamp(Math.floor((normalized-1)/POLYTANK_PROGRESSION_ROMANS.length),0,POLYTANK_PROGRESSION_TIERS.length-1);
+    return POLYTANK_PROGRESSION_TIERS[tierIndex]||'default';
+  },
+  getProgressionRankFromLevel(level=this.difficultyLevel){
+    const normalized=this.normalizeDifficultyLevel(level);
+    return ((normalized-1)%POLYTANK_PROGRESSION_ROMANS.length)+1;
+  },
+  getProgressionEffectiveLevel(tier=this.progressionTier,rank=this.progressionRank){
+    const normalizedTier=this.normalizeProgressionTier(tier);
+    const tierIndex=Math.max(0,POLYTANK_PROGRESSION_TIERS.indexOf(normalizedTier));
+    return this.clamp(tierIndex*POLYTANK_PROGRESSION_ROMANS.length+this.normalizeProgressionRank(rank),1,POLYTANK_PROGRESSION_TIERS.length*POLYTANK_PROGRESSION_ROMANS.length);
+  },
+  createDefaultRpgProfile(){
+    const unlocked={};
+    POLYTANK_PROGRESSION_TIERS.forEach(tier=>{
+      unlocked[tier]=POLYTANK_PROGRESSION_ROMANS.map((_roman,index)=>`${tier}_${index+1}`);
+    });
+    return {
+      version:1,
+      selectedNodeId:'default_1',
+      unlocked,
+      nodeProgress:{},
+      bossKills:{},
+      emeralds:0,
+      inventory:{capacity:48,nextItemId:1,items:{},order:[]},
+      equipment:{hull:'',barrel:'',relic:'',artifacts:['','','']},
+    };
+  },
+  normalizeRpgProfile(profile){
+    const base=this.createDefaultRpgProfile();
+    const next=profile&&typeof profile==='object'?{...base,...profile}:{...base};
+    next.unlocked=next.unlocked&&typeof next.unlocked==='object'?next.unlocked:{...base.unlocked};
+    POLYTANK_PROGRESSION_TIERS.forEach(tier=>{
+      const raw=Array.isArray(next.unlocked[tier])?next.unlocked[tier]:base.unlocked[tier];
+      next.unlocked[tier]=raw.filter(nodeId=>POLYTANK_PROGRESSION_NODES[nodeId]);
+      if(!next.unlocked[tier].length) next.unlocked[tier]=[this.getProgressionNodeId(tier,1)];
+    });
+    next.nodeProgress=next.nodeProgress&&typeof next.nodeProgress==='object'?next.nodeProgress:{};
+    next.bossKills=next.bossKills&&typeof next.bossKills==='object'?next.bossKills:{};
+    next.emeralds=Math.max(0,Math.round(Number(next.emeralds)||0));
+    const inventory=next.inventory&&typeof next.inventory==='object'?next.inventory:{};
+    inventory.capacity=Math.max(12,Math.round(Number(inventory.capacity)||48));
+    inventory.nextItemId=Math.max(1,Math.round(Number(inventory.nextItemId)||1));
+    inventory.items=inventory.items&&typeof inventory.items==='object'?inventory.items:{};
+    inventory.order=Array.isArray(inventory.order)?inventory.order.filter(itemId=>inventory.items[itemId]):Object.keys(inventory.items);
+    Object.values(inventory.items).forEach(item=>{
+      if(!item||!item.stats) return;
+      item.stats=this.computeItemStats(item.slot,item.itemLevel,item.rarity);
+    });
+    next.inventory=inventory;
+    const equipment=next.equipment&&typeof next.equipment==='object'?next.equipment:{};
+    POLYTANK_INVENTORY_SLOTS.forEach(slot=>{
+      const itemId=typeof equipment[slot]==='string'?equipment[slot]:'';
+      equipment[slot]=inventory.items[itemId]&&inventory.items[itemId].slot===slot?itemId:'';
+    });
+    const artifacts=Array.isArray(equipment.artifacts)?equipment.artifacts.slice(0,3):['','',''];
+    while(artifacts.length<3) artifacts.push('');
+    equipment.artifacts=artifacts.map(itemId=>inventory.items[itemId]&&inventory.items[itemId].slot==='artifact'?itemId:'');
+    next.equipment=equipment;
+    next.selectedNodeId=POLYTANK_PROGRESSION_NODES[next.selectedNodeId]?next.selectedNodeId:'default_1';
+    return next;
+  },
+  loadRpgProfile(){
+    let raw='';
+    try{ raw=localStorage.getItem(this.rpgProfileStorageKey)||''; }catch(_err){}
+    let profile=this.createDefaultRpgProfile();
+    if(raw){
+      try{ profile=this.normalizeRpgProfile(JSON.parse(raw)); }catch(_err){ profile=this.createDefaultRpgProfile(); }
+    }else{
+      let legacy='';
+      try{ legacy=localStorage.getItem(this.difficultyStorageKey)||''; }catch(_err){}
+      if(legacy){
+        const level=this.normalizeDifficultyLevel(legacy);
+        profile.selectedNodeId=this.getProgressionNodeId(this.getProgressionTierFromLevel(level),this.getProgressionRankFromLevel(level));
+      }
+      profile=this.normalizeRpgProfile(profile);
+    }
+    this.rpgProfile=profile;
+    this.selectProgressionNodeById(profile.selectedNodeId,{persist:false,publish:false,feedback:false,flash:false,toast:false});
+    return profile;
+  },
+  saveRpgProfile(){
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    this.rpgProfile.selectedNodeId=this.getProgressionNodeId();
+    try{ localStorage.setItem(this.rpgProfileStorageKey,JSON.stringify(this.rpgProfile)); }catch(_err){}
+  },
+  getInventoryStore(){
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    return this.rpgProfile.inventory;
+  },
+  getEquipmentStore(){
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    return this.rpgProfile.equipment;
+  },
+  getInventoryEmeralds(){
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    return Math.max(0,Math.round(Number(this.rpgProfile.emeralds)||0));
+  },
+  setInventoryEmeralds(amount){
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    this.rpgProfile.emeralds=Math.max(0,Math.round(Number(amount)||0));
+    this.saveRpgProfile();
+  },
+  getInventoryItem(itemId){
+    return itemId?this.getInventoryStore().items[itemId]||null:null;
+  },
+  getInventorySlotMeta(slot){
+    return POLYTANK_INVENTORY_SLOT_META[slot]||POLYTANK_INVENTORY_SLOT_META.relic;
+  },
+  getInventorySlotLabel(slot,short=false){
+    const meta=this.getInventorySlotMeta(slot);
+    return short?(meta.shortLabel||meta.label):meta.label;
+  },
+  getInventoryTypeIcon(slot){
+    return {hull:'🛡️',barrel:'🗡️',relic:'🏹'}[slot]||'';
+  },
+  getEquippedArtifactIds(){
+    const artifacts=this.getEquipmentStore().artifacts;
+    return Array.isArray(artifacts)?artifacts.slice(0,3):['','',''];
+  },
+  getEquippedArtifactItems(){
+    return this.getEquippedArtifactIds().map(itemId=>this.getInventoryItem(itemId)).filter(Boolean);
+  },
+  getEquippedInventoryStats(){
+    const totals={maxHpBonus:0,regenRateBonus:0,bodyDamagePct:0,bulletDamageFlat:0,bulletSpeedPct:0,moveSpeedPct:0,reloadMult:1};
+    POLYTANK_INVENTORY_SLOTS.forEach(slot=>{
+      const item=this.getInventoryItem(this.getEquipmentStore()[slot]);
+      if(!item||!item.stats) return;
+      totals.maxHpBonus+=Number(item.stats.maxHpBonus)||0;
+      totals.regenRateBonus+=Number(item.stats.regenRateBonus)||0;
+      totals.bodyDamagePct+=Number(item.stats.bodyDamagePct)||0;
+      totals.bulletDamageFlat+=Number(item.stats.bulletDamageFlat)||0;
+      totals.bulletSpeedPct+=Number(item.stats.bulletSpeedPct)||0;
+      totals.moveSpeedPct+=Number(item.stats.moveSpeedPct)||0;
+      totals.reloadMult*=Number(item.stats.reloadMult)||1;
+    });
+    this.getEquippedArtifactItems().forEach(item=>{
+      if(!item||!item.stats) return;
+      totals.maxHpBonus+=Number(item.stats.maxHpBonus)||0;
+      totals.regenRateBonus+=Number(item.stats.regenRateBonus)||0;
+      totals.bodyDamagePct+=Number(item.stats.bodyDamagePct)||0;
+      totals.bulletDamageFlat+=Number(item.stats.bulletDamageFlat)||0;
+      totals.bulletSpeedPct+=Number(item.stats.bulletSpeedPct)||0;
+      totals.moveSpeedPct+=Number(item.stats.moveSpeedPct)||0;
+      totals.reloadMult*=Number(item.stats.reloadMult)||1;
+    });
+    return totals;
+  },
+  formatInventoryStats(item){
+    if(!item||!item.stats) return '';
+    const signedPct=value=>`${value>=0?'+':'-'}${Math.round(Math.abs(value)*100)}%`;
+    const lines=[];
+    if(item.stats.maxHpBonus) lines.push(`+${Math.round(item.stats.maxHpBonus)} Max HP`);
+    if(item.stats.regenRateBonus) lines.push(`+${item.stats.regenRateBonus.toFixed(2)} Regen`);
+    if(item.stats.bodyDamagePct) lines.push(`${signedPct(item.stats.bodyDamagePct)} Body Damage`);
+    if(item.stats.bulletDamageFlat) lines.push(`+${Math.round(item.stats.bulletDamageFlat)} Bullet Damage`);
+    if(item.stats.bulletSpeedPct) lines.push(`${signedPct(item.stats.bulletSpeedPct)} Bullet Speed`);
+    if(item.stats.moveSpeedPct) lines.push(`${signedPct(item.stats.moveSpeedPct)} Move Speed`);
+    if(item.stats.reloadMult&&item.stats.reloadMult!==1) lines.push(`${signedPct(1-item.stats.reloadMult)} Reload Speed`);
+    return lines.map(line=>`<div class="polytank-inventory-stat-line">${line}</div>`).join('');
+  },
+  getInventoryItemPower(item){
+    if(!item) return 0;
+    const rarityPower=POLYTANK_LOOT_RARITY_META[item.rarity]?.power||1;
+    return Math.max(1,Math.round((Number(item.itemLevel)||1)*rarityPower));
+  },
+  getInventorySalvageValue(item){
+    if(!item) return 0;
+    const rarityBase={common:8,rare:18,epic:38,legendary:70}[item.rarity]||8;
+    return Math.max(1,Math.round(rarityBase+this.getInventoryItemPower(item)*0.75));
+  },
+  getInventoryComparisonTarget(item){
+    if(!item) return null;
+    if(item.slot==='artifact'){
+      return this.getEquippedArtifactIds()
+        .map(itemId=>this.getInventoryItem(itemId))
+        .filter(Boolean)
+        .sort((left,right)=>this.getInventoryItemPower(left)-this.getInventoryItemPower(right))[0]||null;
+    }
+    return this.getInventoryItem(this.getEquipmentStore()[item.slot])||null;
+  },
+  getInventoryPickupComparison(item){
+    if(!item) return {message:'',color:POLYTANK_LOOT_RARITY_META.common.color};
+    const comparison=this.getInventoryComparisonTarget(item);
+    const slotLabel=this.getInventorySlotLabel(item.slot);
+    if(!comparison) return {message:`First ${slotLabel} item`,color:'#88ffaa'};
+    const delta=this.getInventoryItemPower(item)-this.getInventoryItemPower(comparison);
+    if(delta>=8) return {message:`Better than equipped ${slotLabel}`,color:'#88ffaa'};
+    if(delta<=-8) return {message:`Worse than equipped ${slotLabel}`,color:'#ff9b7c'};
+    return {message:`Sidegrade to equipped ${slotLabel}`,color:'#ffd47c'};
+  },
+  computeItemStats(slot,level,rarity){
+    const normalizedSlot=['hull','barrel','relic','artifact'].includes(slot)?slot:'relic';
+    const normalizedRarity=POLYTANK_LOOT_RARITY_META[rarity]?rarity:'common';
+    const power=POLYTANK_LOOT_RARITY_META[normalizedRarity].power;
+    const DAMAGE_MULT=3.2;
+    const HP_MULT=1.2;
+    const stats={maxHpBonus:0,regenRateBonus:0,bodyDamagePct:0,bulletDamageFlat:0,bulletSpeedPct:0,moveSpeedPct:0,reloadMult:1};
+    if(normalizedSlot==='hull'){
+      stats.maxHpBonus=Math.round((40+level*24*power)*HP_MULT);
+      stats.regenRateBonus=Number((0.08+level*0.014*power).toFixed(2));
+    }else if(normalizedSlot==='barrel'){
+      stats.bulletDamageFlat=Math.round(level*4*power*DAMAGE_MULT);
+      stats.bulletSpeedPct=Number((level*0.002).toFixed(4));
+      stats.reloadMult=Number(Math.pow(1-0.0035,level).toFixed(4));
+    }else if(normalizedSlot==='relic'){
+      stats.moveSpeedPct=Number((level*0.0035).toFixed(4));
+      stats.bodyDamagePct=Number(((0.16+level*0.023*power)*DAMAGE_MULT).toFixed(3));
+      stats.maxHpBonus=Math.round((18+level*11.5)*power*HP_MULT);
+    }else{
+      stats.maxHpBonus=Math.round((12+level*7.5)*power*HP_MULT);
+      stats.regenRateBonus=Number((0.05+level*0.006*power).toFixed(2));
+      stats.moveSpeedPct=Number((level*0.0035).toFixed(4));
+      stats.bulletDamageFlat=Math.round(level*1*power*DAMAGE_MULT);
+    }
+    return stats;
+  },
+  buildInventoryItem(slot,itemLevel,rarity,source='field'){
+    const normalizedSlot=['hull','barrel','relic','artifact'].includes(slot)?slot:'relic';
+    const normalizedRarity=POLYTANK_LOOT_RARITY_META[rarity]?rarity:'common';
+    const inventory=this.getInventoryStore();
+    const powerMeta=POLYTANK_LOOT_RARITY_META[normalizedRarity];
+    const level=Math.max(1,Math.min(300,Math.round(Number(itemLevel)||1)));
+    const itemId=`item_${inventory.nextItemId++}`;
+    const nounPool=POLYTANK_LOOT_NAME_POOLS[normalizedSlot]||POLYTANK_LOOT_NAME_POOLS.relic;
+    const noun=nounPool[Math.floor(Math.random()*nounPool.length)]||'Gear';
+    const stats=this.computeItemStats(normalizedSlot,level,normalizedRarity);
+    return {
+      id:itemId,
+      slot:normalizedSlot,
+      name:`${powerMeta.label} ${noun}`,
+      rarity:normalizedRarity,
+      itemLevel:level,
+      source,
+      glyph:this.getInventorySlotMeta(normalizedSlot).badge,
+      stats,
+      flavor:normalizedSlot==='artifact'
+        ?'An active module calibrated for short-burst field advantages.'
+        : normalizedSlot==='hull'
+          ?'Reinforced plating forged for arena attrition.'
+          : normalizedSlot==='barrel'
+            ?'A tuned firing assembly that sharpens shot output.'
+            :'A support rig humming with rogue arena energy.',
+    };
+  },
+  getLootRarityForLevel(level=this.difficultyLevel){
+    const roll=Math.random();
+    const normalized=this.normalizeDifficultyLevel(level);
+    const legendaryChance=Math.max(0.01,Math.min(0.16,0.01+Math.max(0,normalized-8)*0.008));
+    const epicChance=Math.max(0.06,Math.min(0.34,0.06+normalized*0.01));
+    const rareChance=Math.max(0.22,Math.min(0.62,0.24+normalized*0.012));
+    if(roll<legendaryChance) return 'legendary';
+    if(roll<epicChance) return 'epic';
+    if(roll<rareChance) return 'rare';
+    return 'common';
+  },
+  getLootSlotForShape(shape){
+    const pool=POLYTANK_LOOT_SLOT_POOLS[shape?.kind]||POLYTANK_LOOT_SLOT_POOLS.square;
+    return pool[Math.floor(Math.random()*pool.length)]||'hull';
+  },
+  createLootItemFromShape(shape){
+    const slot=this.getLootSlotForShape(shape);
+    const node=this.getProgressionNode();
+    const rarity=this.getLootRarityForLevel(node.effectiveLevel);
+    const cap=this.getLootItemLevelCap(node.tier,node.rank);
+    const floorRatio={square:0.34,triangle:0.46,pentagon:0.58,hexagon:0.7,octagon:0.82,decagon:0.9}[shape?.kind]||0.34;
+    const itemLevel=Math.max(1,Math.min(cap,Math.round(cap*(floorRatio+(1-floorRatio)*Math.random()))));
+    return this.buildInventoryItem(slot,itemLevel,rarity,shape?.kind||'square');
+  },
+  createAdminGearItem(slot='barrel',itemLevel=1,rarity='legendary'){
+    return this.buildInventoryItem(slot,itemLevel,rarity,'admin');
+  },
+  maybeSpawnLootDrop(shape,ownerId){
+    if(!shape||this.networkRoomActive||!this.player) return null;
+    const killerId=ownerId||shape.lastHitId||'';
+    if(killerId!==this.player.id) return null;
+    const baseChance={square:0.08,triangle:0.12,pentagon:0.2,hexagon:0.32,octagon:0.48,decagon:0.65}[shape.kind]||0.08;
+    const difficultyBonus=(this.normalizeDifficultyLevel(this.difficultyLevel)-1)*0.006;
+    if(Math.random()>Math.min(0.82,baseChance+difficultyBonus)) return null;
+    const item=this.createLootItemFromShape(shape);
+    const drop={id:`drop_${++this.worldDropId}`,x:shape.x,y:shape.y,radius:26,life:18,bob:Math.random()*Math.PI*2,item};
+    this.worldDrops.push(drop);
+    return drop;
+  },
+  addInventoryItem(item){
+    if(!item) return false;
+    const inventory=this.getInventoryStore();
+    if((inventory.order||[]).length>=inventory.capacity) return false;
+    inventory.items[item.id]=item;
+    inventory.order.push(item.id);
+    this.inventoryFocusItemId=item.id;
+    this.saveRpgProfile();
+    return true;
+  },
+  removeInventoryItem(itemId){
+    if(!itemId) return false;
+    const inventory=this.getInventoryStore();
+    if(!inventory.items[itemId]) return false;
+    delete inventory.items[itemId];
+    inventory.order=inventory.order.filter(entry=>entry!==itemId);
+    const equipment=this.getEquipmentStore();
+    POLYTANK_INVENTORY_SLOTS.forEach(slot=>{
+      if(equipment[slot]===itemId) equipment[slot]='';
+    });
+    if(Array.isArray(equipment.artifacts)) equipment.artifacts=equipment.artifacts.map(entry=>entry===itemId?'':entry);
+    if(this.inventoryFocusItemId===itemId) this.inventoryFocusItemId=inventory.order[0]||'';
+    this.saveRpgProfile();
+    return true;
+  },
+  salvageInventoryItem(itemId=this.inventoryFocusItemId){
+    const item=this.getInventoryItem(itemId);
+    if(!item) return false;
+    const emeralds=this.getInventorySalvageValue(item);
+    if(!this.removeInventoryItem(item.id)) return false;
+    this.setInventoryEmeralds(this.getInventoryEmeralds()+emeralds);
+    if(this.player&&!this.networkRoomActive){
+      this.updateTankDerivedStats(this.player,false);
+      this.updateHud();
+    }
+    this.renderInventoryUi();
+    toast(`${item.name} salvaged for ${emeralds} emeralds.`, '#6df7a7');
+    return true;
+  },
+  setInventoryFilter(filter='all'){
+    this.inventoryFilter=['all','hull','barrel','relic','artifact'].includes(filter)?filter:'all';
+    this.renderInventoryUi();
+  },
+  getFilteredInventoryItems(){
+    const inventory=this.getInventoryStore();
+    const items=inventory.order.map(itemId=>inventory.items[itemId]).filter(Boolean);
+    if(this.inventoryFilter==='all') return items;
+    return items.filter(item=>item.slot===this.inventoryFilter);
+  },
+  collectWorldDrop(drop){
+    if(!drop||!drop.item) return false;
+    const success=this.addInventoryItem(drop.item);
+    if(!success){
+      toast('Inventory full. Make space before picking this up.','#ffb27f');
+      return false;
+    }
+    this.worldDrops=this.worldDrops.filter(entry=>entry.id!==drop.id);
+    const comparison=this.getInventoryPickupComparison(drop.item);
+    toast(`Picked up ${drop.item.name} • ${comparison.message}`,comparison.color||POLYTANK_LOOT_RARITY_META[drop.item.rarity]?.color||'#9feaff');
+    this.renderInventoryUi();
+    return true;
+  },
+  tryCollectWorldDropAtScreenPosition(screenX,screenY){
+    if(!this.player||this.player.deadTimer>0||!this.worldDrops.length) return false;
+    const point=this.screenToWorld(screenX,screenY);
+    const drop=this.worldDrops
+      .filter(entry=>Math.hypot(point.x-entry.x,point.y-entry.y)<(entry.radius||26)+18)
+      .sort((left,right)=>Math.hypot(point.x-left.x,point.y-left.y)-Math.hypot(point.x-right.x,point.y-right.y))[0]||null;
+    if(!drop) return false;
+    return this.collectWorldDrop(drop);
+  },
+  updateWorldDrops(dt){
+    if(!this.worldDrops.length) return;
+    for(let index=this.worldDrops.length-1;index>=0;index--){
+      const drop=this.worldDrops[index];
+      drop.life=Math.max(0,(drop.life||0)-dt);
+      drop.bob=(drop.bob||0)+dt*2.8;
+      if(drop.life<=0){
+        this.worldDrops.splice(index,1);
+        continue;
+      }
+    }
+  },
+  openInventory(){
+    const modal=document.getElementById('polytank-inventory-modal');
+    if(!modal) return;
+    this.inventoryOpen=true;
+    modal.classList.add('open');
+    this.renderInventoryUi();
+    const tick=()=>{
+      if(!this.inventoryOpen) return;
+      this.inventoryPreviewTick=(this.inventoryPreviewTick||0)+1;
+      this.renderInventoryPreview();
+      this.inventoryPreviewRaf=requestAnimationFrame(tick);
+    };
+    cancelAnimationFrame(this.inventoryPreviewRaf||0);
+    this.inventoryPreviewRaf=requestAnimationFrame(tick);
+  },
+  closeInventory(){
+    const modal=document.getElementById('polytank-inventory-modal');
+    if(!modal) return;
+    this.inventoryOpen=false;
+    modal.classList.remove('open');
+    cancelAnimationFrame(this.inventoryPreviewRaf||0);
+    this.inventoryPreviewRaf=0;
+  },
+  toggleInventory(force){
+    const next=typeof force==='boolean'?force:!this.inventoryOpen;
+    if(next) this.openInventory();
+    else this.closeInventory();
+  },
+  selectInventoryItem(itemId){
+    this.inventoryFocusItemId=itemId||'';
+    this.renderInventoryUi();
+  },
+  selectInventoryArtifactSlot(index){
+    this.inventoryArtifactFocus=this.clamp(Math.round(Number(index)||0),0,2);
+    this.renderInventoryUi();
+  },
+  equipInventoryItem(itemId=this.inventoryFocusItemId){
+    const item=this.getInventoryItem(itemId);
+    if(!item) return false;
+    const equipment=this.getEquipmentStore();
+    if(item.slot==='artifact') equipment.artifacts[this.inventoryArtifactFocus]=item.id;
+    else equipment[item.slot]=item.id;
+    this.saveRpgProfile();
+    if(this.player&&!this.networkRoomActive){
+      this.updateTankDerivedStats(this.player,false);
+      this.updateHud();
+    }
+    this.renderInventoryUi();
+    const slotLabel=item.slot==='artifact'?`Artifact ${this.inventoryArtifactFocus+1}`:this.getInventorySlotLabel(item.slot);
+    toast(`${item.name} equipped to ${slotLabel}.`,POLYTANK_LOOT_RARITY_META[item.rarity]?.color||'#9feaff');
+    return true;
+  },
+  renderInventoryPreview(){
+    const canvas=document.getElementById('polytank-inventory-preview');
+    if(!canvas) return;
+    const ctx=canvas.getContext('2d');
+    const width=canvas.width;
+    const height=canvas.height;
+    const team=this.playerTeam||'blue';
+    const bodyColor=this.getTeamBodyColor(team);
+    const barrelColor=this.getTeamBarrelColor(team);
+    const t=Date.now()*0.0012;
+    ctx.clearRect(0,0,width,height);
+    const bg=ctx.createLinearGradient(0,0,0,height);
+    bg.addColorStop(0,'#120d13');
+    bg.addColorStop(1,'#09080d');
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,width,height);
+    ctx.strokeStyle='rgba(255,255,255,.04)';
+    for(let x=0;x<width;x+=24){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,height); ctx.stroke(); }
+    for(let y=0;y<height;y+=24){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(width,y); ctx.stroke(); }
+    const cx=width*0.5;
+    const cy=height*0.56;
+    const radius=44+Math.sin(t*2.1)*1.8;
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(Math.sin(t)*0.08);
+    ctx.fillStyle=bodyColor;
+    ctx.strokeStyle='rgba(255,255,255,.16)';
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.arc(0,0,radius,0,Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle=barrelColor;
+    ctx.fillRect(radius*0.15,-14,radius*1.5,28);
+    ctx.strokeRect(radius*0.15,-14,radius*1.5,28);
+    ctx.restore();
+    ctx.fillStyle='rgba(255,255,255,.95)';
+    ctx.font="700 20px Orbitron";
+    ctx.textAlign='center';
+    ctx.fillText(this.player?.className||'TANK',cx,34);
+    ctx.font="600 12px Rajdhani";
+    ctx.fillStyle='rgba(230,234,244,.68)';
+    ctx.fillText(`Power ${this.getLoadoutPower()}`,cx,56);
+  },
+  getLoadoutPower(){
+    const equipment=this.getEquipmentStore();
+    const equipped=[...POLYTANK_INVENTORY_SLOTS.map(slot=>equipment[slot]),...this.getEquippedArtifactIds()]
+      .map(itemId=>this.getInventoryItem(itemId))
+      .filter(Boolean);
+    if(!equipped.length) return 1;
+    return Math.max(1,Math.round(equipped.reduce((sum,item)=>sum+this.getInventoryItemPower(item),0)/equipped.length));
+  },
+  renderInventoryUi(){
+    const modal=document.getElementById('polytank-inventory-modal');
+    const grid=document.getElementById('polytank-inventory-grid');
+    const detail=document.getElementById('polytank-inventory-detail');
+    const slots=document.getElementById('polytank-inventory-slots');
+    const artifacts=document.getElementById('polytank-inventory-artifacts');
+    const count=document.getElementById('polytank-inventory-count');
+    const emeralds=document.getElementById('polytank-inventory-emeralds');
+    const filters=document.getElementById('polytank-inventory-filters');
+    const power=document.getElementById('polytank-inventory-power');
+    if(!modal||!grid||!detail||!slots||!artifacts||!count||!emeralds||!filters||!power) return;
+    const inventory=this.getInventoryStore();
+    const equipped=this.getEquipmentStore();
+    const items=this.getFilteredInventoryItems();
+    count.textContent=`${items.length}/${inventory.capacity}`;
+    emeralds.textContent=this.getInventoryEmeralds().toLocaleString();
+    power.textContent=String(this.getLoadoutPower());
+    filters.innerHTML=['all','barrel','hull','relic','artifact'].map(filter=>`<button type="button" class="polytank-inventory-filter${this.inventoryFilter===filter?' active':''}" data-filter="${filter}">${filter==='all'?'All':this.getInventorySlotLabel(filter,true)}</button>`).join('');
+    filters.querySelectorAll('.polytank-inventory-filter').forEach(button=>{
+      button.addEventListener('click',()=>this.setInventoryFilter(button.getAttribute('data-filter')||'all'));
+    });
+    slots.innerHTML=POLYTANK_INVENTORY_SLOTS.map(slot=>{
+      const item=this.getInventoryItem(equipped[slot]);
+      const meta=this.getInventorySlotMeta(slot);
+      return `<button type="button" class="polytank-inventory-slot${item?' filled':''}" data-slot="${slot}"><span>${meta.label}</span><strong>${item?item.name:'Empty Slot'}</strong><em>${item?`Power ${this.getInventoryItemPower(item)}`:'+'}</em></button>`;
+    }).join('');
+    slots.querySelectorAll('.polytank-inventory-slot').forEach(button=>{
+      button.addEventListener('click',()=>{
+        const slot=button.getAttribute('data-slot')||'';
+        this.selectInventoryItem(equipped[slot]||'');
+      });
+    });
+    const artifactIds=this.getEquippedArtifactIds();
+    artifacts.innerHTML=POLYTANK_INVENTORY_ARTIFACT_SLOTS.map(index=>{
+      const item=this.getInventoryItem(artifactIds[index]);
+      return `<button type="button" class="polytank-inventory-artifact${item?' filled':''}${this.inventoryArtifactFocus===index?' active':''}" data-index="${index}"><span>${index+1}</span><strong>${item?item.name:'Empty'}</strong></button>`;
+    }).join('');
+    artifacts.querySelectorAll('.polytank-inventory-artifact').forEach(button=>{
+      button.addEventListener('click',()=>{
+        const index=Math.max(0,Math.min(2,Number(button.getAttribute('data-index'))||0));
+        this.selectInventoryArtifactSlot(index);
+        this.selectInventoryItem(artifactIds[index]||'');
+      });
+    });
+    const visibleItems=items.slice(0,60);
+    const emptySlots=Math.max(0,18-visibleItems.length);
+    grid.innerHTML=visibleItems.map(item=>{
+      const equippedMain=item.slot!=='artifact'&&equipped[item.slot]===item.id;
+      const equippedArtifact=item.slot==='artifact'&&artifactIds.includes(item.id);
+      const typeIcon=this.getInventoryTypeIcon(item.slot);
+      return `<button type="button" class="polytank-inventory-card rarity-${item.rarity}${item.id===this.inventoryFocusItemId?' selected':''}${equippedMain||equippedArtifact?' equipped':''}" data-item-id="${item.id}"><span class="polytank-inventory-card-power">${this.getInventoryItemPower(item)}</span><span class="polytank-inventory-glyph">${item.glyph}</span><span class="polytank-inventory-card-name">${item.name}</span><span class="polytank-inventory-card-meta">${this.getInventorySlotLabel(item.slot,true)} • Lv ${item.itemLevel}</span>${typeIcon?`<span class="polytank-inventory-type-icon">${typeIcon}</span>`:''}</button>`;
+    }).join('')+Array.from({length:emptySlots},()=>'<div class="polytank-inventory-card empty" aria-hidden="true"><span class="polytank-inventory-card-x"></span></div>').join('');
+    grid.querySelectorAll('.polytank-inventory-card').forEach(card=>{
+      if(card.classList.contains('empty')) return;
+      card.addEventListener('click',()=>this.selectInventoryItem(card.getAttribute('data-item-id')||''));
+    });
+    const focusItem=this.getInventoryItem(this.inventoryFocusItemId)||visibleItems[0]||null;
+    if(focusItem&&!this.inventoryFocusItemId) this.inventoryFocusItemId=focusItem.id;
+    if(!focusItem){
+      detail.innerHTML='<div class="polytank-inventory-empty">No items yet. Destroy shapes to collect loot drops.</div>';
+      this.renderInventoryPreview();
+      return;
+    }
+    const equippedHere=focusItem.slot==='artifact'?artifactIds.includes(focusItem.id):equipped[focusItem.slot]===focusItem.id;
+    const salvageValue=this.getInventorySalvageValue(focusItem);
+    const powerValue=this.getInventoryItemPower(focusItem);
+    const barStats=[
+      ['Power',this.clamp(powerValue/300,0.08,1)],
+      ['Speed',this.clamp(((focusItem.stats.moveSpeedPct||0)+(focusItem.stats.bulletSpeedPct||0)+(1-(focusItem.stats.reloadMult??1)))*4.2,0.06,1)],
+      ['Area',this.clamp(((focusItem.stats.maxHpBonus||0)/500)+(focusItem.stats.bodyDamagePct||0)*2.6,0.06,1)],
+    ];
+    detail.innerHTML=`<div class="polytank-inventory-detail-head"><div><div class="polytank-inventory-detail-power">${powerValue}</div><div class="polytank-inventory-detail-rarity rarity-${focusItem.rarity}">${POLYTANK_LOOT_RARITY_META[focusItem.rarity]?.label||focusItem.rarity}</div></div><div class="polytank-inventory-detail-type">${this.getInventorySlotLabel(focusItem.slot)} Gear</div></div><div class="polytank-inventory-detail-name">${focusItem.name}</div><div class="polytank-inventory-detail-meta">Item Lv ${focusItem.itemLevel} • ${String(focusItem.source||'field').toUpperCase()}</div><div class="polytank-inventory-detail-stats">${this.formatInventoryStats(focusItem)}</div><div class="polytank-inventory-detail-bars">${barStats.map(([label,value])=>`<div class="polytank-inventory-bar-row"><span>${label}</span><i><b style="width:${(value*100).toFixed(1)}%"></b></i></div>`).join('')}</div><div class="polytank-inventory-detail-flavor">${focusItem.flavor}</div><div class="polytank-inventory-detail-actions"><button type="button" id="polytank-inventory-equip-btn">${equippedHere?'Equipped':'Equip'}</button><button type="button" id="polytank-inventory-salvage-btn">Salvage +${salvageValue}</button></div>`;
+    const equipBtn=document.getElementById('polytank-inventory-equip-btn');
+    if(equipBtn){
+      equipBtn.disabled=equippedHere;
+      equipBtn.addEventListener('click',()=>this.equipInventoryItem(focusItem.id));
+    }
+    const salvageBtn=document.getElementById('polytank-inventory-salvage-btn');
+    if(salvageBtn) salvageBtn.addEventListener('click',()=>this.salvageInventoryItem(focusItem.id));
+    this.renderInventoryPreview();
+  },
+  isBossNodeDefeated(nodeId){
+    return !!this.rpgProfile?.bossKills?.[nodeId];
+  },
+  markBossNodeDefeated(nodeId){
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    if(!this.rpgProfile.bossKills||typeof this.rpgProfile.bossKills!=='object') this.rpgProfile.bossKills={};
+    this.rpgProfile.bossKills[nodeId]=true;
+    const node=POLYTANK_PROGRESSION_NODES[nodeId];
+    if(node){
+      const unlocked=Array.isArray(this.rpgProfile.unlocked?.[node.tier])?this.rpgProfile.unlocked[node.tier]:[];
+      if(!unlocked.includes(nodeId)) unlocked.push(nodeId);
+      this.rpgProfile.unlocked[node.tier]=unlocked;
+    }
+    this.saveRpgProfile();
+  },
+  isDefaultBossPending(){
+    return this.progressionTier==='default'&&this.progressionRank===7&&!this.isBossNodeDefeated('default_7');
+  },
+  isProgressionNodeUnlocked(nodeId){
+    const node=POLYTANK_PROGRESSION_NODES[nodeId];
+    if(!node) return false;
+    const unlocked=this.rpgProfile?.unlocked?.[node.tier];
+    return Array.isArray(unlocked)&&unlocked.includes(nodeId);
+  },
+  showProgressionTooltip(anchor,text){
+    const tooltip=document.getElementById('polytank-difficulty-tooltip');
+    const shell=document.getElementById('polytank-difficulty-shell');
+    if(!tooltip||!shell||!anchor) return;
+    tooltip.textContent=text;
+    const shellRect=shell.getBoundingClientRect();
+    const anchorRect=anchor.getBoundingClientRect();
+    tooltip.style.left=`${Math.round(anchorRect.left-shellRect.left+anchorRect.width/2)}px`;
+    tooltip.style.top=`${Math.round(anchorRect.top-shellRect.top-12)}px`;
+    tooltip.classList.add('show');
+    clearTimeout(this.progressionTooltipTimer);
+    this.progressionTooltipTimer=setTimeout(()=>tooltip.classList.remove('show'),1300);
+  },
+  selectProgressionNodeById(nodeId,options={}){
+    const node=POLYTANK_PROGRESSION_NODES[nodeId]||POLYTANK_PROGRESSION_NODES.default_1;
+    return this.setProgressionSelection(node.tier,node.rank,options);
+  },
+  setProgressionSelection(tier,rank,options={}){
+    if(options.userInitiated&&this.isLocalPartyGuest()){
+      toast('Only the host can change local lobby mission settings.','#ffd38d');
+      return false;
+    }
+    const requestedTier=this.normalizeProgressionTier(tier);
+    let node=this.getProgressionNode(requestedTier,rank);
+    if(options.userInitiated&&requestedTier!==this.progressionTier&&!this.isProgressionNodeUnlocked(node.id)){
+      node=this.getClosestUnlockedProgressionNode(requestedTier,rank);
+    }
+    if(options.userInitiated&&!this.isProgressionNodeUnlocked(node.id)){
+      this.showProgressionTooltip(document.querySelector(`.polytank-difficulty-node[data-node-id="${node.id}"]`),'This node is still locked.');
+      return false;
+    }
+    const previousId=this.getProgressionNodeId(this.progressionTier,this.progressionRank);
+    this.progressionTier=node.tier;
+    this.progressionRank=node.rank;
+    this.progressionMissionId=node.id;
+    this.difficultyLevel=node.effectiveLevel;
+    if(!this.rpgProfile) this.rpgProfile=this.createDefaultRpgProfile();
+    this.rpgProfile.selectedNodeId=node.id;
+    if(options.persist!==false){
+      this.saveRpgProfile();
+      this.saveDifficultyLevel();
+    }
+    if(previousId!==node.id&&options.feedback!==false){
+      if(typeof shake==='function') shake('sm');
+      if(typeof navigator!=='undefined'&&typeof navigator.vibrate==='function') navigator.vibrate(12);
+    }
+    this.refreshDifficultyLeverUi({flash:previousId!==node.id&&options.flash!==false});
+    if(previousId!==node.id&&options.publish!==false&&this.localPartyCode&&this.localPartyRole==='host'&&this.localPartyState&&(!this.isUsingPartyServer()||this.localPartyState?.status==='lobby')) this.publishLocalPartyState(true);
+    if(previousId!==node.id&&options.userInitiated&&options.toast!==false){
+      const tierMeta=POLYTANK_PROGRESSION_TIER_META[node.tier];
+      const mods=this.getDifficultyMultipliers(node.effectiveLevel);
+      toast(`${tierMeta.label} ${node.roman} locked in. Threat multiplier x${mods.hpMultiplier.toFixed(2)}.`,tierMeta.accent);
+    }
+    this.refreshMenuState();
+    return previousId!==node.id;
+  },
+  normalizeDifficultyLevel(value){
+    return this.clamp(Math.round(Number(value)||1),1,POLYTANK_PROGRESSION_TIERS.length*this.difficultyRomanNumerals.length);
+  },
+  loadDifficultyLevel(){
+    let raw='';
+    try{ raw=localStorage.getItem(this.difficultyStorageKey)||''; }catch(_err){}
+    this.difficultyLevel=this.normalizeDifficultyLevel(raw||this.difficultyLevel||1);
+    this.setDifficultyLevel(this.difficultyLevel,{persist:false,publish:false,feedback:false,flash:false,toast:false});
+    return this.difficultyLevel;
+  },
+  saveDifficultyLevel(){
+    try{ localStorage.setItem(this.difficultyStorageKey,String(this.normalizeDifficultyLevel(this.difficultyLevel))); }catch(_err){}
+  },
+  getDifficultyRoman(level=this.difficultyLevel){
+    return this.difficultyRomanNumerals[this.getProgressionRankFromLevel(level)-1]||'I';
+  },
+  getDifficultyMultipliers(level=this.difficultyLevel){
+    const normalized=this.normalizeDifficultyLevel(level);
+    const multiplier=Math.pow(1.5,normalized-1);
+    const rewardMultiplier=1+(normalized-1)*0.4;
+    return {hpMultiplier:multiplier,damageMultiplier:multiplier,rewardMultiplier};
+  },
+  getAiDifficultyMultipliers(level=this.difficultyLevel){
+    const threat=this.getDifficultyMultipliers(level).hpMultiplier;
+    return {
+      hpMultiplier:Math.max(1,Math.pow(threat,0.4)),
+      damageMultiplier:Math.max(1,Math.pow(threat,0.35)),
+    };
+  },
+  getNonPlayerDamageMultiplier(level=this.difficultyLevel){
+    return this.getAiDifficultyMultipliers(level).damageMultiplier;
+  },
+  isPlayerControlledDamageSource(ownerId=''){
+    if(!ownerId) return false;
+    if(this.player&&ownerId===this.player.id) return true;
+    const dominator=this.getControlledDominator();
+    return !!(dominator&&ownerId===dominator.id);
+  },
+  scaleDamageFromSource(amount,ownerId='',ownerTeam=''){
+    const numericAmount=Number(amount)||0;
+    if(numericAmount<=0) return 0;
+    if(this.isPlayerControlledDamageSource(ownerId)) return numericAmount;
+    return numericAmount*this.getNonPlayerDamageMultiplier();
+  },
+  applyDamageToShape(shapeIndex,shape,amount,ownerId='',ownerTeam='',options={}){
+    if(!shape||shapeIndex<0||amount<=0) return false;
+    const scaledAmount=this.scaleDamageFromSource(amount,ownerId,ownerTeam);
+    if(scaledAmount<=0) return false;
+    const actualDamage=Math.min(shape.hp,scaledAmount);
+    shape.hp=Math.max(0,shape.hp-scaledAmount);
+    shape.lastHitId=ownerId||'';
+    shape.lastHitTeam=ownerTeam||'';
+    shape.barTimer=options.barTimer??2;
+    shape.damageFlash=options.damageFlash??1;
+    shape.hitFade=options.hitFade??1;
+    if(options.awardXp!==false&&ownerId) this.awardDamageXp(shape,ownerId,actualDamage,shape.xp);
+    if(options.showNumber) this.spawnDamageNumber(options.numberX??shape.x,options.numberY??shape.y,scaledAmount,options.numberColor||this.darkenColor(shape.color,.88));
+    if(shape.hp<=0){
+      this.destroyShape(shapeIndex,shape,ownerId,ownerTeam);
+      return true;
+    }
+    return false;
+  },
+  getDifficultyAccent(level=this.difficultyLevel){
+    return POLYTANK_PROGRESSION_TIER_META[this.getProgressionTierFromLevel(level)]?.accent||'#7fd1ff';
+  },
+  applyDifficultyToAiTank(tank,level=this.difficultyLevel){
+    if(!tank||!tank.isBot||tank.specialRole||tank.isArenaBoss) return tank;
+    const mods=this.getAiDifficultyMultipliers(level);
+    tank.maxHp=Math.max(1,Math.round((Number(tank.maxHp)||1)*mods.hpMultiplier));
+    tank.hp=Math.min(tank.maxHp,Math.max(1,Math.round((Number(tank.hp)||tank.maxHp||1)*mods.hpMultiplier)));
+    tank.aiDifficultyLevel=this.normalizeDifficultyLevel(level);
+    return tank;
+  },
+  applyDifficultyToShape(shape,level=this.difficultyLevel){
+    if(!shape) return shape;
+    const mods=this.getDifficultyMultipliers(level);
+    shape.maxHp=Math.max(1,Math.round((Number(shape.maxHp)||0)*mods.hpMultiplier));
+    shape.hp=shape.maxHp;
+    shape.xp=Math.max(1,Math.round((Number(shape.xp)||0)*mods.rewardMultiplier));
+    shape.difficultyLevel=this.normalizeDifficultyLevel(level);
+    return shape;
+  },
+  toggleDifficultyTierMenu(force){
+    const menu=document.getElementById('polytank-difficulty-tier-menu');
+    const button=document.getElementById('polytank-difficulty-tier-toggle');
+    this.difficultyTierMenuOpen=typeof force==='boolean'?force:!this.difficultyTierMenuOpen;
+    if(menu) menu.classList.toggle('open',this.difficultyTierMenuOpen);
+    if(button) button.classList.toggle('active',this.difficultyTierMenuOpen);
+    if(this.difficultyTierMenuOpen&&menu) this.animatePopup(menu);
+  },
+  bindDifficultyLever(){
+    const slider=document.getElementById('polytank-difficulty-slider');
+    const track=document.getElementById('polytank-difficulty-track');
+    const nodes=document.getElementById('polytank-difficulty-nodes');
+    const tierMenu=document.getElementById('polytank-difficulty-tier-menu');
+    if(!slider||!track||!nodes||!tierMenu||slider.dataset.bound==='1') return;
+    slider.dataset.bound='1';
+    if(!tierMenu.children.length){
+      tierMenu.innerHTML=POLYTANK_PROGRESSION_TIERS.map(tier=>`<button type="button" class="polytank-difficulty-tier-option" data-tier="${tier}">${POLYTANK_PROGRESSION_TIER_META[tier].label}</button>`).join('');
+    }
+    const renderNodes=()=>{
+      nodes.innerHTML=this.difficultyRomanNumerals.map((roman,index)=>{
+        const node=this.getProgressionNode(this.progressionTier,index+1);
+        return `<button type="button" class="polytank-difficulty-node${node.isBoss?' boss-node':''}" data-node-id="${node.id}" data-rank="${node.rank}" style="left:${(index/(this.difficultyRomanNumerals.length-1))*100}%"><span class="polytank-difficulty-node-roman">${roman}</span><span class="polytank-difficulty-node-caption">${node.isBoss?'Boss':'Mission'}</span></button>`;
+      }).join('');
+    };
+    const rankFromClientX=clientX=>{
+      const rect=nodes.getBoundingClientRect();
+      const ratio=this.clamp((clientX-rect.left)/Math.max(1,rect.width),0,1);
+      return this.normalizeProgressionRank(1+ratio*(this.difficultyRomanNumerals.length-1));
+    };
+    const finalizeDrag=()=>{
+      if(!this.difficultyLeverDragging) return;
+      this.difficultyLeverDragging=false;
+      slider.classList.remove('dragging');
+      this.difficultyLeverPointerId=null;
+      if(this.difficultyLeverDragChanged){
+        const shapeMods=this.getDifficultyMultipliers();
+        const aiMods=this.getAiDifficultyMultipliers();
+        toast(`${POLYTANK_PROGRESSION_TIER_META[this.progressionTier].label} ${this.getDifficultyRoman()} locked in. Shapes x${shapeMods.hpMultiplier.toFixed(2)}, AI x${aiMods.hpMultiplier.toFixed(2)}.`,this.getDifficultyAccent());
+      }
+      this.difficultyLeverDragChanged=false;
+    };
+    renderNodes();
+    tierMenu.addEventListener('click',event=>{
+      const tierTarget=event.target instanceof Element?event.target.closest('.polytank-difficulty-tier-option'):null;
+      if(!tierTarget) return;
+      event.preventDefault();
+      this.toggleDifficultyTierMenu(false);
+      this.setProgressionSelection(tierTarget.getAttribute('data-tier'),this.progressionRank,{userInitiated:true});
+    });
+    slider.addEventListener('click',event=>{
+      const target=event.target instanceof Element?event.target.closest('.polytank-difficulty-node'):null;
+      if(!target) return;
+      event.preventDefault();
+      const nodeId=target.getAttribute('data-node-id')||'';
+      if(!this.isProgressionNodeUnlocked(nodeId)){
+        this.showProgressionTooltip(target,'This node is still locked.');
+        return;
+      }
+      this.selectProgressionNodeById(nodeId,{userInitiated:true});
+    });
+    slider.addEventListener('pointerdown',event=>{
+      if(this.isLocalPartyGuest()){
+        toast('Only the host can change local lobby difficulty settings.','#ffd38d');
+        return;
+      }
+      if(event.target instanceof Element&&event.target.closest('#polytank-difficulty-tier-toggle,#polytank-difficulty-tier-menu')) return;
+      event.preventDefault();
+      this.difficultyLeverDragging=true;
+      this.difficultyLeverDragChanged=false;
+      this.difficultyLeverPointerId=event.pointerId;
+      slider.classList.add('dragging');
+      if(slider.setPointerCapture) slider.setPointerCapture(event.pointerId);
+      const changed=this.setProgressionSelection(this.progressionTier,rankFromClientX(event.clientX),{userInitiated:true,toast:false});
+      this.difficultyLeverDragChanged=this.difficultyLeverDragChanged||changed;
+    });
+    slider.addEventListener('pointermove',event=>{
+      if(!this.difficultyLeverDragging||event.pointerId!==this.difficultyLeverPointerId) return;
+      event.preventDefault();
+      const changed=this.setProgressionSelection(this.progressionTier,rankFromClientX(event.clientX),{userInitiated:true,toast:false});
+      this.difficultyLeverDragChanged=this.difficultyLeverDragChanged||changed;
+    });
+    slider.addEventListener('pointerup',event=>{
+      if(event.pointerId!==this.difficultyLeverPointerId) return;
+      if(slider.releasePointerCapture){ try{ slider.releasePointerCapture(event.pointerId); }catch(_err){} }
+      finalizeDrag();
+    });
+    slider.addEventListener('pointercancel',finalizeDrag);
+    slider.addEventListener('keydown',event=>{
+      if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'&&event.key!=='ArrowDown'&&event.key!=='ArrowUp'&&event.key!=='Home'&&event.key!=='End') return;
+      event.preventDefault();
+      let tier=this.progressionTier;
+      let rank=this.progressionRank;
+      if(event.key==='Home') rank=1;
+      else if(event.key==='End') rank=this.difficultyRomanNumerals.length;
+      else if(event.key==='ArrowLeft') rank-=1;
+      else if(event.key==='ArrowRight') rank+=1;
+      else if(event.key==='ArrowUp') tier=POLYTANK_PROGRESSION_TIERS[Math.max(0,POLYTANK_PROGRESSION_TIERS.indexOf(this.progressionTier)-1)]||this.progressionTier;
+      else if(event.key==='ArrowDown') tier=POLYTANK_PROGRESSION_TIERS[Math.min(POLYTANK_PROGRESSION_TIERS.length-1,POLYTANK_PROGRESSION_TIERS.indexOf(this.progressionTier)+1)]||this.progressionTier;
+      this.setProgressionSelection(tier,rank,{userInitiated:true});
+    });
+    this.renderDifficultySliderNodes=renderNodes;
+  },
+  refreshDifficultyLeverUi(options={}){
+    const slider=document.getElementById('polytank-difficulty-slider');
+    const shell=document.getElementById('polytank-difficulty-shell');
+    if(!slider||!shell) return;
+    const node=this.getProgressionNode();
+    const tierMeta=POLYTANK_PROGRESSION_TIER_META[node.tier];
+    const accent=tierMeta.accent;
+    const level=this.normalizeDifficultyLevel(node.effectiveLevel);
+    const mods=this.getDifficultyMultipliers(level);
+    const aiMods=this.getAiDifficultyMultipliers(level);
+    if(typeof this.renderDifficultySliderNodes==='function') this.renderDifficultySliderNodes();
+    shell.style.setProperty('--polytank-difficulty-progress',String((node.rank-1)/Math.max(1,this.difficultyRomanNumerals.length-1)));
+    shell.style.setProperty('--polytank-difficulty-accent',accent);
+    shell.style.setProperty('--polytank-difficulty-accent-soft',`${accent}55`);
+    slider.setAttribute('aria-valuenow',String(level));
+    slider.setAttribute('aria-valuetext',`${tierMeta.label} ${node.roman}`);
+    const tierNameEl=document.getElementById('polytank-difficulty-tier-name');
+    const handleLabel=document.getElementById('polytank-difficulty-handle-label');
+    const levelEl=document.getElementById('polytank-difficulty-level');
+    const hpEl=document.getElementById('polytank-difficulty-hp');
+    const dmgEl=document.getElementById('polytank-difficulty-dmg');
+    const lootEl=document.getElementById('polytank-difficulty-loot');
+    const summary=document.getElementById('polytank-difficulty-summary');
+    const banner=document.getElementById('polytank-difficulty-banner');
+    if(tierNameEl) tierNameEl.textContent=tierMeta.label;
+    if(handleLabel) handleLabel.textContent=node.roman;
+    if(levelEl) levelEl.textContent=`${tierMeta.label} ${node.roman}`;
+    if(hpEl) hpEl.textContent=`x${mods.hpMultiplier.toFixed(2)}`;
+    if(dmgEl) dmgEl.textContent=`x${aiMods.damageMultiplier.toFixed(2)}`;
+    if(lootEl) lootEl.textContent=`x${mods.rewardMultiplier.toFixed(2)}`;
+    if(summary) summary.textContent=`${tierMeta.summary} ${node.label} scales shape hull at x${mods.hpMultiplier.toFixed(2)} and AI hull/damage at x${aiMods.hpMultiplier.toFixed(2)}/x${aiMods.damageMultiplier.toFixed(2)}.`;
+    if(banner) banner.textContent=node.isBoss?`${tierMeta.label.toUpperCase()} BOSS GATE`:`${tierMeta.label.toUpperCase()} ROUTE`;
+    shell.querySelectorAll('.polytank-difficulty-tier-option').forEach(option=>{
+      const tier=option.getAttribute('data-tier')||'';
+      option.classList.toggle('active',tier===node.tier);
+    });
+    shell.querySelectorAll('.polytank-difficulty-node').forEach(nodeEl=>{
+      const nodeId=nodeEl.getAttribute('data-node-id')||'';
+      const unlocked=this.isProgressionNodeUnlocked(nodeId);
+      const active=nodeId===node.id;
+      const nodeData=POLYTANK_PROGRESSION_NODES[nodeId];
+      nodeEl.classList.toggle('active',active);
+      nodeEl.classList.toggle('unlocked',unlocked);
+      nodeEl.classList.toggle('locked',!unlocked);
+      nodeEl.classList.toggle('passed',!!nodeData&&nodeData.effectiveLevel<node.effectiveLevel);
+      nodeEl.classList.toggle('boss-pending',!!nodeData?.isBoss&&!this.isBossNodeDefeated(nodeId));
+      if(active&&options.flash!==false){
+        nodeEl.classList.remove('snap-flash');
+        void nodeEl.offsetWidth;
+        nodeEl.classList.add('snap-flash');
+      }
+    });
+  },
+  setDifficultyLevel(level,options={}){
+    return this.setProgressionSelection(this.getProgressionTierFromLevel(level),this.getProgressionRankFromLevel(level),options);
   },
   bind(){
     if(this.initialized) return;
     this.overlayEl=document.getElementById('polytank-overlay');
     if(this.overlayEl&&this.overlayEl.parentElement!==document.body) document.body.appendChild(this.overlayEl);
+    this.difficultyShellEl=document.getElementById('polytank-difficulty-shell');
+    if(this.difficultyShellEl&&this.difficultyShellEl.parentElement!==document.body){
+      document.body.appendChild(this.difficultyShellEl);
+      this.difficultyShellEl.style.display=this.menuOpen?'block':'none';
+    }
     this.bossPanelEl=document.getElementById('polytank-boss-panel');
     this.sandboxPanelEl=document.getElementById('polytank-sandbox-panel');
     this.sandboxToggleEl=document.getElementById('polytank-sandbox-toggle');
@@ -15351,6 +16365,8 @@ const POLYTANK_IO={
     this.ctx=this.canvas.getContext('2d');
     this.minimapCtx=this.minimapCanvas?this.minimapCanvas.getContext('2d'):null;
     this.setupMobileControls();
+    this.loadRpgProfile();
+    this.bindDifficultyLever();
     this.bindModeSelectNative();
     this.bindModeWheel();
     window.addEventListener('resize',()=>{ if(this.active) this.resize(); });
@@ -15370,6 +16386,15 @@ const POLYTANK_IO={
       }
       if(!this.active||!this.inMatch||this.menuOpen||event.button!==0) return;
       if(event.target&&typeof event.target.closest==='function'&&(event.target.closest('#polytank-upgrade-dock')||event.target.closest('#polytank-topbar')||event.target.closest('#polytank-boss-panel')||event.target.closest('#polytank-sandbox-panel')||event.target.closest('#polytank-sandbox-toggle'))) return;
+      if(this.canvas&&event.target===this.canvas){
+        const rect=this.canvas.getBoundingClientRect();
+        const screenX=this.clamp(event.clientX-rect.left,0,rect.width||this.W);
+        const screenY=this.clamp(event.clientY-rect.top,0,rect.height||this.H);
+        if(this.tryCollectWorldDropAtScreenPosition(screenX,screenY)){
+          event.preventDefault();
+          return;
+        }
+      }
       this.pointer.down=true;
       this.tryAdminTakeoverByClick(event.clientX,event.clientY);
     });
@@ -15383,6 +16408,11 @@ const POLYTANK_IO={
       if(!this.menuOpen||!this.settingsPanelOpen) return;
       if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-settings-panel,#polytank-settings-btn')) return;
       this.toggleSettingsPanel(false);
+    });
+    document.addEventListener('pointerdown',event=>{
+      if(!this.menuOpen||!this.difficultyTierMenuOpen) return;
+      if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-difficulty-tier-picker')) return;
+      this.toggleDifficultyTierMenu(false);
     });
     const nameInput=document.getElementById('polytank-name-input');
     if(nameInput){
@@ -15398,6 +16428,7 @@ const POLYTANK_IO={
     this.populateBossPanel();
     this.populateSandboxPanel();
     this.syncVariantUi();
+    this.refreshDifficultyLeverUi({flash:false});
     this.initialized=true;
   },
   isLandscapeOrientation(){
@@ -16211,11 +17242,15 @@ const POLYTANK_IO={
         ?'Connecting to the room server...'
         :'Start a room or join by code')
       :(pausedSession?'Press Esc to resume the match':'Press Enter to deploy or resume');
-    if(playButton) playButton.textContent=pausedSession
-      ?'Resume Match'
-      :(localPartyActive&&usingPartyServer
-        ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
-        :(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play')));
+    const bossPending=!pausedSession&&!localPartyActive&&this.isDefaultBossPending();
+    if(playButton){
+      playButton.textContent=pausedSession
+        ?'Resume Match'
+        :(localPartyActive&&usingPartyServer
+          ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
+          :(bossPending?'Fight Default Boss':(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play'))));
+      playButton.classList.toggle('boss-pending',bossPending);
+    }
     if(leaveMatchButton){
       leaveMatchButton.style.display=pausedSession?'inline-flex':'none';
       leaveMatchButton.disabled=false;
@@ -16287,6 +17322,7 @@ const POLYTANK_IO={
     this.renderLocalPartyRoster();
     this.renderLocalPartyPreview();
     this.updateCircleMenuLiveReadouts(0);
+    this.refreshDifficultyLeverUi({flash:false});
   },
   openPartyLobby(){
     if(this.overlayEl&&this.menuOpen) this.overlayEl.classList.add('waiting-room');
@@ -16316,7 +17352,8 @@ const POLYTANK_IO={
       ?Math.max(1,Math.round(this.networkPingMs||0))
       :this.clamp(Math.round(16+Math.abs(Math.sin(t*0.62))*11+(this.localPartyCode?4:0)),8,64);
     const threatBias=this.isMothershipMode()?12:this.isBreakoutMode()?7:this.isCtfMode()?4:0;
-    const threat=this.clamp(Math.round(29+Math.cos(t*1.04)*10+Math.sin(t*1.92)*6+threatBias),9,87);
+    const difficultyThreatBias=(this.normalizeDifficultyLevel(this.difficultyLevel)-1)*3.5;
+    const threat=this.clamp(Math.round(29+Math.cos(t*1.04)*10+Math.sin(t*1.92)*6+threatBias+difficultyThreatBias),9,99);
     if(densityEl) densityEl.textContent=`${density}%`;
     if(pingEl) pingEl.textContent=hasLivePing?`${ping} ms`:`${ping} ms`;
     if(threatEl) threatEl.textContent=`${threat}%`;
@@ -16380,11 +17417,11 @@ const POLYTANK_IO={
       return;
     }
     this.overlayEl.classList.add('launch-transition');
-    setTimeout(()=>{
+    __nativeSetTimeout(()=>{
       if(this.overlayEl) this.overlayEl.classList.add('game-blur');
       next();
-      setTimeout(()=>{ if(this.overlayEl) this.overlayEl.classList.remove('game-blur'); },520);
-      setTimeout(()=>{ if(this.overlayEl) this.overlayEl.classList.remove('launch-transition'); },620);
+      __nativeSetTimeout(()=>{ if(this.overlayEl) this.overlayEl.classList.remove('game-blur'); },520);
+      __nativeSetTimeout(()=>{ if(this.overlayEl) this.overlayEl.classList.remove('launch-transition'); },620);
     },460);
   },
   canUsePartyServer(){
@@ -16420,10 +17457,15 @@ const POLYTANK_IO={
     return fallback;
   },
   createPartySettingsPayload(){
+    const node=this.getProgressionNode();
     return {
       gameVariant:this.normalizeGameVariant(this.gameVariant),
       aiEnabled:true,
       hostTeam:this.playerTeam,
+      progressionTier:node.tier,
+      progressionRank:node.rank,
+      missionId:node.id,
+      difficultyLevel:this.normalizeDifficultyLevel(node.effectiveLevel),
     };
   },
   resetNetworkTelemetry(){
@@ -17556,6 +18598,8 @@ const POLYTANK_IO={
     this.localPartyState=room;
     const self=Array.isArray(room.members)?room.members.find(member=>member.id===this.ensureLocalPartyClient()):null;
     if(self) this.localPartyMember={...(this.localPartyMember||{}),...self};
+    if(room.settings?.progressionTier&&room.settings?.progressionRank!=null) this.setProgressionSelection(room.settings.progressionTier,room.settings.progressionRank,{persist:true,publish:false,feedback:false,flash:false,toast:false});
+    else if(room.settings&&room.settings.difficultyLevel!=null) this.setDifficultyLevel(room.settings.difficultyLevel,{persist:true,publish:false,feedback:false,flash:false,toast:false});
     if(room.settings?.gameVariant&&!this.inMatch){
       this.gameVariant=this.normalizeGameVariant(room.settings.gameVariant);
       if(room.settings.hostTeam&&(this.localPartyRole==='host'||!this.localPartyCode)) this.playerTeam=room.settings.hostTeam;
@@ -17582,14 +18626,13 @@ const POLYTANK_IO={
       const room=this.localPartyState||{
         code:this.localPartyCode,
         hostId:this.ensureLocalPartyClient(),
-        settings:{gameVariant:this.gameVariant,aiEnabled:true,hostTeam:this.playerTeam},
+        settings:{...this.createPartySettingsPayload()},
         members:[],
       };
       room.settings={
         ...room.settings,
-        gameVariant:this.gameVariant,
+        ...this.createPartySettingsPayload(),
         aiEnabled:room.settings?.aiEnabled!==false,
-        hostTeam:this.playerTeam,
       };
       this.upsertLocalPartyMember(room,this.localPartyMember||this.createLocalPartyMember({isHost:true,teamPref:'host'}));
       this.pruneLocalPartyMembers(room);
@@ -17680,7 +18723,7 @@ const POLYTANK_IO={
       code,
       hostId:this.localPartyClientId,
       updatedAt:Date.now(),
-      settings:{gameVariant:this.gameVariant,aiEnabled:true,hostTeam:this.playerTeam},
+      settings:{...this.createPartySettingsPayload()},
       members:[],
     };
     this.publishLocalPartyState(true);
@@ -18031,10 +19074,15 @@ const POLYTANK_IO={
   },
   buildProgressSnapshot(){
     if(!this.player||!this.inMatch) return null;
+    const node=this.getProgressionNode();
     return {
       version:1,
       savedAt:Date.now(),
       gameVariant:this.gameVariant,
+      progressionTier:node.tier,
+      progressionRank:node.rank,
+      progressionMissionId:node.id,
+      difficultyLevel:this.normalizeDifficultyLevel(node.effectiveLevel),
       playerTeam:this.playerTeam,
       playerName:this.playerName,
       world:{...this.world},
@@ -18088,6 +19136,8 @@ const POLYTANK_IO={
   applyProgressSnapshot(snapshot){
     if(!snapshot||!snapshot.player) return false;
     this.gameVariant=this.normalizeGameVariant(snapshot.gameVariant);
+    if(snapshot.progressionTier&&snapshot.progressionRank!=null) this.setProgressionSelection(snapshot.progressionTier,snapshot.progressionRank,{persist:true,publish:false,feedback:false,flash:false,toast:false});
+    else this.setDifficultyLevel(snapshot.difficultyLevel||1,{persist:true,publish:false,feedback:false,flash:false,toast:false});
     this.playerTeam=this.gameVariant==='mothership'||this.gameVariant==='sandbox'||this.gameVariant==='ffa'
       ?'blue'
       :(snapshot.playerTeam==='red'?'red':snapshot.playerTeam==='green'?'green':snapshot.playerTeam==='purple'?'purple':'blue');
@@ -18152,9 +19202,10 @@ const POLYTANK_IO={
     return true;
   },
   leaveToLobby(){
-    if(this.inMatch) this.saveProgress();
+    if(this.inMatch&&!this.bossEncounterActive) this.saveProgress();
     this.setPausedByMenu(false);
     this.inMatch=false;
+    this.bossEncounterActive=false;
     this.pointer.down=false;
     cancelAnimationFrame(this.raf);
     this.raf=0;
@@ -18162,6 +19213,14 @@ const POLYTANK_IO={
     this.toggleBossPanel(false);
     this.closeClassChoice();
     this.setUpgradeDockVisible(false,'left');
+    const hud=document.getElementById('polytank-encounter-hud');
+    if(hud) hud.style.display='none';
+    const backBtn=document.getElementById('polytank-explore-back-btn');
+    if(backBtn) backBtn.style.display='none';
+    const popup=document.getElementById('polytank-boss-victory');
+    if(popup) popup.style.display='none';
+    const replayPopup=document.getElementById('polytank-boss-replay-choice');
+    if(replayPopup) replayPopup.style.display='none';
     this.toggleMenu(true);
     this.syncVariantUi();
   },
@@ -18545,7 +19604,7 @@ const POLYTANK_IO={
     const wheelLabel=document.getElementById('polytank-mode-wheel-label');
     if(wheelLabel) wheelLabel.textContent=activeLabel;
     const mobileSummary=document.getElementById('polytank-mobile-mode-summary');
-    if(mobileSummary) mobileSummary.textContent=`Game mode: ${activeLabel}`;
+    if(mobileSummary) mobileSummary.textContent=`Game mode: ${activeLabel} • Recommended Power ${Math.max(1,Math.round(activeDef?.recommendedPower||1))}`;
     const nativeSelect=document.getElementById('polytank-mode-select-native');
     if(nativeSelect){
       nativeSelect.value=activeVariant;
@@ -18687,8 +19746,8 @@ const POLYTANK_IO={
   },
   toggleModeDropdown(force){
     const wheel=document.getElementById('polytank-mode-wheel');
-    this.modeDropdownOpen=true;
-    if(wheel) wheel.classList.add('open');
+    this.modeDropdownOpen=typeof force==='boolean'?force:!this.modeDropdownOpen;
+    if(wheel) wheel.classList.toggle('open',this.modeDropdownOpen);
     this.renderModeWheel();
   },
   showAchievementsTeaser(){
@@ -18732,10 +19791,12 @@ const POLYTANK_IO={
     const modeLabel=document.getElementById('polytank-preview-mode');
     const mapLabel=document.getElementById('polytank-preview-map');
     const hudLabel=document.getElementById('polytank-preview-hud');
+    const powerLabel=document.getElementById('polytank-preview-power');
     const variant=this.getGameVariantDef();
     if(modeLabel) modeLabel.textContent=variant.label;
     if(mapLabel) mapLabel.textContent=variant.map;
     if(hudLabel) hudLabel.textContent=variant.hud;
+    if(powerLabel) powerLabel.textContent=String(Math.max(1,Math.round(variant.recommendedPower||1)));
   },
   syncVariantUi(){
     if(this.overlayEl) this.overlayEl.classList.toggle('sandbox-mode',this.isSandboxMode());
@@ -18758,7 +19819,8 @@ const POLYTANK_IO={
       return opts?`<optgroup label="${group.label}">${opts}</optgroup>`:'';
     }).join('');
     const shapeOptions=Object.keys(this.shapeDefs).map(kind=>`<option value="${kind}">${kind.charAt(0).toUpperCase()+kind.slice(1)}</option>`).join('');
-    const bossOptions=this.bossHotkeyKeys.map(key=>`<option value="${key}">${(ADMIN_ITEMS[key]?.label)||key}</option>`).join('');
+    const sandboxBossKeys=this.bossHotkeyKeys.filter(key=>key!=='beta_pentagon'||adminUnlocked||this.isBossNodeDefeated('default_7'));
+    const bossOptions=sandboxBossKeys.map(key=>`<option value="${key}">${key==='beta_pentagon'?this.DEFAULT_BOSS_NAME:(ADMIN_ITEMS[key]?.label)||key}</option>`).join('');
     const playerClass=document.getElementById('polytank-sandbox-player-class');
     const aiClass=document.getElementById('polytank-sandbox-ai-class');
     const shapeSelect=document.getElementById('polytank-sandbox-shape');
@@ -18820,6 +19882,7 @@ const POLYTANK_IO={
     const menu=document.getElementById('polytank-menu');
     const menuCard=document.getElementById('polytank-menu-card');
     const input=document.getElementById('polytank-name-input');
+    if(this.difficultyShellEl) this.difficultyShellEl.style.display=this.menuOpen?'block':'none';
     if(this.overlayEl) this.overlayEl.classList.toggle('menu-open',this.menuOpen);
     if(this.overlayEl&&!this.menuOpen) this.overlayEl.classList.remove('waiting-room');
     else if(this.overlayEl&&this.localPartyCode) this.overlayEl.classList.add('waiting-room');
@@ -18866,6 +19929,11 @@ const POLYTANK_IO={
   },
   onKeyDown(event){
     if(!this.active) return;
+    if(event.code==='Escape'&&this.inventoryOpen){
+      event.preventDefault();
+      this.closeInventory();
+      return;
+    }
     if(event.code==='Escape'){
       event.preventDefault();
       if(this.inMatch&&this.player&&this.player.deadTimer>0&&this.deathSpectateTargetId){
@@ -18894,9 +19962,20 @@ const POLYTANK_IO={
         event.preventDefault();
         this.startMatch();
       }
+      if(event.code==='KeyI'){
+        event.preventDefault();
+        this.toggleInventory();
+      }
       return;
     }
     if(!this.inMatch) return;
+    if(event.code==='KeyI'){
+      event.preventDefault();
+      this.setPausedByMenu(true);
+      this.toggleMenu(true);
+      this.openInventory();
+      return;
+    }
     if(this.player&&this.player.deadTimer>0){
       if(event.code==='KeyC'){
         event.preventDefault();
@@ -19114,6 +20193,7 @@ const POLYTANK_IO={
         }).join('')
       : '';
     const summonList=this.specialTankPanelOpen?'':this.bossHotkeyKeys.map(key=>{
+      if(key==='beta_pentagon') return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.hotkeySummonBoss('${key}')">${this.DEFAULT_BOSS_NAME}</button>`;
       const item=ADMIN_ITEMS[key];
       if(!item) return '';
       return `<button class="polytank-boss-btn" onclick="POLYTANK_IO.hotkeySummonBoss('${key}')">${item.label}</button>`;
@@ -19299,7 +20379,8 @@ const POLYTANK_IO={
   },
   startMatch(options={}){
     if(!this.active) return;
-    if(this.inMatch&&this.menuOpen){
+    if(this.inMatch&&this.menuOpen&&!options.forceFresh){
+      this.closeInventory();
       this.setPausedByMenu(false);
       this.toggleMenu(false);
       return;
@@ -19333,11 +20414,16 @@ const POLYTANK_IO={
       toast('Polytank.io progress restored.','#9feaff');
       return;
     }
+    if(!options.bossReplayChoiceMade&&!this.inMatch&&this.progressionTier==='default'&&this.progressionRank===7&&this.isBossNodeDefeated('default_7')){
+      this.showBossReplayChoice();
+      return;
+    }
     this.requestFullscreenIfAvailable();
     this.triggerLaunchTransition(()=>{
       if(forceFresh) this.clearProgress();
       if(this.overlayEl) this.overlayEl.classList.remove('waiting-room');
       this.setPausedByMenu(false);
+      this.closeInventory();
       this.toggleMenu(false);
       this.inMatch=true;
       this.pointer.down=false;
@@ -19345,6 +20431,7 @@ const POLYTANK_IO={
       this.setUpgradeDockVisible(false,'left');
       this.setZoom(1,true);
       this.resize();
+      this.bossEncounterActive=this.progressionTier==='default'&&this.progressionRank===7&&(!!options.forceBossReplay||!this.isBossNodeDefeated('default_7'));
       this.resetRun();
       this.syncVariantUi();
       this.lastTime=performance.now();
@@ -19367,6 +20454,17 @@ const POLYTANK_IO={
     }
     if(key==='polytank_alpha'){
       this.spawnArenaBoss(key);
+      return;
+    }
+    if(key==='beta_pentagon'){
+      const angle=Math.random()*Math.PI*2;
+      const distance=260+Math.random()*340;
+      const spawnX=this.clamp((this.player?.x||this.world.midX)+Math.cos(angle)*distance,620,this.world.w-620);
+      const spawnY=this.clamp((this.player?.y||this.world.midY)+Math.sin(angle)*distance,360,this.world.h-360);
+      const boss=this.createDefaultBossEntity(spawnX,spawnY);
+      this.summonedBosses.push(boss);
+      flashScreen('rgba(127,148,244,.18)',140);
+      toast(`Boss spawned: ${boss.label}.`,boss.bulletColor);
       return;
     }
     this.spawnArenaBoss(key);
@@ -19433,6 +20531,7 @@ const POLYTANK_IO={
     cancelAnimationFrame(this.raf);
     this.raf=0;
     this.toggleMenu(true);
+    this.closeInventory();
     if(this.localPartyCode) this.startLocalPartyLoop();
     this.refreshMenuState();
   },
@@ -19457,6 +20556,7 @@ const POLYTANK_IO={
       this.overlayEl.classList.remove('game-blur');
     }
     this.manualUpgradeDock=false;
+    this.closeInventory();
     this.toggleMenu(false);
     this.setUpgradeDockVisible(false,'left');
     this.toggleBossPanel(false);
@@ -19505,6 +20605,12 @@ const POLYTANK_IO={
     const mass=Math.max(32,(tank.r||28)*(tank.hitboxScale||1)*(tank.isArenaBoss?2.6:tank.isDominator?2.2:1.45));
     tank.vx+=(impulseX/mass)*scale;
     tank.vy+=(impulseY/mass)*scale;
+    const maxSpeed=(tank.moveSpeed||220)*3;
+    const speed=Math.hypot(tank.vx,tank.vy);
+    if(speed>maxSpeed){
+      tank.vx=(tank.vx/speed)*maxSpeed;
+      tank.vy=(tank.vy/speed)*maxSpeed;
+    }
   },
   ensureBulletMotionProfile(bullet){
     if(!bullet||bullet.motionProfileReady) return;
@@ -19519,7 +20625,10 @@ const POLYTANK_IO={
   getXpNextForLevel(level){
     let xpNext=24;
     const capped=Math.max(1,Math.floor(level||1));
-    for(let current=1;current<capped;current++) xpNext=Math.round(xpNext*1.2+8);
+    for(let current=1;current<capped;current++){
+      const higherLevelTax=Math.max(0,current-12)*0.8+Math.max(0,current-28)*1.9+Math.max(0,current-40)*3.4;
+      xpNext=Math.round(xpNext*1.2+8+higherLevelTax);
+    }
     return xpNext;
   },
   getScoreBaselineForLevel(level){
@@ -19643,6 +20752,18 @@ const POLYTANK_IO={
   spawnSandboxBoss(){
     if(!this.isSandboxMode()) return null;
     const key=document.getElementById('polytank-sandbox-boss')?.value||'polytank_alpha';
+    if(key==='beta_pentagon'){
+      if(!adminUnlocked&&!this.isBossNodeDefeated('default_7')){
+        toast('Defeat the Beta Pentagon in Default VII first.','#ffd38d');
+        return null;
+      }
+      const point=this.getSandboxSpawnPoint(900);
+      const boss=this.createDefaultBossEntity(point.x,point.y);
+      this.summonedBosses.push(boss);
+      flashScreen('rgba(127,148,244,.18)',140);
+      toast(`Boss spawned: ${boss.label}.`,boss.bulletColor);
+      return boss;
+    }
     return this.spawnArenaBoss(key);
   },
   spawnSandboxAiTank(){
@@ -20950,7 +22071,11 @@ const POLYTANK_IO={
     tank.bulletPenetration=upgrades.bulletPenetration>0
       ? (0.18+upgrades.bulletPenetration*0.16+Math.floor(tank.level/18)*0.07)*(def.bulletPenetrationScale||1)
       : 0;
-    tank.bulletDamage=(13+tank.level*0.8+upgrades.bulletDamage*4.5)*(def.bulletDamageScale||1);
+    {
+      const n=upgrades.bulletDamage||0;
+      const dmgUpgradePct=n*0.155+0.01*(n*(n-1)/2);
+      tank.bulletDamage=(13+tank.level*0.8)*(1+dmgUpgradePct)*(def.bulletDamageScale||1);
+    }
     tank.reload=Math.max(0.08,0.46*Math.pow(0.92,upgrades.reload)*(def.reloadScale||1));
     tank.moveSpeed=((tank.isBot?188:212)+Math.max(0,10-tank.level)*1.6+upgrades.moveSpeed*18)*(def.moveSpeedScale||1);
     tank.r=Math.round((28+Math.min(7,Math.floor(tank.level/12)))*(def.bodyScale||1));
@@ -20998,9 +22123,18 @@ const POLYTANK_IO={
       tank.bulletDamage*=1+ballistics*0.12;
       tank.reload=Math.max(0.05,tank.reload*Math.pow(0.95,kinetics));
       tank.moveSpeed*=1+survivor*0.05;
+      const gear=this.getEquippedInventoryStats();
+      tank.maxHp=Math.round(tank.maxHp+gear.maxHpBonus);
+      tank.regenRate+=gear.regenRateBonus;
+      tank.bodyDamage*=1+gear.bodyDamagePct;
+      tank.bulletSpeed*=1+gear.bulletSpeedPct;
+      tank.bulletDamage+=gear.bulletDamageFlat;
+      tank.reload=Math.max(0.05,tank.reload*gear.reloadMult);
+      tank.moveSpeed*=1+gear.moveSpeedPct;
       if(refillHealth) tank.hp=tank.maxHp;
       else tank.hp=this.clamp((tank.hp||scaledMax)+(tank.maxHp-scaledMax)*0.5,1,tank.maxHp);
     }
+    if(tank.isBot&&!tank.specialRole&&!tank.isArenaBoss&&!this.networkRoomActive) this.applyDifficultyToAiTank(tank);
     this.syncTankDrones(tank);
     if(refillHealth) tank.hp=tank.maxHp;
     else tank.hp=this.clamp((tank.hp||previousMax)+(tank.maxHp-previousMax)*0.5,1,tank.maxHp);
@@ -21373,7 +22507,8 @@ const POLYTANK_IO={
   },
   gainTankXp(tank,amount){
     if(!tank||tank.deadTimer>0||tank.specialRole==='arenaCloser'||tank.specialRole==='mothership'||tank.specialRole==='teamCloser'||tank.specialRole==='wildCloser') return;
-    amount*=3;
+    const xpGainMultiplier=tank.level>=45?1.55:tank.level>=35?1.95:tank.level>=25?2.35:3;
+    amount*=xpGainMultiplier;
     if(this.isAncientMode()&&tank.level>=45){
       let ancientAmount=amount;
       const zone=this.getAncientZoneAt(tank.x,tank.y);
@@ -21393,7 +22528,7 @@ const POLYTANK_IO={
         break;
       }
       tank.points+=1;
-      tank.xpNext=Math.round(tank.xpNext*1.2+8);
+      tank.xpNext=this.getXpNextForLevel(tank.level);
       this.awardScore(tank,160+tank.level*22);
       this.updateTankDerivedStats(tank,false);
       if(tank.isPlayer) toast('Tank Is Ready To Upgrade!','#ffe27a');
@@ -21550,12 +22685,18 @@ const POLYTANK_IO={
     if(this.localPartyCode&&this.localPartyRole==='host'&&this.localPartyState) this.publishLocalPartyState(true);
   },
   resetRun(){
+    if(this.bossEncounterActive){
+      this.setupDefaultBossArena();
+      return;
+    }
     this.applyWorldPreset();
     this.createBases();
     this.setupModeObjectives();
     this.bullets=[];
     this.shapes=[];
     this.dyingShapes=[];
+    this.worldDrops=[];
+    this.worldDropId=0;
     this.bots=[];
     this.dominators=this.usesDominators()?this.getDominationDominatorConfigs().map(config=>this.createDominator(config)):[];
     this.particles=[];
@@ -21629,6 +22770,398 @@ const POLYTANK_IO={
     this.syncSandboxUi();
     if(typeof adminRefreshArenaCloserButton==='function') adminRefreshArenaCloserButton();
     if(typeof adminRefreshMothershipButton==='function') adminRefreshMothershipButton();
+  },
+  DEFAULT_BOSS_NAME:'Beta Pentagon',
+  DEFAULT_BOSS_LIVE_COLOR:'#7f94f4',
+  DEFAULT_BOSS_GRAY_COLOR:'#8f9096',
+  DEFAULT_BOSS_MAX_HP:500000,
+  createDefaultBossEntity(x,y){
+    const bossBoss=this.createArenaBoss('polytank_alpha',x,y);
+    bossBoss.id=`default_boss_encounter_${++this.bossEntityId}`;
+    bossBoss.isDefaultBoss=true;
+    bossBoss.dormant=true;
+    bossBoss.spawnX=x;
+    bossBoss.spawnY=y;
+    bossBoss.r=132*5.5;
+    bossBoss.maxHp=this.DEFAULT_BOSS_MAX_HP;
+    bossBoss.hp=this.DEFAULT_BOSS_MAX_HP;
+    bossBoss.moveSpeed=14;
+    bossBoss.label=this.DEFAULT_BOSS_NAME;
+    bossBoss.bodyColor=this.DEFAULT_BOSS_GRAY_COLOR;
+    bossBoss.bulletColor=this.DEFAULT_BOSS_LIVE_COLOR;
+    bossBoss.awakenFade=0;
+    bossBoss.giantShotTimer=4.5;
+    bossBoss.fastShotTimer=2.2;
+    bossBoss.laserCooldown=8;
+    bossBoss.laserTelegraphTimer=0;
+    bossBoss.laserActive=0;
+    bossBoss.summonTimer=9;
+    bossBoss.deathPhase='';
+    bossBoss.deathTimer=0;
+    return bossBoss;
+  },
+  setupDefaultBossArena(){
+    this.world={w:4200,h:5200,midX:2100,midY:2600};
+    this.camera.minZoom=.28;
+    this.bullets=[];
+    this.shapes=[];
+    this.dyingShapes=[];
+    this.worldDrops=[];
+    this.worldDropId=0;
+    this.bots=[];
+    this.dominators=[];
+    this.particles=[];
+    this.matchClock=0;
+    this.alphaSpawnTimer=0;
+    this.ambientBossTimer=0;
+    this.mothershipEndgame=false;
+    this.centerBoss=null;
+    this.summonedBosses=[];
+    this.cageWall=null;
+    this.enemyMothership=null;
+    this.alphaPentagon=null;
+    this.controlledDominatorId='';
+    this.fallenBossClaim='';
+    this.deathSpectateTargetId='';
+    this.healthBarState={};
+    this.pendingClassChoice=null;
+    this.bossArenaDecor=[];
+    this.bossArenaDebris=[];
+    const bossSpawnY=this.world.midY-2000;
+    this.bossArenaContainment={x:this.world.midX,y:bossSpawnY,r:900};
+    this.bossArenaCage={x1:this.world.midX-560,x2:this.world.midX+560,y1:bossSpawnY-340,y2:bossSpawnY+340};
+    this.bossEncounterVictoryShown=false;
+    const victory=document.getElementById('of-victory');
+    if(victory) victory.style.display='none';
+    const boss=document.getElementById('polytank-boss-victory');
+    if(boss) boss.style.display='none';
+    const backBtn=document.getElementById('polytank-explore-back-btn');
+    if(backBtn) backBtn.style.display='none';
+    const hud=document.getElementById('polytank-encounter-hud');
+    if(hud) hud.style.display='none';
+    this.bases=[{id:'boss_spawn',x:this.world.midX,y:this.world.midY+1360,team:'blue'}];
+    this.usedBotNames=new Set([this.loadPlayerName().toLowerCase()]);
+    this.player=this.createTank('blue',{id:'player',x:this.world.midX,y:this.world.midY+1360,isPlayer:true,baseId:'boss_spawn',invuln:2.2,displayName:this.loadPlayerName()});
+    this.preparePlayerForFreshRun(this.player);
+    this.updateTankDerivedStats(this.player,true);
+    for(let index=0;index<8;index++){
+      const angle=(index/8)*Math.PI*2;
+      this.bossArenaDecor.push({
+        kind:index%3===0?'ancient_alpha_pentagon':'ancient_hexagon',
+        x:this.world.midX+Math.cos(angle)*(420+Math.random()*140),
+        y:bossSpawnY+Math.sin(angle)*180,
+        r:index%3===0?70:52,
+        rotation:Math.random()*Math.PI*2,
+      });
+    }
+    for(let index=0;index<12;index++){
+      const point=this.randomAround(this.world.midX,this.world.midY+400,1500);
+      this.spawnShapeAt('pentagon',this.clamp(point.x,140,this.world.w-140),this.clamp(point.y,140,this.world.h-140));
+    }
+    for(let index=0;index<3;index++){
+      const point=this.randomAround(this.world.midX,this.world.midY+400,1400);
+      const mini=this.createArenaBoss('polytank_alpha',this.clamp(point.x,220,this.world.w-220),this.clamp(point.y,220,this.world.h-220));
+      mini.r=132;
+      mini.maxHp=21200;
+      mini.hp=21200;
+      mini.label='Wild Alpha Pentagon';
+      this.summonedBosses.push(mini);
+    }
+    this.summonedBosses.push(this.createDefaultBossEntity(this.world.midX,bossSpawnY));
+    this.applyAutoZoomForTank(this.player,true);
+    this.updateCamera();
+    this.updateHud();
+    this.syncUpgradeDock('left');
+  },
+  fireDefaultBossFastBullets(boss){
+    for(let index=-1;index<=1;index+=2){
+      const angle=(boss.aimAngle||0)+index*0.16;
+      this.bullets.push({
+        id:`bullet_${++this.bulletId}`,
+        x:boss.x+Math.cos(angle)*(boss.r+30),
+        y:boss.y+Math.sin(angle)*(boss.r+30),
+        vx:Math.cos(angle)*420,
+        vy:Math.sin(angle)*420,
+        speed:420,
+        r:20,
+        damage:32,
+        penetration:4.4,
+        hp:4.4,
+        ownerId:boss.id,
+        ownerTeam:'neutral',
+        color:'#aeb8ff',
+        life:3.2,
+        maxLife:3.2,
+        homing:true,
+        homingTurn:3.4,
+        homingTargetKind:'',
+        homingTargetId:'',
+        homingTankOnly:true,
+        homingLifespan:2,
+        isDefaultBossBolt:true,
+      });
+    }
+  },
+  updateDefaultBossEncounter(dt){
+    const boss=this.summonedBosses.find(entry=>entry&&entry.isDefaultBoss);
+    if(!boss){
+      return;
+    }
+    for(const bullet of this.bullets){
+      if(bullet.isDefaultBossBolt&&bullet.homing&&bullet.homingLifespan!=null){
+        bullet.homingLifespan-=dt;
+        if(bullet.homingLifespan<=0) bullet.homing=false;
+      }
+    }
+    if(boss.deathPhase==='unstable'){
+      boss.deathTimer=Math.max(0,(boss.deathTimer||0)-dt);
+      boss.hp=Math.min(boss.hp,1);
+      const pulseScale=1+Math.sin(this.matchClock*10)*0.06;
+      boss.r=(boss.deathBaseR||boss.r)*pulseScale;
+      boss.bodyColor=Math.sin(this.matchClock*20)>0?'#ffffff':this.DEFAULT_BOSS_LIVE_COLOR;
+      if(boss.deathTimer<=0) this.finishDefaultBossDeath(boss);
+      return;
+    }
+    if(boss.hp<=0&&!boss.deathPhase){
+      boss.deathPhase='unstable';
+      boss.deathTimer=4;
+      boss.deathBaseR=boss.r;
+      boss.hp=1;
+      shake('lg');
+      const hud=document.getElementById('polytank-encounter-hud');
+      if(hud) hud.style.display='none';
+      return;
+    }
+    if(boss.dormant){
+      if(boss.hp<boss.maxHp){
+        boss.dormant=false;
+        boss.awakenFade=0;
+        shake('lg');
+        flashScreen('rgba(127,148,244,.32)',220);
+        toast(`${this.DEFAULT_BOSS_NAME} awakens!`,'#7f94f4');
+        const hud=document.getElementById('polytank-encounter-hud');
+        if(hud) hud.style.display='';
+      }
+      return;
+    }
+    if(boss.awakenFade<1){
+      boss.awakenFade=Math.min(1,boss.awakenFade+dt/1.2);
+      boss.bodyColor=this.tintColor(this.DEFAULT_BOSS_GRAY_COLOR,this.DEFAULT_BOSS_LIVE_COLOR,boss.awakenFade);
+    }
+    const hudFill=document.getElementById('polytank-encounter-fill');
+    if(hudFill) hudFill.style.width=`${this.clamp((boss.hp/boss.maxHp)*100,0,100)}%`;
+    if(this.bossArenaContainment){
+      const zone=this.bossArenaContainment;
+      for(const shape of this.shapes){
+        const dist=Math.hypot(shape.x-zone.x,shape.y-zone.y);
+        if(dist<zone.r){
+          const angle=Math.atan2(shape.y-zone.y,shape.x-zone.x)||0;
+          shape.x=zone.x+Math.cos(angle)*zone.r;
+          shape.y=zone.y+Math.sin(angle)*zone.r;
+        }
+      }
+      for(const entry of this.summonedBosses){
+        if(entry===boss||entry.bossSummon) continue;
+        const dist=Math.hypot(entry.x-zone.x,entry.y-zone.y);
+        if(dist<zone.r+entry.r){
+          const angle=Math.atan2(entry.y-zone.y,entry.x-zone.x)||0;
+          entry.x=zone.x+Math.cos(angle)*(zone.r+entry.r);
+          entry.y=zone.y+Math.sin(angle)*(zone.r+entry.r);
+        }
+      }
+    }
+    if(this.player&&this.player.deadTimer<=0){
+      boss.giantShotTimer=Math.max(0,(boss.giantShotTimer||0)-dt);
+      if(boss.giantShotTimer<=0){
+        const angle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
+        this.bullets.push({
+          id:`bullet_${++this.bulletId}`,
+          x:boss.x+Math.cos(angle)*(boss.r+130),
+          y:boss.y+Math.sin(angle)*(boss.r+130),
+          vx:Math.cos(angle)*180,
+          vy:Math.sin(angle)*180,
+          r:112,
+          damage:Math.max(40,(this.player.maxHp||400)*0.9),
+          penetration:1,
+          hp:1,
+          ownerId:boss.id,
+          ownerTeam:'neutral',
+          color:'#ff6b6b',
+          life:6,
+          maxLife:6,
+          massive:true,
+        });
+        boss.giantShotTimer=4+Math.random()*1.5;
+      }
+      boss.fastShotTimer=Math.max(0,(boss.fastShotTimer||0)-dt);
+      if(boss.fastShotTimer<=0){
+        boss.aimAngle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
+        this.fireDefaultBossFastBullets(boss);
+        boss.fastShotTimer=1.6+Math.random()*0.6;
+      }
+      if(boss.laserTelegraphTimer>0){
+        boss.laserTelegraphTimer=Math.max(0,boss.laserTelegraphTimer-dt);
+        if(boss.laserTelegraphTimer<=0){
+          boss.laserActive=1.5;
+          boss.laserTick=0;
+        }
+      } else if(boss.laserActive>0){
+        boss.laserActive=Math.max(0,boss.laserActive-dt);
+        boss.laserTick=Math.max(0,(boss.laserTick||0)-dt);
+        const angle=boss.laserAngle||0;
+        const startX=boss.x+Math.cos(angle)*boss.r;
+        const startY=boss.y+Math.sin(angle)*boss.r;
+        const endX=startX+Math.cos(angle)*4200;
+        const endY=startY+Math.sin(angle)*4200;
+        while(boss.laserTick<=0&&boss.laserActive>0){
+          if(this.pointSegmentDistance(this.player.x,this.player.y,startX,startY,endX,endY)<this.getTankHitRadius(this.player)+70){
+            this.damageTank(this.player,35,boss.id,'neutral');
+          }
+          boss.laserTick+=0.1;
+        }
+      } else {
+        boss.laserCooldown=Math.max(0,(boss.laserCooldown||0)-dt);
+        if(boss.laserCooldown<=0){
+          boss.laserAngle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
+          boss.laserTelegraphTimer=2;
+          boss.laserCooldown=11+Math.random()*4;
+        }
+      }
+    }
+  },
+  finishDefaultBossDeath(boss){
+    boss.hp=0;
+    boss.deathPhase='done';
+    flashScreen('rgba(255,255,255,.96)',360);
+    shake('lg');
+    for(let index=0;index<40;index++){
+      const angle=Math.random()*Math.PI*2;
+      const dist=Math.random()*boss.r*1.4;
+      this.bossArenaDebris.push({
+        x:boss.x+Math.cos(angle)*dist,
+        y:boss.y+Math.sin(angle)*dist,
+        r:14+Math.random()*30,
+        rotation:Math.random()*Math.PI*2,
+        color:Math.random()<0.5?this.DEFAULT_BOSS_LIVE_COLOR:'#6f7480',
+        sides:Math.random()<0.5?5:3,
+      });
+    }
+    this.summonedBosses=this.summonedBosses.filter(entry=>entry!==boss);
+    this.triggerDefaultBossVictory(boss);
+  },
+  triggerDefaultBossVictory(boss){
+    this.bossEncounterVictoryShown=true;
+    this.markBossNodeDefeated('default_7');
+    for(let index=0;index<24;index++){
+      this.spawnBurst(boss.x+(Math.random()-0.5)*boss.r*1.6,boss.y+(Math.random()-0.5)*boss.r*1.6,'#3a3a3f',18,180);
+    }
+    const hud=document.getElementById('polytank-encounter-hud');
+    if(hud) hud.style.display='none';
+    const popup=document.getElementById('polytank-boss-victory');
+    if(popup) popup.style.display='flex';
+  },
+  drawPolygonAt(screenX,screenY,r,sides,rotation,fillStyle,strokeStyle,lineWidth){
+    const ctx=this.ctx;
+    ctx.save();
+    ctx.translate(screenX,screenY);
+    ctx.rotate(rotation||0);
+    ctx.beginPath();
+    for(let side=0;side<sides;side++){
+      const angle=(side/sides)*Math.PI*2-Math.PI*0.5;
+      const px=Math.cos(angle)*r;
+      const py=Math.sin(angle)*r;
+      if(side===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    if(fillStyle){ ctx.fillStyle=fillStyle; ctx.fill(); }
+    if(strokeStyle){ ctx.strokeStyle=strokeStyle; ctx.lineWidth=lineWidth||4; ctx.stroke(); }
+    ctx.restore();
+  },
+  drawBossArenaDecor(){
+    if(!this.summonedBosses.some(entry=>entry&&entry.isDefaultBoss)&&!this.bossArenaCage) return;
+    const ctx=this.ctx;
+    if(this.bossArenaCage){
+      const cage=this.bossArenaCage;
+      const topLeft=this.worldToScreen(cage.x1,cage.y1);
+      ctx.save();
+      ctx.strokeStyle='rgba(140,148,164,.55)';
+      ctx.lineWidth=14;
+      ctx.setLineDash([26,18]);
+      ctx.strokeRect(topLeft.x,topLeft.y,cage.x2-cage.x1,cage.y2-cage.y1);
+      ctx.restore();
+    }
+    if(this.bossArenaContainment){
+      const zone=this.bossArenaContainment;
+      const screen=this.worldToScreen(zone.x,zone.y);
+      ctx.save();
+      ctx.strokeStyle='rgba(150,150,158,.5)';
+      ctx.lineWidth=10;
+      ctx.setLineDash([4,10]);
+      ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,zone.r,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for(const decor of this.bossArenaDecor||[]){
+      const sides=decor.kind==='ancient_alpha_pentagon'?5:6;
+      const screen=this.worldToScreen(decor.x,decor.y);
+      ctx.globalAlpha=.55;
+      this.drawPolygonAt(screen.x,screen.y,decor.r,sides,decor.rotation,'#9aa0ac','#5c6068',4);
+      ctx.globalAlpha=1;
+    }
+    for(const debris of this.bossArenaDebris||[]){
+      const screen=this.worldToScreen(debris.x,debris.y);
+      ctx.globalAlpha=.85;
+      this.drawPolygonAt(screen.x,screen.y,debris.r,debris.sides,debris.rotation,debris.color,'rgba(0,0,0,.3)',2);
+      ctx.globalAlpha=1;
+    }
+    const boss=this.summonedBosses.find(entry=>entry&&entry.isDefaultBoss);
+    if(boss){
+      if(boss.laserTelegraphTimer>0){
+        const angle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
+        const startX=boss.x+Math.cos(angle)*boss.r;
+        const startY=boss.y+Math.sin(angle)*boss.r;
+        const start=this.worldToScreen(startX,startY);
+        ctx.save();
+        ctx.translate(start.x,start.y);
+        ctx.rotate(angle);
+        const pulse=0.5+0.5*Math.sin(this.matchClock*14);
+        ctx.strokeStyle=`rgba(255,70,70,${0.5+pulse*0.4})`;
+        ctx.lineWidth=6;
+        ctx.setLineDash([14,10]);
+        ctx.strokeRect(0,-70,4200,140);
+        ctx.restore();
+      } else if(boss.laserActive>0){
+        const angle=boss.laserAngle||0;
+        const startX=boss.x+Math.cos(angle)*boss.r;
+        const startY=boss.y+Math.sin(angle)*boss.r;
+        const start=this.worldToScreen(startX,startY);
+        ctx.save();
+        ctx.translate(start.x,start.y);
+        ctx.rotate(angle);
+        ctx.fillStyle='rgba(255,255,255,.92)';
+        ctx.shadowColor='#ffffff';
+        ctx.shadowBlur=30;
+        ctx.fillRect(0,-70,4200,140);
+        ctx.restore();
+      }
+    }
+  },
+  exploreAfterBoss(){
+    const popup=document.getElementById('polytank-boss-victory');
+    if(popup) popup.style.display='none';
+    const backBtn=document.getElementById('polytank-explore-back-btn');
+    if(backBtn) backBtn.style.display='';
+  },
+  showBossReplayChoice(){
+    const popup=document.getElementById('polytank-boss-replay-choice');
+    if(popup) popup.style.display='flex';
+  },
+  confirmBossReplayChoice(fight){
+    const popup=document.getElementById('polytank-boss-replay-choice');
+    if(popup) popup.style.display='none';
+    this.startMatch({bossReplayChoiceMade:true,forceBossReplay:!!fight,forceFresh:true});
   },
   spawnBot(team,index,tier='rookie'){
     const teamBases=this.bases.filter(base=>base.team===team);
@@ -21859,11 +23392,7 @@ const POLYTANK_IO={
         for(let shapeIndex=this.shapes.length-1;shapeIndex>=0;shapeIndex--){
           const shape=this.shapes[shapeIndex];
           if(this.pointSegmentDistance(shape.x,shape.y,startX,startY,endX,endY)<shape.r+20){
-            shape.hp-=1000;
-            shape.lastHitId=mothership.id;
-            shape.lastHitTeam=mothership.team;
-            shape.barTimer=2;
-            if(shape.hp<=0) this.destroyShape(shapeIndex,shape,mothership.id,mothership.team);
+            this.applyDamageToShape(shapeIndex,shape,1000,mothership.id,mothership.team,{barTimer:2,showNumber:true,numberX:shape.x,numberY:shape.y-shape.r*.2});
           }
         }
         for(const dominator of this.dominators){
@@ -21898,10 +23427,8 @@ const POLYTANK_IO={
       for(const shape of this.shapes){
         const distance=Math.hypot(triangle.x-shape.x,triangle.y-shape.y);
         if(distance<shape.r+(triangle.r||18)){
-          shape.hp-=mothership.bodyDamage*dt*.7;
-          shape.lastHitId=mothership.id;
-          shape.lastHitTeam=mothership.team;
-          shape.barTimer=1.6;
+          const shapeIndex=this.shapes.indexOf(shape);
+          if(shapeIndex>=0) this.applyDamageToShape(shapeIndex,shape,mothership.bodyDamage*dt*.7,mothership.id,mothership.team,{barTimer:1.6,damageFlash:0,hitFade:0});
         }
       }
       for(const dominator of this.dominators){
@@ -21939,7 +23466,7 @@ const POLYTANK_IO={
     const apexDom=this.getDominationBoss();
     if(apexDom&&Math.hypot(x-apexDom.x,y-apexDom.y)<apexDom.r+160) return null;
     const definition=this.shapeDefs[kind]||this.shapeDefs.square;
-    this.shapes.push({
+    const shape={
       id:`shape_${++this.shapeId}`,
       kind,
       x,
@@ -21962,7 +23489,9 @@ const POLYTANK_IO={
       ancientTier:definition.ancientTier||'',
       aiRoamAngle:Math.random()*Math.PI*2,
       roamTimer:0.6+Math.random()*1.2,
-    });
+    };
+    this.applyDifficultyToShape(shape);
+    this.shapes.push(shape);
     return this.shapes[this.shapes.length-1];
   },
   maintainShapePopulation(){
@@ -22533,6 +24062,7 @@ const POLYTANK_IO={
     this.updateMothershipEncounter(dt);
     this.updateMothershipEndgame(dt);
     this.updateBullets(dt);
+    this.updateDefaultBossEncounter(dt);
     this.updateShapes(dt);
     this.updateModeObjectives(dt);
     this.updateTankContacts(dt);
@@ -22543,7 +24073,8 @@ const POLYTANK_IO={
     this.checkYellowVictory();
     this.updateParticles(dt);
     this.updateDamageNumbers(dt);
-    this.maintainShapePopulation();
+    this.updateWorldDrops(dt);
+    if(!this.bossEncounterActive) this.maintainShapePopulation();
     this.player.damageFlash=Math.max(0,(this.player.damageFlash||0)-dt*1.08);
     for(const bot of this.bots) bot.damageFlash=Math.max(0,(bot.damageFlash||0)-dt*1.08);
     for(const shape of this.shapes) shape.damageFlash=Math.max(0,(shape.damageFlash||0)-dt*0.78);
@@ -22874,11 +24405,7 @@ const POLYTANK_IO={
       for(let shapeIndex=this.shapes.length-1;shapeIndex>=0;shapeIndex--){
         const shape=this.shapes[shapeIndex];
         if(Math.hypot(shape.x-closer.x,shape.y-closer.y)<purgeRadius+shape.r){
-          shape.hp-=160*dt;
-          shape.lastHitId=closer.id;
-          shape.lastHitTeam='yellow';
-          shape.barTimer=1.1;
-          if(shape.hp<=0) this.destroyShape(shapeIndex,shape,closer.id,'yellow');
+          this.applyDamageToShape(shapeIndex,shape,160*dt,closer.id,'yellow',{barTimer:1.1,damageFlash:0,hitFade:0});
         }
       }
       for(const tank of [this.player,...this.bots]){
@@ -23523,7 +25050,7 @@ const POLYTANK_IO={
     this.bullets.push(bullet);
     this.kickBarrelRecoil(tank,index,recoilKick);
     if(!tank.specialRole||tank.specialRole==='mothershipMinion'||tank.specialRole==='mothershipThrall'){
-      const recoilForce=(tank.bulletRadius*barrel.bulletScale)*2.8+(tank.bulletDamage*barrel.damageScale)*0.34;
+      const recoilForce=(tank.bulletRadius*barrel.bulletScale)*2.8;
       this.applyTankImpulse(tank,-Math.cos(spreadAngle)*recoilForce,-Math.sin(spreadAngle)*recoilForce,tank.isPlayer?1:.9);
     }
   },
@@ -23684,6 +25211,10 @@ const POLYTANK_IO={
     this.summonedBosses=this.summonedBosses.filter(boss=>boss&&boss.hp>0);
   },
   updateArenaBossEntity(boss,dt,isCenter){
+    if(boss.isDefaultBoss&&(boss.dormant||boss.deathPhase)){
+      boss.barTimer=Math.max(0,(boss.barTimer||0)-dt);
+      return;
+    }
     boss.barTimer=Math.max(0,(boss.barTimer||0)-dt);
     boss.shotTimer=Math.max(0,(boss.shotTimer||0)-dt);
     boss.radialTimer=Math.max(0,(boss.radialTimer||0)-dt);
@@ -23712,7 +25243,7 @@ const POLYTANK_IO={
       }
       if(target){
         boss.aimAngle=Math.atan2(target.y-boss.y,target.x-boss.x);
-        if(boss.shotTimer<=0){
+        if(boss.shotTimer<=0&&!boss.isDefaultBoss){
           for(let shardIndex=0;shardIndex<5;shardIndex++){
             const angle=boss.aimAngle+(shardIndex-2)*0.12;
             this.bullets.push({
@@ -23735,7 +25266,7 @@ const POLYTANK_IO={
           boss.shotTimer=isCenter?1.15:1.45;
         }
       }
-      if(boss.radialTimer<=0){
+      if(boss.radialTimer<=0&&!boss.isDefaultBoss){
         for(let index=0;index<10;index++){
           const angle=(index/10)*Math.PI*2+(boss.rotation||0);
           this.bullets.push({
@@ -23758,15 +25289,26 @@ const POLYTANK_IO={
         boss.radialTimer=isCenter?4.1:5.3;
       }
       if(boss.summonTimer<=0){
-        const ringCount=isCenter?6:3;
+        const ringCount=boss.isDefaultBoss?9:(isCenter?6:3);
         const ringRadius=isCenter?boss.r+156:boss.r+110;
         for(let index=0;index<ringCount;index++){
           const angle=(Math.PI*2*index)/ringCount+(boss.rotation||0);
           const pointX=this.clamp(boss.x+Math.cos(angle)*ringRadius,120,this.world.w-120);
           const pointY=this.clamp(boss.y+Math.sin(angle)*ringRadius,120,this.world.h-120);
-          this.spawnShapeAt('pentagon',pointX,pointY);
+          const spawned=this.spawnShapeAt('pentagon',pointX,pointY);
+          if(spawned) spawned.bossSummon=true;
         }
-        boss.summonTimer=isCenter?7.2:9.6;
+        if(boss.isDefaultBoss&&Math.random()<0.5){
+          const angle=Math.random()*Math.PI*2;
+          const mini=this.createArenaBoss('polytank_alpha',this.clamp(boss.x+Math.cos(angle)*(ringRadius+80),220,this.world.w-220),this.clamp(boss.y+Math.sin(angle)*(ringRadius+80),220,this.world.h-220));
+          mini.r=90;
+          mini.maxHp=12000;
+          mini.hp=12000;
+          mini.label='Beta Minion';
+          mini.bossSummon=true;
+          this.summonedBosses.push(mini);
+        }
+        boss.summonTimer=boss.isDefaultBoss?8:(isCenter?7.2:9.6);
       }
       return;
     }
@@ -23896,19 +25438,10 @@ const POLYTANK_IO={
         const shape=this.shapes[shapeIndex];
         if(!this.canBulletHitTarget(bullet,shape.id)) continue;
         if(Math.hypot(shape.x-bullet.x,shape.y-bullet.y)<shape.r+bullet.r){
-          const actualDamage=Math.min(shape.hp,bullet.damage);
-          shape.hp-=bullet.damage;
-          shape.lastHitId=bullet.ownerId;
-          shape.lastHitTeam=bullet.ownerTeam;
-          shape.barTimer=2.2;
-          shape.damageFlash=1;
-          shape.hitFade=1;
-          this.awardDamageXp(shape,bullet.ownerId,actualDamage,shape.xp);
+          this.applyDamageToShape(shapeIndex,shape,bullet.damage,bullet.ownerId,bullet.ownerTeam,{barTimer:2.2,damageFlash:1,hitFade:1,awardXp:true,showNumber:true,numberX:bullet.x,numberY:bullet.y,numberColor:this.darkenColor(shape.color,.88)});
           this.registerBulletHitTarget(bullet,shape.id);
           this.applyBulletExplosion(bullet,bullet.x,bullet.y);
-          this.spawnDamageNumber(bullet.x,bullet.y,bullet.damage,this.darkenColor(shape.color,.88));
           this.spawnBulletImpactEffect(bullet.x,bullet.y,shape.color,Math.max(0.8,(shape.r||18)/22));
-          if(shape.hp<=0) this.destroyShape(shapeIndex,shape,bullet.ownerId,bullet.ownerTeam);
           remove=this.spendBulletDurability(bullet,this.clamp((shape.r||18)/240,0.05,0.30));
         }
       }
@@ -23961,30 +25494,32 @@ const POLYTANK_IO={
     if(!(this.isMothershipMode()&&this.mothershipEndgame)){
       if(tank.invuln>0||this.isInsideFriendlySpawn(tank)) return false;
     }
-    const actualDamage=Math.min(tank.hp,amount);
-    tank.hp=Math.max(0,tank.hp-amount);
+    const scaledAmount=this.scaleDamageFromSource(amount,ownerId,ownerTeam);
+    const actualDamage=Math.min(tank.hp,scaledAmount);
+    tank.hp=Math.max(0,tank.hp-scaledAmount);
     tank.invuln=Math.max(tank.invuln,0.05);
     tank.barTimer=2.4;
     tank.damageFlash=1;
     tank.lastHitId=ownerId||'';
     tank.lastHitTeam=ownerTeam||'';
     this.awardDamageXp(tank,ownerId,actualDamage,tank.isPlayer?90:70);
-    if(!(this.isMothershipMode()&&this.mothershipEndgame&&ownerTeam==='neutral')) this.spawnDamageNumber(tank.x,tank.y-tank.r*.35,amount,tank.team==='red'?'#ffb8bf':'#bfefff');
+    if(!(this.isMothershipMode()&&this.mothershipEndgame&&ownerTeam==='neutral')) this.spawnDamageNumber(tank.x,tank.y-tank.r*.35,scaledAmount,tank.team==='red'?'#ffb8bf':'#bfefff');
     if(tank.hp<=0) this.killTank(tank,ownerId,ownerTeam);
     return true;
   },
   damageDominator(dominator,amount,ownerId,ownerTeam){
     if(!dominator||amount<=0) return false;
     if(dominator.fadingOut) return false;
-    const actualDamage=Math.min(dominator.hp,amount);
-    dominator.hp=Math.max(0,dominator.hp-amount);
+    const scaledAmount=this.scaleDamageFromSource(amount,ownerId,ownerTeam);
+    const actualDamage=Math.min(dominator.hp,scaledAmount);
+    dominator.hp=Math.max(0,dominator.hp-scaledAmount);
     dominator.barTimer=2.7;
     dominator.damageFlash=1;
     dominator.lastHitId=ownerId||'';
     dominator.lastHitTeam=ownerTeam||'';
     dominator.xpCreditPaid=Math.max(0,Number(dominator.xpCreditPaid)||0);
     this.awardDamageXp(dominator,ownerId,actualDamage,this.getDecagonXpValue()*1.5);
-    this.spawnDamageNumber(dominator.x,dominator.y-dominator.r*.3,amount,'#ffe78c');
+    this.spawnDamageNumber(dominator.x,dominator.y-dominator.r*.3,scaledAmount,'#ffe78c');
     if(dominator.hp<=0){
       if(this.isApexDominator(dominator)){
         this.resolveDominationBossDefeat(ownerId||dominator.lastHitId,ownerTeam||dominator.lastHitTeam);
@@ -24041,15 +25576,16 @@ const POLYTANK_IO={
   },
   damageArenaBoss(boss,amount,ownerId,ownerTeam){
     if(!boss||amount<=0||boss.hp<=0) return false;
-    const actualDamage=Math.min(boss.hp,amount);
-    boss.hp=Math.max(0,boss.hp-amount);
+    const scaledAmount=this.scaleDamageFromSource(amount,ownerId,ownerTeam);
+    const actualDamage=Math.min(boss.hp,scaledAmount);
+    boss.hp=Math.max(0,boss.hp-scaledAmount);
     boss.barTimer=2.8;
     boss.damageFlash=1;
     boss.lastHitId=ownerId||'';
     boss.lastHitTeam=ownerTeam||'';
     const xpPool=boss.id===this.enemyMothership?.id?1600:(boss.id===this.centerBoss?.id?1400:(boss.kind==='fallen'?720:220));
     this.awardDamageXp(boss,ownerId,actualDamage,xpPool);
-    this.spawnDamageNumber(boss.x,boss.y-boss.r*.32,amount,boss.kind==='mothership'?'#ffb4bc':'#ffe78c');
+    this.spawnDamageNumber(boss.x,boss.y-boss.r*.32,scaledAmount,boss.kind==='mothership'?'#ffb4bc':'#ffe78c');
     if(boss.hp<=0){
       if(this.enemyMothership&&boss.id===this.enemyMothership.id) this.destroyEncounterMothership(ownerId,ownerTeam);
       else if(this.centerBoss&&boss.id===this.centerBoss.id) this.destroyCenterBoss();
@@ -24186,6 +25722,7 @@ const POLYTANK_IO={
       deathBaseRadius:shape.r,
     });
     this.spawnBurst(shape.x,shape.y,shape.color,12,230);
+    this.maybeSpawnLootDrop(shape,ownerId);
     this.awardScoreToOwner(ownerId||shape.lastHitId,Math.round(shape.xp*7.5));
     if(this.isAncientMode()&&shape.kind==='ancient_alpha_pentagon'){
       this.ancientBoss=null;
@@ -24207,6 +25744,43 @@ const POLYTANK_IO={
       shape.x+=(shape.vx||0)*dt*0.12;
       shape.y+=(shape.vy||0)*dt*0.12;
       if(shape.deathTimer<=0) this.dyingShapes.splice(shapeIndex,1);
+    }
+  },
+  drawWorldDrops(){
+    if(!this.ctx||!this.worldDrops.length) return;
+    for(const drop of this.worldDrops){
+      const point=this.worldToScreen(drop.x,drop.y+Math.sin(drop.bob||0)*6);
+      const color=POLYTANK_LOOT_RARITY_META[drop.item?.rarity]?.color||'#9feaff';
+      const size=11+(drop.item?.rarity==='legendary'?4:drop.item?.rarity==='epic'?2:0);
+      const pulse=1+Math.sin((drop.bob||0)*2.2)*0.12;
+      this.ctx.save();
+      this.ctx.translate(point.x,point.y);
+      this.ctx.rotate((drop.bob||0)*0.35);
+      this.ctx.strokeStyle=`${color}66`;
+      this.ctx.lineWidth=3;
+      this.ctx.beginPath();
+      this.ctx.arc(0,0,(size+10)*pulse,0,Math.PI*2);
+      this.ctx.stroke();
+      this.ctx.fillStyle=color;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0,-size);
+      this.ctx.lineTo(size,0);
+      this.ctx.lineTo(0,size);
+      this.ctx.lineTo(-size,0);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.strokeStyle='rgba(255,255,255,.76)';
+      this.ctx.lineWidth=1.4;
+      this.ctx.stroke();
+      this.ctx.rotate(-(drop.bob||0)*0.35);
+      this.ctx.textAlign='center';
+      this.ctx.font='700 11px Orbitron';
+      this.ctx.fillStyle='rgba(245,249,255,.96)';
+      this.ctx.fillText(drop.item?.name||'Loot',0,size+22);
+      this.ctx.font='600 9px Rajdhani';
+      this.ctx.fillStyle='rgba(219,230,247,.82)';
+      this.ctx.fillText('CLICK TO PICK UP',0,size+35);
+      this.ctx.restore();
     }
   },
   updateShapes(dt){
@@ -24258,18 +25832,8 @@ const POLYTANK_IO={
           tank.x+=normalX*overlap*pushScale;
           tank.y+=normalY*overlap*pushScale;
           this.damageTank(tank,shape.contact*zoneContactBoost*dt*(3.2/Math.max(1,penetration*0.75)),shape.id,'neutral');
-          const shapeDamage=tank.bodyDamage*dt*(1.1+penetration*0.22);
-          const actualDamage=Math.min(shape.hp,shapeDamage);
-          shape.hp-=shapeDamage;
-          shape.lastHitId=tank.id;
-          shape.lastHitTeam=tank.team;
-          shape.barTimer=2.2;
-          shape.hitFade=1;
-          this.awardDamageXp(shape,tank.id,actualDamage,shape.xp);
-          if(shape.hp<=0){
-            this.destroyShape(shapeIndex,shape,tank.id,tank.team);
-            break;
-          }
+          const destroyed=this.applyDamageToShape(shapeIndex,shape,tank.bodyDamage*dt*(1.1+penetration*0.22),tank.id,tank.team,{barTimer:2.2,damageFlash:0,hitFade:1,awardXp:true});
+          if(destroyed) break;
         }
       }
     }
@@ -26501,9 +28065,11 @@ const POLYTANK_IO={
     this.drawTerritories();
     this.drawModeGeometry();
     this.drawGrid();
+    this.drawBossArenaDecor();
     this.bases.forEach(base=>this.drawBase(base));
     this.shapes.forEach(shape=>this.drawShape(shape));
     this.dyingShapes.forEach(shape=>this.drawShape(shape));
+    this.drawWorldDrops();
     this.drawMothershipEncounter();
     this.drawNeutralBoss();
     this.dominators.forEach(dominator=>this.drawDominator(dominator));
@@ -31153,7 +32719,7 @@ const __copilotExposeNames = [
   'advGo','advLaunchToMars','advNextMission','advResetProgress','advReturnToEarth','advShowMap',
   'ofActivateLaser','ofClearAll','ofMissionDeploy','ofMissionSelect','ofMissionSetMode','ofPickBoss','ofPickMothership','ofPickRandomize','ofRandomizePrompt','ofReset','ofSelectOrb','ofShowBossPicker','ofShowCelestial','ofShowCustomFusions','ofShowMainOrbs','ofShowSummonPicker','ofStartBattle','ofSummonBoss','ofToggleDelete','ofToggleMissionPanel','ofToggleSpawnPanel','ofToggleZoom',
   'adminAnnihilateAll','adminCheckCode','adminPlayAsArenaCloser','adminPlayAsMothership','adminRemoveTestBoss','adminSelect','adminSummon','adminToggle','adminToggleTestBoss','adminUnlockAllSignals','adminUnlockAllSkins','adminUnlockMissionBosses',
-  'adminSetScale','adminSetPlayerLevel',
+  'adminSetScale','adminSetPlayerLevel','adminSpawnGear',
   'FUSION_MODE','IFUSION','OPS','RL','QL','ScifiNav','SKINS','CREATOR','POLYTANK_IO','TUTORIAL'
 ];
 if (typeof window !== 'undefined') {

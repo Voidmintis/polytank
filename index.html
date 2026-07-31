@@ -121,10 +121,43 @@ body.polytank-standalone #subtitle {
           <button type="button" id="polytank-leave-match-btn" onclick="POLYTANK_IO.leaveToLobby()">Leave Match</button>
           <button type="button" id="polytank-play-btn" onclick="POLYTANK_IO.startMatch()">Play</button>
           <button type="button" id="polytank-online-btn" onclick="POLYTANK_IO.openPartyLobby()">Online</button>
+          <button type="button" id="polytank-inventory-btn" onclick="POLYTANK_IO.openInventory()">Inventory</button>
           <button type="button" id="polytank-skins-btn" onclick="POLYTANK_IO.openSkinsShop()">Skins</button>
           <button type="button" id="polytank-settings-btn" onclick="POLYTANK_IO.toggleSettingsPanel()">Settings</button>
           <button type="button" id="polytank-new-btn" onclick="POLYTANK_IO.toggleModeDropdown()">Game Modes</button>
         </div>
+        <section id="polytank-difficulty-shell" aria-labelledby="polytank-difficulty-heading">
+          <div id="polytank-difficulty-head">
+            <div>
+              <div class="polytank-menu-label" id="polytank-difficulty-heading">Polytank Adventure Rail</div>
+              <div id="polytank-difficulty-copy">Select a mission node across Default, Adventure, and Apocalypse. Tier and rank now drive enemy scaling, loot payout, and boss gate routing.</div>
+            </div>
+            <div id="polytank-difficulty-banner">DEFAULT ROUTE</div>
+          </div>
+          <div id="polytank-difficulty-tier-picker">
+            <button type="button" id="polytank-difficulty-tier-toggle" onclick="POLYTANK_IO.toggleDifficultyTierMenu()">
+              <span id="polytank-difficulty-tier-name">Default</span>
+              <span id="polytank-difficulty-tier-icon">▾</span>
+            </button>
+            <div id="polytank-difficulty-tier-menu"></div>
+          </div>
+          <div id="polytank-difficulty-slider" role="slider" tabindex="0" aria-label="Adventure mission rail" aria-valuemin="1" aria-valuemax="7" aria-valuenow="1" aria-valuetext="Default I">
+            <div id="polytank-difficulty-track">
+              <div id="polytank-difficulty-progress" aria-hidden="true"></div>
+              <div id="polytank-difficulty-nodes" aria-hidden="true"></div>
+              <button id="polytank-difficulty-handle" type="button" aria-hidden="true">
+                <span id="polytank-difficulty-handle-label">I</span>
+              </button>
+            </div>
+          </div>
+          <div id="polytank-difficulty-meta">
+            <div class="polytank-difficulty-chip"><span>Node</span><strong id="polytank-difficulty-level">Default I</strong></div>
+            <div class="polytank-difficulty-chip"><span>Shapes</span><strong id="polytank-difficulty-hp">x1.00</strong></div>
+            <div class="polytank-difficulty-chip"><span>AI Damage</span><strong id="polytank-difficulty-dmg">x1.00</strong></div>
+            <div class="polytank-difficulty-chip"><span>Loot</span><strong id="polytank-difficulty-loot">x1.00</strong></div>
+          </div>
+          <div id="polytank-difficulty-summary">Baseline threat calibration. Default I scales shape hull and AI danger at baseline.</div>
+        </section>
         <div id="polytank-settings-panel">
           <div class="polytank-menu-label">Map Theme</div>
           <div id="polytank-theme-switcher">
@@ -154,6 +187,7 @@ body.polytank-standalone #subtitle {
           <div class="polytank-menu-chip"><span>Mode</span><strong id="polytank-preview-mode">Free For All</strong></div>
           <div class="polytank-menu-chip"><span>Map</span><strong id="polytank-preview-map">Open Arena</strong></div>
           <div class="polytank-menu-chip"><span>HUD</span><strong id="polytank-preview-hud">Leaderboard, Minimap, Upgrades</strong></div>
+          <div class="polytank-menu-chip"><span>Recommended Power</span><strong id="polytank-preview-power">1</strong></div>
         </div>
         <div id="polytank-live-grid" aria-live="polite">
           <div class="polytank-live-chip"><span>Arena Density</span><strong id="polytank-live-density">65%</strong></div>
@@ -334,6 +368,76 @@ body.polytank-standalone #subtitle {
     <div id="polytank-boss-list"></div>
   </div>
 
+  <div id="polytank-encounter-hud" style="display:none">
+    <div id="polytank-encounter-name">The Ancient Warden</div>
+    <div id="polytank-encounter-track"><div id="polytank-encounter-fill"></div></div>
+  </div>
+
+  <button id="polytank-explore-back-btn" type="button" style="display:none" onclick="POLYTANK_IO.leaveToLobby()">← Back to Main Menu</button>
+
+  <div id="polytank-boss-victory" style="display:none">
+    <div id="polytank-boss-victory-card">
+      <div id="polytank-boss-victory-title">Adventure Mode Unlocked</div>
+      <div id="polytank-boss-victory-sub">You defeated the Beta Pentagon.</div>
+      <div id="polytank-boss-victory-actions">
+        <button type="button" onclick="POLYTANK_IO.exploreAfterBoss()">Explore</button>
+        <button type="button" onclick="POLYTANK_IO.leaveToLobby()">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="polytank-boss-replay-choice" style="display:none">
+    <div id="polytank-boss-replay-card">
+      <div id="polytank-boss-replay-title">Default VII</div>
+      <div id="polytank-boss-replay-sub">Would you like to play, or fight the boss again?</div>
+      <div id="polytank-boss-replay-actions">
+        <button type="button" id="polytank-boss-replay-play" onclick="POLYTANK_IO.confirmBossReplayChoice(false)">Play</button>
+        <button type="button" id="polytank-boss-replay-fight" onclick="POLYTANK_IO.confirmBossReplayChoice(true)">Fight Boss</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="polytank-inventory-modal">
+    <div id="polytank-inventory-backdrop" onclick="POLYTANK_IO.closeInventory()"></div>
+    <div id="polytank-inventory-panel">
+      <div id="polytank-inventory-header">
+        <div>
+          <div class="cio-skins-kicker">LOADOUT</div>
+          <div id="polytank-inventory-title">Inventory</div>
+          <div id="polytank-inventory-subtitle">Build your tank from recovered gear, salvage old parts, and tune a full deployment loadout.</div>
+        </div>
+        <div id="polytank-inventory-header-stats">
+          <div id="polytank-inventory-count">0/48</div>
+          <div id="polytank-inventory-emerald-shell">
+            <span>Emeralds</span>
+            <strong id="polytank-inventory-emeralds">0</strong>
+          </div>
+        </div>
+        <button type="button" id="polytank-inventory-close" onclick="POLYTANK_IO.closeInventory()">✕</button>
+      </div>
+      <div id="polytank-inventory-body">
+        <div id="polytank-inventory-left">
+          <div id="polytank-inventory-stage">
+            <div id="polytank-inventory-slots"></div>
+            <canvas id="polytank-inventory-preview" width="320" height="320"></canvas>
+            <div id="polytank-inventory-power-badge">
+              <span>Power</span>
+              <strong id="polytank-inventory-power">1</strong>
+            </div>
+          </div>
+          <div id="polytank-inventory-artifacts"></div>
+        </div>
+        <div id="polytank-inventory-center">
+          <div id="polytank-inventory-filters"></div>
+          <div id="polytank-inventory-grid"></div>
+        </div>
+        <div id="polytank-inventory-right">
+          <div id="polytank-inventory-detail"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ✦ SKINS SHOP ✦ -->
   <div id="polytank-skins-shop">
     <div id="polytank-skins-backdrop" onclick="POLYTANK_IO.closeSkinsShop()"></div>
@@ -410,6 +514,23 @@ body.polytank-standalone #subtitle {
         <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(15)">Lv 15</button>
         <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(30)">Lv 30</button>
         <button class="admin-item admin-item-tool" onclick="adminSetPlayerLevel(45)">Lv 45</button>
+      </div>
+      <div class="admin-cat-label">Spawn Gear</div>
+      <div id="admin-gear-shell">
+        <select id="admin-gear-slot">
+          <option value="barrel">Primary Barrel</option>
+          <option value="hull">Hull Armor</option>
+          <option value="relic">Support Rig</option>
+          <option value="artifact">Artifact</option>
+        </select>
+        <select id="admin-gear-rarity">
+          <option value="common">Common</option>
+          <option value="rare">Rare</option>
+          <option value="epic">Epic</option>
+          <option value="legendary" selected>Legendary</option>
+        </select>
+        <input id="admin-gear-level" type="number" min="1" max="300" value="300" />
+        <button class="admin-item admin-item-tool" type="button" onclick="adminSpawnGear()">Add Gear</button>
       </div>
     </div>
     <div id="admin-selected-name"></div>

@@ -247,6 +247,9 @@ const CANONICAL_GAME_VARIANTS = new Set([
   'ctf',
   'mothership',
 ]);
+const MIN_DIFFICULTY_LEVEL = 1;
+const MAX_DIFFICULTY_LEVEL = 21;
+const PROGRESSION_TIERS = ['default', 'adventure', 'apocalypse'] as const;
 
 type UpgradeKey = keyof PlayerUpgradeState;
 
@@ -362,6 +365,54 @@ export class RoomManager {
 
   constructor(private readonly now: () => number) {}
 
+  private normalizeDifficultyLevel(value: number): number {
+    return this.clamp(Math.round(Number(value) || MIN_DIFFICULTY_LEVEL), MIN_DIFFICULTY_LEVEL, MAX_DIFFICULTY_LEVEL);
+  }
+
+  private normalizeProgressionTier(value: string): RoomSettings['progressionTier'] {
+    const key = String(value || '').trim().toLowerCase();
+    return (PROGRESSION_TIERS as readonly string[]).includes(key) ? key as RoomSettings['progressionTier'] : 'default';
+  }
+
+  private normalizeProgressionRank(value: number): number {
+    return this.clamp(Math.round(Number(value) || 1), 1, 7);
+  }
+
+  private buildMissionId(tier: RoomSettings['progressionTier'], rank: number): string {
+    return `${tier}_${rank}`;
+  }
+
+  private getProgressionTierFromDifficulty(level: number): RoomSettings['progressionTier'] {
+    const normalizedLevel = this.normalizeDifficultyLevel(level);
+    const tierIndex = this.clamp(Math.floor((normalizedLevel - 1) / 7), 0, PROGRESSION_TIERS.length - 1);
+    return PROGRESSION_TIERS[tierIndex];
+  }
+
+  private getProgressionRankFromDifficulty(level: number): number {
+    const normalizedLevel = this.normalizeDifficultyLevel(level);
+    return ((normalizedLevel - 1) % 7) + 1;
+  }
+
+  private getEffectiveDifficultyLevel(
+    progressionTier: RoomSettings['progressionTier'],
+    progressionRank: number,
+    fallbackLevel: number,
+  ): number {
+    const tierIndex = PROGRESSION_TIERS.indexOf(progressionTier);
+    if (tierIndex >= 0) {
+      return this.normalizeDifficultyLevel(tierIndex * 7 + this.normalizeProgressionRank(progressionRank));
+    }
+    return this.normalizeDifficultyLevel(fallbackLevel);
+  }
+
+  private getDifficultyMultiplier(level: number): number {
+    return Math.pow(1.5, this.normalizeDifficultyLevel(level) - 1);
+  }
+
+  private getBotDifficultyMultiplier(level: number): number {
+    return Math.max(1, Math.pow(this.getDifficultyMultiplier(level), 0.4));
+  }
+
   private normalizeGameVariant(value: string): string {
     const key = String(value || '').trim().toLowerCase();
     if (key === 'standard') {
@@ -394,11 +445,25 @@ export class RoomManager {
     const selectableTeams = this.getSelectableTeamsForVariant(gameVariant);
     const fallbackTeam = selectableTeams[0] || 'blue';
     const hostTeam = selectableTeams.includes(settings.hostTeam) ? settings.hostTeam : fallbackTeam;
+    const normalizedLegacyDifficulty = this.normalizeDifficultyLevel(settings.difficultyLevel);
+    let progressionTier = this.normalizeProgressionTier(settings.progressionTier);
+    let progressionRank = this.normalizeProgressionRank(settings.progressionRank);
+    const derivedDifficultyLevel = this.getEffectiveDifficultyLevel(progressionTier, progressionRank, normalizedLegacyDifficulty);
+    if (derivedDifficultyLevel !== normalizedLegacyDifficulty) {
+      progressionTier = this.getProgressionTierFromDifficulty(normalizedLegacyDifficulty);
+      progressionRank = this.getProgressionRankFromDifficulty(normalizedLegacyDifficulty);
+    }
+    const missionId = this.buildMissionId(progressionTier, progressionRank);
+    const difficultyLevel = this.getEffectiveDifficultyLevel(progressionTier, progressionRank, normalizedLegacyDifficulty);
 
     return {
       gameVariant,
       aiEnabled: settings.aiEnabled !== false,
       hostTeam,
+      progressionTier,
+      progressionRank,
+      missionId,
+      difficultyLevel,
     };
   }
 
@@ -2341,6 +2406,7 @@ export class RoomManager {
       reload: BASE_RELOAD,
       bulletRadius: BASE_BULLET_RADIUS,
       isBot: true,
+      botDifficultyMultiplier: this.getBotDifficultyMultiplier(room.settings.difficultyLevel),
     };
     return this.applyPlayerDerivedStats(bot, true);
   }
@@ -2408,14 +2474,15 @@ export class RoomManager {
     const shapes: ActiveShape[] = [];
     for (const player of runtime.players) {
       const spawn = this.getSpawnPointForActivePlayer(room, runtime, player.id);
-      shapes.push(this.createShape(runtime, 'square', spawn.x + Math.cos(spawn.angle) * 130, spawn.y + Math.sin(spawn.angle) * 130));
+      shapes.push(this.createShape(room, runtime, 'square', spawn.x + Math.cos(spawn.angle) * 130, spawn.y + Math.sin(spawn.angle) * 130));
     }
-    shapes.push(this.createShape(runtime, 'pentagon', WORLD_WIDTH / 2, WORLD_HEIGHT / 2));
+    shapes.push(this.createShape(room, runtime, 'pentagon', WORLD_WIDTH / 2, WORLD_HEIGHT / 2));
     return shapes;
   }
 
-  private createShape(runtime: ActiveRoomRuntime, kind: keyof typeof SHAPE_DEFS, x: number, y: number): ActiveShape {
+  private createShape(room: Room, runtime: ActiveRoomRuntime, kind: keyof typeof SHAPE_DEFS, x: number, y: number): ActiveShape {
     const definition = SHAPE_DEFS[kind];
+    const multiplier = this.getDifficultyMultiplier(room.settings.difficultyLevel);
     const driftAngle = Math.random() * Math.PI * 2;
     const driftSpeed = 12 + Math.random() * 28;
     runtime.shapeSequence += 1;
@@ -2427,9 +2494,9 @@ export class RoomManager {
       vx: Math.cos(driftAngle) * driftSpeed,
       vy: Math.sin(driftAngle) * driftSpeed,
       radius: definition.radius,
-      hp: definition.hp,
-      maxHp: definition.hp,
-      xp: definition.xp,
+      hp: Math.max(1, Math.round(definition.hp * multiplier)),
+      maxHp: Math.max(1, Math.round(definition.hp * multiplier)),
+      xp: Math.max(1, Math.round(definition.xp * multiplier)),
       color: definition.color,
       sides: definition.sides,
       rotation: Math.random() * Math.PI * 2,
@@ -2593,7 +2660,7 @@ export class RoomManager {
 
   private maintainShapePopulation(room: Room, runtime: ActiveRoomRuntime): void {
     if (room.settings.gameVariant === 'domination') {
-      this.maintainDominationShapePopulation(runtime);
+      this.maintainDominationShapePopulation(room, runtime);
       return;
     }
 
@@ -2601,11 +2668,11 @@ export class RoomManager {
     while (runtime.shapes.length < targetCount) {
       const kind: keyof typeof SHAPE_DEFS = runtime.shapes.length % 5 === 0 ? 'triangle' : runtime.shapes.length % 11 === 0 ? 'pentagon' : 'square';
       const position = this.createOpenShapePosition(runtime, 'wide');
-      runtime.shapes.push(this.createShape(runtime, kind, position.x, position.y));
+      runtime.shapes.push(this.createShape(room, runtime, kind, position.x, position.y));
     }
   }
 
-  private maintainDominationShapePopulation(runtime: ActiveRoomRuntime): void {
+  private maintainDominationShapePopulation(room: Room, runtime: ActiveRoomRuntime): void {
     const centerBand = 420;
     const leftCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
     const rightCounts: Record<keyof typeof SHAPE_DEFS, number> = { square: 0, triangle: 0, pentagon: 0, hexagon: 0, octagon: 0, decagon: 0 };
@@ -2637,31 +2704,31 @@ export class RoomManager {
     for (const target of mirroredTargets) {
       while (leftCounts[target.kind] < target.perSide) {
         const position = this.createOpenShapePosition(runtime, 'left');
-        runtime.shapes.push(this.createShape(runtime, target.kind, position.x, position.y));
+        runtime.shapes.push(this.createShape(room, runtime, target.kind, position.x, position.y));
         leftCounts[target.kind] += 1;
       }
       while (rightCounts[target.kind] < target.perSide) {
         const position = this.createOpenShapePosition(runtime, 'right');
-        runtime.shapes.push(this.createShape(runtime, target.kind, position.x, position.y));
+        runtime.shapes.push(this.createShape(room, runtime, target.kind, position.x, position.y));
         rightCounts[target.kind] += 1;
       }
     }
 
     while (centerCounts.pentagon < 2) {
       const position = this.createOpenShapePosition(runtime, 'center');
-      runtime.shapes.push(this.createShape(runtime, 'pentagon', position.x, position.y));
+      runtime.shapes.push(this.createShape(room, runtime, 'pentagon', position.x, position.y));
       centerCounts.pentagon += 1;
     }
 
     while (centerCounts.hexagon < 1) {
       const position = this.createOpenShapePosition(runtime, 'center');
-      runtime.shapes.push(this.createShape(runtime, 'hexagon', position.x, position.y));
+      runtime.shapes.push(this.createShape(room, runtime, 'hexagon', position.x, position.y));
       centerCounts.hexagon += 1;
     }
 
     while (centerCounts.decagon < 1) {
       const position = this.createOpenShapePosition(runtime, 'center');
-      runtime.shapes.push(this.createShape(runtime, 'decagon', position.x, position.y));
+      runtime.shapes.push(this.createShape(room, runtime, 'decagon', position.x, position.y));
       centerCounts.decagon += 1;
     }
   }
@@ -2746,11 +2813,12 @@ export class RoomManager {
   private applyPlayerDerivedStats(player: PlayerState, refillHealth: boolean): PlayerState {
     const previousMax = player.maxHp || BASE_TANK_HEALTH;
     const classDef = CLASS_DEFS[player.classId] || CLASS_DEFS.basic;
+    const botDifficultyMultiplier = player.isBot ? Math.max(1, Number(player.botDifficultyMultiplier) || 1) : 1;
 
-    player.maxHp = Math.round((BASE_TANK_HEALTH + player.level * 4 + player.upgrades.maxHealth * 22) * (classDef.hpScale || classDef.bodyScale || 1));
+    player.maxHp = Math.round((BASE_TANK_HEALTH + player.level * 4 + player.upgrades.maxHealth * 22) * (classDef.hpScale || classDef.bodyScale || 1) * botDifficultyMultiplier);
     player.moveSpeed = ((player.isBot ? 188 : BASE_MOVE_SPEED) + Math.max(0, 10 - player.level) * 1.6 + player.upgrades.moveSpeed * 18) * (classDef.moveSpeedScale || 1);
     player.bulletSpeed = (BASE_BULLET_SPEED + player.level * 5 + player.upgrades.bulletSpeed * 50) * (classDef.bulletSpeedScale || 1);
-    player.bulletDamage = (BASE_BULLET_DAMAGE + player.level * 0.8 + player.upgrades.bulletDamage * 4.5) * (classDef.bulletDamageScale || 1);
+    player.bulletDamage = (BASE_BULLET_DAMAGE + player.level * 0.8 + player.upgrades.bulletDamage * 4.5) * (classDef.bulletDamageScale || 1) * botDifficultyMultiplier;
     player.reload = Math.max(0.08, BASE_RELOAD * Math.pow(0.92, player.upgrades.reload) * (classDef.reloadScale || 1));
     player.bulletRadius = Math.max(4, Math.round((BASE_BULLET_RADIUS + Math.min(8, Math.floor(player.level / 10))) * (classDef.bulletRadiusScale || 1)));
 
@@ -2979,6 +3047,10 @@ export class RoomManager {
       .filter(room => room.settings.gameVariant === normalizedSettings.gameVariant)
       .filter(room => room.settings.aiEnabled === normalizedSettings.aiEnabled)
       .filter(room => room.settings.hostTeam === normalizedSettings.hostTeam)
+      .filter(room => room.settings.progressionTier === normalizedSettings.progressionTier)
+      .filter(room => room.settings.progressionRank === normalizedSettings.progressionRank)
+      .filter(room => room.settings.missionId === normalizedSettings.missionId)
+      .filter(room => room.settings.difficultyLevel === normalizedSettings.difficultyLevel)
       .filter(room => room.members.length < MAX_ROOM_MEMBERS);
 
     const preferredActiveRoom = candidates

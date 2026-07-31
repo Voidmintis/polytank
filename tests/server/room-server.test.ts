@@ -39,6 +39,10 @@ function createRoomSettings(overrides: Record<string, unknown> = {}) {
     gameVariant: 'ffa',
     aiEnabled: true,
     hostTeam: 'blue',
+    progressionTier: 'default',
+    progressionRank: 1,
+    missionId: 'default_1',
+    difficultyLevel: 1,
     ...overrides,
   };
 }
@@ -192,6 +196,10 @@ describe('polytank room server', () => {
     const guestRoomState = guest.messages.find(message => message.type === 'roomState');
     expect(guestRoomState?.payload.settings.gameVariant).toBe('ffa');
     expect(guestRoomState?.payload.settings.hostTeam).toBe('blue');
+    expect(guestRoomState?.payload.settings.progressionTier).toBe('default');
+    expect(guestRoomState?.payload.settings.progressionRank).toBe(1);
+    expect(guestRoomState?.payload.settings.missionId).toBe('default_1');
+    expect(guestRoomState?.payload.settings.difficultyLevel).toBe(1);
 
     send(guest.socket, 'roomReady', { roomId, ready: true });
     send(host.socket, 'roomReady', { roomId, ready: true });
@@ -354,6 +362,54 @@ describe('polytank room server', () => {
       5000,
     );
   }, 12_000);
+
+  it('scales server-side shape durability from the selected difficulty level', async () => {
+    const app = createPolytankServer(3321);
+    apps.push(app);
+    await new Promise<void>(resolve => app.listen(resolve));
+
+    const host = await openClient(3321);
+    const guest = await openClient(3321);
+    sockets.push(host.socket, guest.socket);
+
+    send(host.socket, 'roomCreate', {
+      nickname: 'Host Pilot',
+      settings: createRoomSettings({ aiEnabled: false, difficultyLevel: 7 }),
+    });
+
+    await waitFor(() => host.messages.some(message => message.type === 'roomState'));
+
+    const roomState = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'roomState' }> => message.type === 'roomState',
+    );
+    const roomCode = roomState?.payload.roomCode;
+    const roomId = roomState?.payload.roomId;
+
+    send(guest.socket, 'roomJoin', { roomCode, nickname: 'Guest Pilot' });
+
+    await waitFor(() =>
+      host.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2) &&
+      guest.messages.some(message => message.type === 'roomState' && message.payload.roster.length === 2),
+    );
+
+    send(guest.socket, 'roomReady', { roomId, ready: true });
+    send(host.socket, 'roomReady', { roomId, ready: true });
+
+    await waitFor(() =>
+      host.messages.some(
+        message =>
+          message.type === 'snapshot' &&
+          message.payload.roomId === roomId &&
+          message.payload.shapes.some(shape => shape.maxHp >= 342),
+      ),
+    );
+
+    const snapshot = host.messages.find(
+      (message): message is Extract<ServerMessage, { type: 'snapshot' }> =>
+        message.type === 'snapshot' && message.payload.roomId === roomId,
+    );
+    expect(snapshot?.payload.shapes.some(shape => shape.maxHp >= 342)).toBe(true);
+  }, 10_000);
 
   it('normalizes 2-team room settings and assigns opposing teams authoritatively', async () => {
     const app = createPolytankServer(3322);

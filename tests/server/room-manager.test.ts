@@ -7,6 +7,10 @@ function createRoomSettings(overrides: Record<string, unknown> = {}) {
     gameVariant: 'ffa',
     aiEnabled: true,
     hostTeam: 'blue',
+    progressionTier: 'default',
+    progressionRank: 1,
+    missionId: 'default_1',
+    difficultyLevel: 1,
     ...overrides,
   };
 }
