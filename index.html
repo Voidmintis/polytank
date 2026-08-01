@@ -259,6 +259,16 @@ body.polytank-standalone #subtitle {
   </div>
 
   <button id="polytank-sandbox-toggle" type="button" onclick="POLYTANK_IO.toggleSandboxPanel()">Sandbox Menu</button>
+  <button id="polytank-sandbox-settings-toggle" type="button" onclick="POLYTANK_IO.toggleSandboxSettingsPanel()" title="Sandbox Settings">⚙</button>
+  <div id="polytank-sandbox-settings-panel">
+    <div id="polytank-sandbox-settings-title">Sandbox Map</div>
+    <div id="polytank-sandbox-settings-row">
+      <button type="button" class="polytank-sandbox-map-option" id="polytank-sandbox-map-normal" onclick="POLYTANK_IO.setSandboxMapMode('normal')">Normal</button>
+      <button type="button" class="polytank-sandbox-map-option" id="polytank-sandbox-map-infinite" onclick="POLYTANK_IO.setSandboxMapMode('infinite')">Infinite</button>
+    </div>
+    <div id="polytank-sandbox-settings-note">Applies next time you start/restart Sandbox.</div>
+  </div>
+  <button id="polytank-spectate-btn" type="button" onclick="POLYTANK_IO.toggleSpectateMode()">👁 Spectate</button>
   <div id="polytank-sandbox-panel">
     <div id="polytank-sandbox-head">
       <div>

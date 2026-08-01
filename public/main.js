@@ -15060,8 +15060,11 @@ const POLYTANK_PROGRESSION_ROMANS=['I','II','III','IV','V','VI','VII'];
 const POLYTANK_LOOT_LEVEL_CAPS={
   default:[10,20,30,40,50,60,70],
   adventure:[75,100,125,150,175,200,225],
-  apocalypse:[200,215,230,245,260,275,290],
+  apocalypse:[240,255,270,285,300,300,300],
 };
+const POLYTANK_MAX_ITEM_LEVEL=425;
+const POLYTANK_DROP_JACKPOT_LEVEL=300;
+const POLYTANK_DROP_JACKPOT_CHANCE=0.001;
 const POLYTANK_PROGRESSION_NODES=(()=>{
   const entries={};
   POLYTANK_PROGRESSION_TIERS.forEach((tier,tierIndex)=>{
@@ -15127,6 +15130,10 @@ const POLYTANK_IO={
   world:{w:9600,h:5400,midX:4800,midY:2700},
   camera:{x:0,y:0,zoom:1,targetZoom:1,minZoom:.3,maxZoom:1.85},
   keys:Object.create(null),
+  sandboxMapMode:'normal',
+  spectating:false,
+  spectateTargetId:'',
+  freecam:{x:0,y:0},
   pointer:{x:0,y:0,down:false},
   isMobileTouch:false,
   mobileControlsEnabled:false,
@@ -15460,7 +15467,7 @@ const POLYTANK_IO={
   getLootItemLevelCap(tier=this.progressionTier,rank=this.progressionRank){
     const normalizedTier=this.normalizeProgressionTier(tier);
     const caps=POLYTANK_LOOT_LEVEL_CAPS[normalizedTier]||POLYTANK_LOOT_LEVEL_CAPS.default;
-    return Math.max(1,Math.min(300,caps[this.normalizeProgressionRank(rank)-1]||caps[0]||10));
+    return Math.max(1,Math.min(POLYTANK_MAX_ITEM_LEVEL,caps[this.normalizeProgressionRank(rank)-1]||caps[0]||10));
   },
   getClosestUnlockedProgressionNode(tier=this.progressionTier,preferredRank=this.progressionRank){
     const normalizedTier=this.normalizeProgressionTier(tier);
@@ -15668,29 +15675,42 @@ const POLYTANK_IO={
     if(delta<=-8) return {message:`Worse than equipped ${slotLabel}`,color:'#ff9b7c'};
     return {message:`Sidegrade to equipped ${slotLabel}`,color:'#ffd47c'};
   },
+  getItemDamageCurveMultiplier(level){
+    const ratio=this.clamp((Number(level)||0)/POLYTANK_MAX_ITEM_LEVEL,0,1);
+    return 1+2*ratio*ratio;
+  },
+  getWeaponDamageForItemLevel(level){
+    const clamped=this.clamp(Number(level)||0,0,POLYTANK_MAX_ITEM_LEVEL);
+    const taperStart=200;
+    const base=12.41*Math.pow(1.0477,Math.min(clamped,taperStart));
+    if(clamped<=taperStart) return base;
+    const excess=(clamped-taperStart)/50;
+    return base*(1+Math.log(1+excess));
+  },
   computeItemStats(slot,level,rarity){
     const normalizedSlot=['hull','barrel','relic','artifact'].includes(slot)?slot:'relic';
     const normalizedRarity=POLYTANK_LOOT_RARITY_META[rarity]?rarity:'common';
     const power=POLYTANK_LOOT_RARITY_META[normalizedRarity].power;
-    const DAMAGE_MULT=3.2;
     const HP_MULT=1.2;
+    const damageCurve=this.getItemDamageCurveMultiplier(level);
+    const weaponDamage=this.getWeaponDamageForItemLevel(level);
     const stats={maxHpBonus:0,regenRateBonus:0,bodyDamagePct:0,bulletDamageFlat:0,bulletSpeedPct:0,moveSpeedPct:0,reloadMult:1};
     if(normalizedSlot==='hull'){
       stats.maxHpBonus=Math.round((40+level*24*power)*HP_MULT);
       stats.regenRateBonus=Number((0.08+level*0.014*power).toFixed(2));
     }else if(normalizedSlot==='barrel'){
-      stats.bulletDamageFlat=Math.round(level*4*power*DAMAGE_MULT);
+      stats.bulletDamageFlat=Math.round(weaponDamage*power);
       stats.bulletSpeedPct=Number((level*0.002).toFixed(4));
       stats.reloadMult=Number(Math.pow(1-0.0035,level).toFixed(4));
     }else if(normalizedSlot==='relic'){
       stats.moveSpeedPct=Number((level*0.0035).toFixed(4));
-      stats.bodyDamagePct=Number(((0.16+level*0.023*power)*DAMAGE_MULT).toFixed(3));
+      stats.bodyDamagePct=Number((level*0.0012*power*damageCurve).toFixed(3));
       stats.maxHpBonus=Math.round((18+level*11.5)*power*HP_MULT);
     }else{
       stats.maxHpBonus=Math.round((12+level*7.5)*power*HP_MULT);
       stats.regenRateBonus=Number((0.05+level*0.006*power).toFixed(2));
       stats.moveSpeedPct=Number((level*0.0035).toFixed(4));
-      stats.bulletDamageFlat=Math.round(level*1*power*DAMAGE_MULT);
+      stats.bulletDamageFlat=Math.round(weaponDamage*0.25*power);
     }
     return stats;
   },
@@ -15699,7 +15719,7 @@ const POLYTANK_IO={
     const normalizedRarity=POLYTANK_LOOT_RARITY_META[rarity]?rarity:'common';
     const inventory=this.getInventoryStore();
     const powerMeta=POLYTANK_LOOT_RARITY_META[normalizedRarity];
-    const level=Math.max(1,Math.min(300,Math.round(Number(itemLevel)||1)));
+    const level=Math.max(1,Math.min(POLYTANK_MAX_ITEM_LEVEL,Math.round(Number(itemLevel)||1)));
     const itemId=`item_${inventory.nextItemId++}`;
     const nounPool=POLYTANK_LOOT_NAME_POOLS[normalizedSlot]||POLYTANK_LOOT_NAME_POOLS.relic;
     const noun=nounPool[Math.floor(Math.random()*nounPool.length)]||'Gear';
@@ -15743,7 +15763,12 @@ const POLYTANK_IO={
     const rarity=this.getLootRarityForLevel(node.effectiveLevel);
     const cap=this.getLootItemLevelCap(node.tier,node.rank);
     const floorRatio={square:0.34,triangle:0.46,pentagon:0.58,hexagon:0.7,octagon:0.82,decagon:0.9}[shape?.kind]||0.34;
-    const itemLevel=Math.max(1,Math.min(cap,Math.round(cap*(floorRatio+(1-floorRatio)*Math.pow(Math.random(),2)))));
+    const curveExponent=node.tier==='default'?3.4:node.tier==='adventure'?3:3.5;
+    const naturalCap=Math.max(1,cap-1);
+    let itemLevel=Math.max(1,Math.min(naturalCap,Math.round(naturalCap*(floorRatio+(1-floorRatio)*Math.pow(Math.random(),curveExponent)))));
+    if(Math.random()<POLYTANK_DROP_JACKPOT_CHANCE){
+      itemLevel=Math.min(cap,POLYTANK_DROP_JACKPOT_LEVEL);
+    }
     return this.buildInventoryItem(slot,itemLevel,rarity,shape?.kind||'square');
   },
   createAdminGearItem(slot='barrel',itemLevel=1,rarity='legendary'){
@@ -16382,6 +16407,7 @@ const POLYTANK_IO={
     this.minimapCtx=this.minimapCanvas?this.minimapCanvas.getContext('2d'):null;
     this.setupMobileControls();
     this.loadRpgProfile();
+    this.loadSandboxMapMode();
     this.bindDifficultyLever();
     this.bindModeSelectNative();
     this.bindModeWheel();
@@ -16393,6 +16419,11 @@ const POLYTANK_IO={
     window.addEventListener('wheel',event=>this.onWheel(event),{passive:false});
     window.addEventListener('beforeunload',()=>{ if(this.localPartyCode) this.leaveLocalParty(true); });
     window.addEventListener('mousedown',event=>{
+      if(this.spectating&&this.active&&this.inMatch&&event.button===0&&this.canvas&&event.target===this.canvas){
+        this.handleSpectateClick(event.clientX,event.clientY);
+        event.preventDefault();
+        return;
+      }
       if(this.active&&this.inMatch&&event.button===0&&this.player&&this.player.deadTimer>0){
         if(this.handleDeathScreenClick(event.clientX,event.clientY)){
           event.preventDefault();
@@ -16429,6 +16460,12 @@ const POLYTANK_IO={
       if(!this.menuOpen||!this.difficultyTierMenuOpen) return;
       if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-difficulty-tier-picker')) return;
       this.toggleDifficultyTierMenu(false);
+    });
+    document.addEventListener('pointerdown',event=>{
+      const panel=document.getElementById('polytank-sandbox-settings-panel');
+      if(!panel||!panel.classList.contains('open')) return;
+      if(event.target&&typeof event.target.closest==='function'&&event.target.closest('#polytank-sandbox-settings-panel,#polytank-sandbox-settings-toggle')) return;
+      this.toggleSandboxSettingsPanel(false);
     });
     const nameInput=document.getElementById('polytank-name-input');
     if(nameInput){
@@ -17267,6 +17304,17 @@ const POLYTANK_IO={
           ?(localRoom?.status==='active'?'Match Live':(this.localPartyReady?'Cancel Ready':'Ready Up'))
           :(bossPending?bossPendingLabel:(this.localPartyRole==='host'?'Start Local Match':(hasResume?'Resume Saved Run':'Play'))));
       playButton.classList.toggle('boss-pending',bossPending);
+    }
+    const modeNativeSelect=document.getElementById('polytank-mode-select-native');
+    const modeWheel=document.getElementById('polytank-mode-wheel');
+    const modeDropdownToggle=document.getElementById('polytank-new-btn');
+    [modeNativeSelect,modeWheel].forEach(el=>{
+      if(!el) return;
+      el.classList.toggle('mode-locked',bossPending);
+      if(el.tagName==='SELECT') el.disabled=bossPending;
+    });
+    if(modeDropdownToggle&&!canStartFreshOffline){
+      modeDropdownToggle.style.display=bossPending?'none':'inline-flex';
     }
     if(leaveMatchButton){
       leaveMatchButton.style.display=pausedSession?'inline-flex':'none';
@@ -19223,6 +19271,10 @@ const POLYTANK_IO={
     this.setPausedByMenu(false);
     this.inMatch=false;
     this.bossEncounterActive=false;
+    if(this._preBossGameVariant){
+      this.gameVariant=this._preBossGameVariant;
+      this._preBossGameVariant='';
+    }
     this.pointer.down=false;
     cancelAnimationFrame(this.raf);
     this.raf=0;
@@ -19295,7 +19347,7 @@ const POLYTANK_IO={
   },
   applyWorldPreset(){
     const preset=this.isSandboxMode()
-      ? this.worldPresets.sandbox
+      ? (this.sandboxMapMode==='infinite'?{w:40000,h:40000}:this.worldPresets.sandbox)
       : this.isAncientMode()
         ? this.worldPresets.ancient
         : this.worldPresets.standard;
@@ -19866,6 +19918,113 @@ const POLYTANK_IO={
     if(show) this.syncSandboxSelections();
     const toggleBtn=document.getElementById('polytank-sandbox-shapes-toggle');
     if(toggleBtn) toggleBtn.textContent=this.sandboxShapesEnabled===false?'Enable Spawning':'Disable Spawning';
+    const settingsToggle=document.getElementById('polytank-sandbox-settings-toggle');
+    if(settingsToggle) settingsToggle.classList.toggle('show',show);
+    if(!show){
+      const settingsPanel=document.getElementById('polytank-sandbox-settings-panel');
+      if(settingsPanel) settingsPanel.classList.remove('open');
+    }
+    const spectateBtn=document.getElementById('polytank-spectate-btn');
+    if(spectateBtn){
+      spectateBtn.classList.toggle('show',this.isSandboxMode()&&this.inMatch&&!this.menuOpen);
+      spectateBtn.classList.toggle('active',this.spectating);
+      spectateBtn.textContent=this.spectating?'👁 Stop Spectating':'👁 Spectate';
+    }
+  },
+  loadSandboxMapMode(){
+    try{ this.sandboxMapMode=localStorage.getItem('polytank_sandbox_map_mode')==='infinite'?'infinite':'normal'; }catch(_err){ this.sandboxMapMode='normal'; }
+    return this.sandboxMapMode;
+  },
+  toggleSandboxSettingsPanel(force){
+    const panel=document.getElementById('polytank-sandbox-settings-panel');
+    if(!panel) return;
+    const open=typeof force==='boolean'?force:!panel.classList.contains('open');
+    panel.classList.toggle('open',open);
+    if(open){
+      this.animatePopup(panel);
+      document.getElementById('polytank-sandbox-map-normal')?.classList.toggle('active',this.sandboxMapMode!=='infinite');
+      document.getElementById('polytank-sandbox-map-infinite')?.classList.toggle('active',this.sandboxMapMode==='infinite');
+    }
+  },
+  setSandboxMapMode(mode){
+    this.sandboxMapMode=mode==='infinite'?'infinite':'normal';
+    try{ localStorage.setItem('polytank_sandbox_map_mode',this.sandboxMapMode); }catch(_err){}
+    document.getElementById('polytank-sandbox-map-normal')?.classList.toggle('active',this.sandboxMapMode!=='infinite');
+    document.getElementById('polytank-sandbox-map-infinite')?.classList.toggle('active',this.sandboxMapMode==='infinite');
+    toast(`Sandbox map set to ${this.sandboxMapMode==='infinite'?'Infinite':'Normal'}. Restart Sandbox to apply.`,'#8fcaff');
+  },
+  toggleSpectateMode(){
+    if(!this.isSandboxMode()||!this.inMatch) return;
+    this.spectating=!this.spectating;
+    if(this.spectating){
+      this.freecam.x=this.player?.x??this.world.midX;
+      this.freecam.y=this.player?.y??this.world.midY;
+      this.spectateTargetId='';
+      toast('Spectate mode: WASD to fly, click a target to follow.','#8aff5c');
+    }else{
+      this.spectateTargetId='';
+      this.applyAutoZoomForTank(this.player,true);
+      toast('Spectate mode off.','#ffd38d');
+    }
+    this.syncSandboxUi();
+  },
+  findSpectateEntity(id){
+    if(!id) return null;
+    if(this.player&&this.player.id===id) return this.player;
+    return this.bots.find(entry=>entry&&entry.id===id)
+      ||this.summonedBosses.find(entry=>entry&&entry.id===id)
+      ||(this.centerBoss&&this.centerBoss.id===id?this.centerBoss:null)
+      ||this.dominators.find(entry=>entry&&entry.id===id)
+      ||this.shapes.find(entry=>entry&&entry.id===id)
+      ||null;
+  },
+  handleSpectateClick(clientX,clientY){
+    if(!this.canvas) return;
+    const rect=this.canvas.getBoundingClientRect();
+    const zoom=this.camera.zoom||1;
+    const worldX=(clientX-rect.left)/zoom+this.camera.x;
+    const worldY=(clientY-rect.top)/zoom+this.camera.y;
+    const candidates=[this.player,...this.bots,...this.summonedBosses,...this.dominators,...this.shapes];
+    if(this.centerBoss) candidates.push(this.centerBoss);
+    let best=null;
+    let bestDist=Infinity;
+    for(const entity of candidates){
+      if(!entity) continue;
+      const dist=Math.hypot(entity.x-worldX,entity.y-worldY);
+      const hitRadius=(entity.r||30)+50;
+      if(dist<hitRadius&&dist<bestDist){ best=entity; bestDist=dist; }
+    }
+    if(best){
+      this.spectateTargetId=best.id;
+      toast('Following target.','#8aff5c');
+    }else{
+      this.spectateTargetId='';
+    }
+  },
+  updateFreecam(dt){
+    if(!this.spectating) return;
+    if(this.spectateTargetId){
+      const target=this.findSpectateEntity(this.spectateTargetId);
+      if(target&&(target.hp==null||target.hp>0)){
+        this.freecam.x=target.x;
+        this.freecam.y=target.y;
+        return;
+      }
+      this.spectateTargetId='';
+    }
+    const speed=1500/(this.camera.zoom||1);
+    let dx=0,dy=0;
+    if(this.keys.KeyW||this.keys.ArrowUp) dy-=1;
+    if(this.keys.KeyS||this.keys.ArrowDown) dy+=1;
+    if(this.keys.KeyA||this.keys.ArrowLeft) dx-=1;
+    if(this.keys.KeyD||this.keys.ArrowRight) dx+=1;
+    if(dx||dy){
+      const len=Math.hypot(dx,dy)||1;
+      this.freecam.x+=(dx/len)*speed*dt;
+      this.freecam.y+=(dy/len)*speed*dt;
+    }
+    this.freecam.x=this.clamp(this.freecam.x,-2000,this.world.w+2000);
+    this.freecam.y=this.clamp(this.freecam.y,-2000,this.world.h+2000);
   },
   sandboxClearShapes(){
     if(!this.isSandboxMode()) return;
@@ -20135,9 +20294,16 @@ const POLYTANK_IO={
     const zoom=Math.max(0.01,this.camera.zoom||1);
     return {x:this.camera.x+x/zoom,y:this.camera.y+y/zoom};
   },
+  getEffectiveMinZoom(){
+    const base=this.camera.minZoom||.3;
+    const tank=this.player;
+    if(tank&&tank.specialRole==='mothership') return base/3;
+    if(tank&&adminUnlocked&&(this.adminScale||1)>1.3) return base/2.4;
+    return base;
+  },
   setZoom(value,instant=false){
     const maxZoom=this.mobileControlsEnabled?3:(this.camera.maxZoom||1.85);
-    const next=this.clamp(value,this.camera.minZoom||.3,maxZoom);
+    const next=this.clamp(value,this.getEffectiveMinZoom(),maxZoom);
     this.camera.targetZoom=next;
     if(instant) this.camera.zoom=next;
   },
@@ -20486,7 +20652,7 @@ const POLYTANK_IO={
       const spawnX=this.clamp((this.player?.x||this.world.midX)+Math.cos(angle)*distance,620,this.world.w-620);
       const spawnY=this.clamp((this.player?.y||this.world.midY)+Math.sin(angle)*distance,360,this.world.h-360);
       const boss=key==='beta_hexagon'?this.createAdventureBossEntity(spawnX,spawnY):this.createDefaultBossEntity(spawnX,spawnY);
-      if(key==='beta_hexagon'&&!this.bossHazardZones) this.bossHazardZones=[];
+      if(key==='beta_hexagon'){ if(!this.bossHazardZones) this.bossHazardZones=[]; if(!this.blackHoles) this.blackHoles=[]; }
       this.summonedBosses.push(boss);
       flashScreen('rgba(127,148,244,.18)',140);
       toast(`Boss spawned: ${boss.label}.`,boss.bulletColor);
@@ -20785,7 +20951,7 @@ const POLYTANK_IO={
       }
       const point=this.getSandboxSpawnPoint(900);
       const boss=key==='beta_hexagon'?this.createAdventureBossEntity(point.x,point.y):this.createDefaultBossEntity(point.x,point.y);
-      if(key==='beta_hexagon'&&!this.bossHazardZones) this.bossHazardZones=[];
+      if(key==='beta_hexagon'){ if(!this.bossHazardZones) this.bossHazardZones=[]; if(!this.blackHoles) this.blackHoles=[]; }
       this.summonedBosses.push(boss);
       flashScreen('rgba(127,148,244,.18)',140);
       toast(`Boss spawned: ${boss.label}.`,boss.bulletColor);
@@ -21382,6 +21548,16 @@ const POLYTANK_IO={
     tank.bodyColor=profile.bodyColor||tank.bodyColor;
     tank.barrelColor=profile.barrelColor||tank.barrelColor;
     tank.bulletColor=profile.bulletColor||tank.bulletColor;
+    if(tank.isPlayer&&!this.networkRoomActive){
+      const gear=this.getEquippedInventoryStats();
+      tank.maxHp=Math.round(tank.maxHp+gear.maxHpBonus);
+      tank.regenRate+=gear.regenRateBonus;
+      tank.bodyDamage*=1+gear.bodyDamagePct;
+      tank.bulletSpeed*=1+gear.bulletSpeedPct;
+      tank.bulletDamage+=gear.bulletDamageFlat;
+      tank.reload=Math.max(0.05,tank.reload*gear.reloadMult);
+      tank.moveSpeed*=1+gear.moveSpeedPct;
+    }
     this.syncTankDrones(tank);
     if(refillHealth) tank.hp=tank.maxHp;
     else tank.hp=this.clamp((tank.hp||previousMax)+(tank.maxHp-previousMax)*0.5,1,tank.maxHp);
@@ -22828,9 +23004,14 @@ const POLYTANK_IO={
     bossBoss.summonTimer=9;
     bossBoss.deathPhase='';
     bossBoss.deathTimer=0;
+    bossBoss.phase2Triggered=false;
+    bossBoss.invulnerable=false;
+    bossBoss.invulnerTimer=0;
     return bossBoss;
   },
   setupDefaultBossArena(){
+    this._preBossGameVariant=this._preBossGameVariant||this.gameVariant;
+    this.gameVariant='sandbox';
     this.world={w:4200,h:5200,midX:2100,midY:2600};
     this.camera.minZoom=.28;
     this.bullets=[];
@@ -22929,12 +23110,16 @@ const POLYTANK_IO={
     bossBoss.cannonAngle=0;
     bossBoss.cannonTelegraph=0;
     bossBoss.hazardCooldown=4;
+    bossBoss.smallShotTimer=1;
+    bossBoss.blackHoleCooldown=6;
     bossBoss.summonTimer=9;
     bossBoss.deathPhase='';
     bossBoss.deathTimer=0;
     return bossBoss;
   },
   setupAdventureBossArena(){
+    this._preBossGameVariant=this._preBossGameVariant||this.gameVariant;
+    this.gameVariant='sandbox';
     this.world={w:4200,h:5200,midX:2100,midY:2600};
     this.camera.minZoom=.28;
     this.bullets=[];
@@ -22962,6 +23147,8 @@ const POLYTANK_IO={
     this.bossArenaDecor=[];
     this.bossArenaDebris=[];
     this.bossHazardZones=[];
+    this.blackHoles=[];
+    this.voidSequence=null;
     const bossSpawnY=this.world.midY-2000;
     this.bossArenaContainment={x:this.world.midX,y:bossSpawnY,r:900};
     this.bossArenaCage={x1:this.world.midX-560,x2:this.world.midX+560,y1:bossSpawnY-340,y2:bossSpawnY+340};
@@ -23008,14 +23195,16 @@ const POLYTANK_IO={
           const angle=boss.cannonAngle;
           this.bullets.push({
             id:`bullet_${++this.bulletId}`,
-            x:boss.x+Math.cos(angle)*(boss.r+220),
-            y:boss.y+Math.sin(angle)*(boss.r+220),
-            vx:Math.cos(angle)*150,
-            vy:Math.sin(angle)*150,
+            x:boss.x+Math.cos(angle)*(boss.r+70),
+            y:boss.y+Math.sin(angle)*(boss.r+70),
+            vx:Math.cos(angle)*220,
+            vy:Math.sin(angle)*220,
             r:132,
-            damage:2100,
+            damage:3000,
             penetration:1,
             hp:1,
+            maxPenetrationHits:999,
+            penetrationMinMultiplier:1,
             ownerId:boss.id,
             ownerTeam:'neutral',
             color:'#43bdd7',
@@ -23028,49 +23217,64 @@ const POLYTANK_IO={
         }
       } else {
         boss.cannonCooldown=Math.max(0,(boss.cannonCooldown||0)-dt);
-        if(boss.cannonCooldown<=0&&Math.random()<0.5){
+        if(boss.cannonCooldown<=0){
           boss.cannonTelegraph=1.1;
-          boss.cannonCooldown=6+Math.random()*3;
-        } else if(boss.cannonCooldown<=0){
-          boss.cannonCooldown=2+Math.random()*2;
+          boss.cannonCooldown=3+Math.random()*1.5;
         }
       }
       for(const bullet of this.bullets){
         if(!bullet.isHexBomb||bullet.exploded) continue;
-        bullet.spinRotation=(bullet.spinRotation||0)+dt*8;
+        bullet.spinRotation=(bullet.spinRotation||0)+dt*(bullet.spinSpeed||0.55);
+        if(!Number.isFinite(bullet.spinSpeed)) bullet.spinSpeed=(Math.random()>0.5?1:-1)*(0.35+Math.random()*0.7);
         const hitPlayer=Math.hypot(bullet.x-this.player.x,bullet.y-this.player.y)<this.getTankHitRadius(this.player)+bullet.r;
         if(hitPlayer||bullet.life<=0.05){
           bullet.exploded=true;
           bullet.life=0;
-          for(let index=0;index<4;index++){
-            const fragAngle=(index/4)*Math.PI*2+Math.random()*0.4;
-            this.bullets.push({
-              id:`bullet_${++this.bulletId}`,
-              x:bullet.x,
-              y:bullet.y,
-              vx:Math.cos(fragAngle)*380,
-              vy:Math.sin(fragAngle)*380,
-              speed:380,
-              r:24,
-              damage:300,
-              penetration:3.5,
-              hp:3.5,
-              ownerId:boss.id,
-              ownerTeam:'neutral',
-              color:'#8fe0f0',
-              isHexShard:true,
-              life:3.4,
-              maxLife:3.4,
-              homing:true,
-              homingTurn:3.2,
-              homingTargetKind:'',
-              homingTargetId:'',
-              homingTankOnly:true,
-              homingLifespan:3,
-              isDefaultBossBolt:true,
-            });
+          this.spawnBulletImpactEffect(bullet.x,bullet.y,'#43bdd7',2.4);
+          this.spawnBurst(bullet.x,bullet.y,'#8fe0f0',20,220);
+          const shardCount=5+Math.round(Math.random());
+          for(let index=0;index<shardCount;index++){
+            const fragAngle=(index/shardCount)*Math.PI*2+Math.random()*0.3;
+            const shard=this.spawnShapeAt('hexagon',bullet.x,bullet.y);
+            if(shard){
+              shard.vx=Math.cos(fragAngle)*260;
+              shard.vy=Math.sin(fragAngle)*260;
+              shard.bossSummon=true;
+            }
           }
         }
+      }
+      boss.smallShotTimer=Math.max(0,(boss.smallShotTimer||0)-dt);
+      if(boss.smallShotTimer<=0){
+        const sideCount=8;
+        for(let index=0;index<sideCount;index++){
+          const angle=(index/sideCount)*Math.PI*2+(boss.rotation||0);
+          this.bullets.push({
+            id:`bullet_${++this.bulletId}`,
+            x:boss.x+Math.cos(angle)*(boss.r+20),
+            y:boss.y+Math.sin(angle)*(boss.r+20),
+            vx:Math.cos(angle)*440,
+            vy:Math.sin(angle)*440,
+            speed:440,
+            r:16,
+            damage:26,
+            penetration:4,
+            hp:4,
+            ownerId:boss.id,
+            ownerTeam:'neutral',
+            color:'#8fe0f0',
+            life:3.2,
+            maxLife:3.2,
+            homing:true,
+            homingTurn:3.2,
+            homingTargetKind:'',
+            homingTargetId:'',
+            homingTankOnly:true,
+            homingLifespan:3,
+            isDefaultBossBolt:true,
+          });
+        }
+        boss.smallShotTimer=0.5;
       }
       boss.hazardCooldown=Math.max(0,(boss.hazardCooldown||0)-dt);
       if(boss.hazardCooldown<=0){
@@ -23105,18 +23309,99 @@ const POLYTANK_IO={
       this._hazardPrevX=this.player.x;
       this._hazardPrevY=this.player.y;
       this.bossHazardZones=this.bossHazardZones.filter(zone=>zone.life>0);
+      if(boss.hp<=boss.maxHp*0.35){
+        boss.blackHoleCooldown=Math.max(0,(boss.blackHoleCooldown||0)-dt);
+        if(boss.blackHoleCooldown<=0){
+          const angle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
+          this.bullets.push({
+            id:`bullet_${++this.bulletId}`,
+            x:boss.x+Math.cos(angle)*(boss.r+40),
+            y:boss.y+Math.sin(angle)*(boss.r+40),
+            vx:Math.cos(angle)*95,
+            vy:Math.sin(angle)*95,
+            r:26,
+            damage:0,
+            penetration:0,
+            hp:999,
+            maxPenetrationHits:999,
+            ownerId:boss.id,
+            ownerTeam:'neutral',
+            color:'#3fd0e8',
+            life:9,
+            maxLife:9,
+            isBlackHoleBullet:true,
+            pulsePhase:0,
+          });
+          boss.blackHoleCooldown=5+Math.random()*2;
+        }
+      }
+      for(let index=this.bullets.length-1;index>=0;index--){
+        const bullet=this.bullets[index];
+        if(!bullet||!bullet.isBlackHoleBullet) continue;
+        bullet.pulsePhase=(bullet.pulsePhase||0)+dt*3.4;
+        if(bullet.life<=6.3){
+          this.bullets.splice(index,1);
+          this.blackHoles.push({x:bullet.x,y:bullet.y,r:34,pullRadius:820,timer:13,swirl:0});
+          this.spawnBurst(bullet.x,bullet.y,'#3fd0e8',26,220);
+          shake('sm');
+        }
+      }
+    }
+    this.updateBlackHoles(dt);
+    this.updateVoidSequence(dt);
+  },
+  updateBlackHoles(dt){
+    if(!this.blackHoles||!this.blackHoles.length) return;
+    for(const hole of this.blackHoles) hole.swirl=(hole.swirl||0)+dt*2.2;
+    if(this.player&&this.player.deadTimer<=0&&!this.voidSequence){
+      for(const hole of this.blackHoles){
+        const dist=Math.hypot(this.player.x-hole.x,this.player.y-hole.y);
+        if(dist>hole.pullRadius) continue;
+        const closeness=1-this.clamp(dist/hole.pullRadius,0,1);
+        const pullSpeed=(40+closeness*closeness*620)*dt;
+        const nx=(hole.x-this.player.x)/(dist||1);
+        const ny=(hole.y-this.player.y)/(dist||1);
+        this.player.x+=nx*pullSpeed;
+        this.player.y+=ny*pullSpeed;
+        if(dist<hole.r+this.getTankHitRadius(this.player)*0.4){
+          this.startBlackHoleVoid(hole);
+          break;
+        }
+      }
+    }
+    this.blackHoles=this.blackHoles.filter(hole=>{
+      hole.timer-=dt;
+      return hole.timer>0;
+    });
+  },
+  startBlackHoleVoid(hole){
+    if(this.voidSequence) return;
+    this.voidSequence={timer:0,totalDuration:2.6,holeBossId:this.summonedBosses.find(b=>b&&b.isAdventureBoss)?.id||''};
+    this.player.invuln=999;
+    this.blackHoles=this.blackHoles.filter(entry=>entry!==hole);
+  },
+  updateVoidSequence(dt){
+    if(!this.voidSequence) return;
+    this.voidSequence.timer+=dt;
+    if(this.voidSequence.timer>=this.voidSequence.totalDuration){
+      const ownerId=this.voidSequence.holeBossId;
+      this.voidSequence=null;
+      this.player.invuln=0;
+      this.player.hp=0;
+      this.killTank(this.player,ownerId);
     }
   },
   fireDefaultBossFastBullets(boss){
-    for(let index=-1;index<=1;index+=2){
-      const angle=(boss.aimAngle||0)+index*0.16;
+    const sideCount=6;
+    for(let index=0;index<sideCount;index++){
+      const angle=(index/sideCount)*Math.PI*2+(boss.rotation||0);
       this.bullets.push({
         id:`bullet_${++this.bulletId}`,
         x:boss.x+Math.cos(angle)*(boss.r+30),
         y:boss.y+Math.sin(angle)*(boss.r+30),
-        vx:Math.cos(angle)*420,
-        vy:Math.sin(angle)*420,
-        speed:420,
+        vx:Math.cos(angle)*470,
+        vy:Math.sin(angle)*470,
+        speed:470,
         r:20,
         damage:32,
         penetration:4.4,
@@ -23210,6 +23495,36 @@ const POLYTANK_IO={
       this.updateAdventureBossEncounter(dt,boss);
       return;
     }
+    if(!boss.phase2Triggered&&boss.hp<=boss.maxHp*0.5){
+      boss.phase2Triggered=true;
+      boss.invulnerable=true;
+      boss.invulnerTimer=3.5;
+      shake('lg');
+      flashScreen('rgba(180,110,255,.32)',260);
+      toast(`${boss.label} shields itself!`,'#c88bff');
+    }
+    if(boss.invulnerable){
+      boss.invulnerTimer=Math.max(0,(boss.invulnerTimer||0)-dt);
+      if(boss.invulnerTimer<=0){
+        boss.invulnerable=false;
+        const vertexCount=5;
+        for(let index=0;index<vertexCount;index++){
+          const angle=(index/vertexCount)*Math.PI*2-Math.PI*0.5+(boss.rotation||0);
+          const spawnX=this.clamp(boss.x+Math.cos(angle)*boss.r,220,this.world.w-220);
+          const spawnY=this.clamp(boss.y+Math.sin(angle)*boss.r,220,this.world.h-220);
+          const mini=this.createArenaBoss('polytank_alpha',spawnX,spawnY);
+          mini.r=110;
+          mini.maxHp=16000;
+          mini.hp=16000;
+          mini.moveSpeed=230;
+          mini.label='Alpha Pentagon';
+          mini.bossSummon=true;
+          this.summonedBosses.push(mini);
+        }
+        toast(`${boss.label} summons its guardians!`,'#c88bff');
+      }
+      return;
+    }
     if(this.player&&this.player.deadTimer<=0){
       boss.giantShotTimer=Math.max(0,(boss.giantShotTimer||0)-dt);
       if(boss.giantShotTimer<=0){
@@ -23224,20 +23539,68 @@ const POLYTANK_IO={
           damage:Math.max(40,(this.player.maxHp||400)*0.9),
           penetration:1,
           hp:1,
+          maxPenetrationHits:999,
+          penetrationMinMultiplier:1,
           ownerId:boss.id,
           ownerTeam:'neutral',
-          color:'#ff6b6b',
+          color:'#5a8bff',
           life:6,
           maxLife:6,
           massive:true,
+          isPentaBomb:true,
+          bombAge:0,
         });
         boss.giantShotTimer=4+Math.random()*1.5;
+      }
+      for(const bullet of this.bullets){
+        if(!bullet.isPentaBomb||bullet.exploded) continue;
+        bullet.bombAge=(bullet.bombAge||0)+dt;
+        if(bullet.bombAge>=1){
+          const decay=Math.exp(-dt*1.6);
+          bullet.vx*=decay;
+          bullet.vy*=decay;
+          bullet.speed=Math.hypot(bullet.vx,bullet.vy);
+        }
+        const hitPlayer=Math.hypot(bullet.x-this.player.x,bullet.y-this.player.y)<this.getTankHitRadius(this.player)+bullet.r;
+        if(hitPlayer||bullet.bombAge>=4){
+          bullet.exploded=true;
+          bullet.life=0;
+          this.spawnBulletImpactEffect(bullet.x,bullet.y,'#5a8bff',2.4);
+          this.spawnBurst(bullet.x,bullet.y,'#ffffff',20,220);
+          for(let index=0;index<6;index++){
+            const fragAngle=(index/6)*Math.PI*2+Math.random()*0.3;
+            this.bullets.push({
+              id:`bullet_${++this.bulletId}`,
+              x:bullet.x,
+              y:bullet.y,
+              vx:Math.cos(fragAngle)*400,
+              vy:Math.sin(fragAngle)*400,
+              speed:400,
+              r:20,
+              damage:120,
+              penetration:3.5,
+              hp:3.5,
+              ownerId:boss.id,
+              ownerTeam:'neutral',
+              color:'#aeb8ff',
+              life:2.6,
+              maxLife:2.6,
+              homing:true,
+              homingTurn:3,
+              homingTargetKind:'',
+              homingTargetId:'',
+              homingTankOnly:true,
+              homingLifespan:1.6,
+              isDefaultBossBolt:true,
+            });
+          }
+        }
       }
       boss.fastShotTimer=Math.max(0,(boss.fastShotTimer||0)-dt);
       if(boss.fastShotTimer<=0){
         boss.aimAngle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
         this.fireDefaultBossFastBullets(boss);
-        boss.fastShotTimer=1.6+Math.random()*0.6;
+        boss.fastShotTimer=1.3+Math.random()*0.4;
       }
       if(boss.laserTelegraphTimer>0){
         boss.laserTelegraphTimer=Math.max(0,boss.laserTelegraphTimer-dt);
@@ -23364,6 +23727,14 @@ const POLYTANK_IO={
     }
     const boss=this.summonedBosses.find(entry=>entry&&entry.isDefaultBoss);
     if(boss){
+      if(boss.invulnerable){
+        const screen=this.worldToScreen(boss.x,boss.y);
+        const glint=0.5+0.5*Math.sin(this.matchClock*9);
+        ctx.save();
+        ctx.globalAlpha=0.35+glint*0.35;
+        this.drawPolygonAt(screen.x,screen.y,boss.r*1.06,5,boss.rotation||0,'rgba(200,139,255,.5)','#c88bff',6);
+        ctx.restore();
+      }
       if(boss.laserTelegraphTimer>0){
         const angle=Math.atan2(this.player.y-boss.y,this.player.x-boss.x);
         const startX=boss.x+Math.cos(angle)*boss.r;
@@ -23394,17 +23765,17 @@ const POLYTANK_IO={
       }
     }
     const hexBoss=this.summonedBosses.find(entry=>entry&&entry.isAdventureBoss);
-    if(hexBoss&&hexBoss.cannonTelegraph>0){
-      const cannonAngle=hexBoss.cannonAngle||0;
-      const tipScreen=this.worldToScreen(hexBoss.x+Math.cos(cannonAngle)*(hexBoss.r+40),hexBoss.y+Math.sin(cannonAngle)*(hexBoss.r+40));
+    if(hexBoss&&!hexBoss.dormant&&!hexBoss.deathPhase){
+      const attachAngle=hexBoss.cannonTelegraph>0?(hexBoss.cannonAngle||0):(hexBoss.rotation||0)-Math.PI*0.5;
+      const anchor=this.worldToScreen(hexBoss.x,hexBoss.y);
       ctx.save();
-      ctx.translate(tipScreen.x,tipScreen.y);
-      ctx.rotate(cannonAngle);
-      ctx.fillStyle='#43bdd7';
-      ctx.fillRect(0,-30,90,60);
+      ctx.translate(anchor.x,anchor.y);
+      ctx.rotate(attachAngle);
+      ctx.fillStyle=hexBoss.cannonTelegraph>0?'#8fe0f0':'#43bdd7';
+      ctx.fillRect(hexBoss.r*0.7,-30,90,60);
       ctx.strokeStyle='#166877';
       ctx.lineWidth=4;
-      ctx.strokeRect(0,-30,90,60);
+      ctx.strokeRect(hexBoss.r*0.7,-30,90,60);
       ctx.restore();
     }
     for(const zone of this.bossHazardZones||[]){
@@ -23431,6 +23802,111 @@ const POLYTANK_IO={
       this.drawPolygonAt(0,0,bullet.r,6,0,'#43bdd7','#166877',3);
       ctx.restore();
     }
+    for(const bullet of this.bullets){
+      if(!bullet.isPentaBomb||bullet.exploded) continue;
+      const screen=this.worldToScreen(bullet.x,bullet.y);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,bullet.r,0,Math.PI*2);
+      ctx.fillStyle='#5a8bff';
+      ctx.fill();
+      ctx.strokeStyle='#2a4d99';
+      ctx.lineWidth=4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,bullet.r*0.36,0,Math.PI*2);
+      ctx.fillStyle='rgba(243,247,255,.92)';
+      ctx.fill();
+      ctx.restore();
+    }
+    for(const bullet of this.bullets){
+      if(!bullet.isBlackHoleBullet) continue;
+      const screen=this.worldToScreen(bullet.x,bullet.y);
+      const pulse=0.5+0.5*Math.sin(bullet.pulsePhase||0);
+      const radius=bullet.r*(0.7+pulse*0.5);
+      ctx.save();
+      ctx.globalAlpha=0.85;
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,radius,0,Math.PI*2);
+      const grad=ctx.createRadialGradient(screen.x,screen.y,0,screen.x,screen.y,radius);
+      grad.addColorStop(0,'#eafcff');
+      grad.addColorStop(0.5,'#3fd0e8');
+      grad.addColorStop(1,'#0a3a44');
+      ctx.fillStyle=grad;
+      ctx.fill();
+      ctx.strokeStyle='#0a3a44';
+      ctx.lineWidth=3;
+      ctx.stroke();
+      ctx.restore();
+    }
+    for(const hole of this.blackHoles||[]){
+      const screen=this.worldToScreen(hole.x,hole.y);
+      ctx.save();
+      ctx.globalAlpha=0.18;
+      ctx.fillStyle='#0a3a44';
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,hole.pullRadius,0,Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha=1;
+      for(let ring=0;ring<3;ring++){
+        const ringR=hole.r+18+ring*16+((hole.swirl*40+ring*20)%60);
+        ctx.globalAlpha=Math.max(0,0.6-ring*0.15);
+        ctx.strokeStyle='#8fe9ff';
+        ctx.lineWidth=3;
+        ctx.beginPath();
+        ctx.arc(screen.x,screen.y,ringR,0,Math.PI*2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+      ctx.fillStyle='#020a0c';
+      ctx.beginPath();
+      ctx.arc(screen.x,screen.y,hole.r,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='#3fd0e8';
+      ctx.lineWidth=3;
+      ctx.stroke();
+      ctx.restore();
+    }
+  },
+  drawVoidSequenceOverlay(){
+    if(!this.voidSequence||!this.ctx) return;
+    const ctx=this.ctx;
+    const t=this.voidSequence.timer;
+    const total=this.voidSequence.totalDuration;
+    ctx.save();
+    if(t<0.8){
+      const alpha=this.clamp(t/0.8,0,1);
+      ctx.fillStyle=`rgba(2,6,10,${alpha})`;
+      ctx.fillRect(0,0,this.W,this.H);
+    }else if(t<total-0.6){
+      ctx.fillStyle='#020608';
+      ctx.fillRect(0,0,this.W,this.H);
+      const cx=this.W*0.5,cy=this.H*0.5;
+      for(let index=0;index<14;index++){
+        const angle=(t*2.4)+index*0.45;
+        const dist=40+((index*37+t*160)%180);
+        ctx.globalAlpha=0.5;
+        ctx.fillStyle='#3fd0e8';
+        ctx.beginPath();
+        ctx.arc(cx+Math.cos(angle)*dist,cy+Math.sin(angle)*dist,4,0,Math.PI*2);
+        ctx.fill();
+      }
+      ctx.globalAlpha=1;
+      ctx.fillStyle=this.player?.bodyColor||'#5a8bff';
+      ctx.beginPath();
+      ctx.arc(cx,cy,26,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='#0a3a44';
+      ctx.lineWidth=4;
+      ctx.stroke();
+    }else{
+      const alpha=this.clamp((t-(total-0.6))/0.6,0,1);
+      ctx.fillStyle='#020608';
+      ctx.fillRect(0,0,this.W,this.H);
+      ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+      ctx.fillRect(0,0,this.W,this.H);
+    }
+    ctx.restore();
   },
   exploreAfterBoss(){
     const popup=document.getElementById('polytank-boss-victory');
@@ -23866,14 +24342,22 @@ const POLYTANK_IO={
   updateCamera(){
     if(!this.player) return;
     if(Math.abs((this.camera.targetZoom||1)-(this.camera.zoom||1))>0.001) this.camera.zoom+=(this.camera.targetZoom-this.camera.zoom)*0.18;
+    if(this.spectating){
+      const view=this.getViewSize();
+      this.camera.x=this.clamp(this.freecam.x-view.w*0.5,-4000,this.world.w-view.w+4000);
+      this.camera.y=this.clamp(this.freecam.y-view.h*0.5,-4000,this.world.h-view.h+4000);
+      return;
+    }
     const deathSpectateTarget=this.player.deadTimer>0&&this.deathSpectateTargetId
       ? this.getTankById(this.deathSpectateTargetId)
       : null;
     const spectateTarget=this.isMothershipMode()&&this.mothershipEndgame&&this.player.deadTimer>0
       ? (this.bots.find(bot=>bot.id===this.endgameSpectateId&&bot.deadTimer<=0&&!bot._remove)||this.bots.find(bot=>bot.isWipeCloser&&bot.deadTimer<=0&&!bot._remove)||null)
       : null;
-    const focus=(deathSpectateTarget&&deathSpectateTarget.deadTimer<=0&&!deathSpectateTarget._remove?deathSpectateTarget:null)||spectateTarget||this.getControlledDominator()||this.player;
-    const padding=focus.specialRole==='mothership'?1200:(focus.specialRole==='arenaCloser'?320:0);
+    const bossDeathFocus=this.summonedBosses.find(entry=>entry&&(entry.isDefaultBoss||entry.isAdventureBoss)&&entry.deathPhase==='unstable');
+    const focus=bossDeathFocus||(deathSpectateTarget&&deathSpectateTarget.deadTimer<=0&&!deathSpectateTarget._remove?deathSpectateTarget:null)||spectateTarget||this.getControlledDominator()||this.player;
+    if(bossDeathFocus) this.camera.targetZoom=Math.max(0.3,Math.min(this.camera.targetZoom||1,0.55));
+    const padding=focus.specialRole==='mothership'?1200:(focus.specialRole==='arenaCloser'?320:bossDeathFocus?(bossDeathFocus.deathBaseR||bossDeathFocus.r)*0.6:0);
     const view=this.getViewSize();
     const maxX=Math.max(-padding,this.world.w-view.w+padding);
     const maxY=Math.max(-padding,this.world.h-view.h+padding);
@@ -24338,6 +24822,7 @@ const POLYTANK_IO={
       this.updateWeaponFeedback(this.player,dt);
     }
     this.updatePlayer(dt);
+    this.updateFreecam(dt);
     this.updateBots(dt);
     this.updateDominators(dt);
     this.updateGuards(dt);
@@ -24808,6 +25293,8 @@ const POLYTANK_IO={
     }
   },
   updatePlayer(dt){
+    if(this.spectating) return;
+    if(this.voidSequence) return;
     if(this.player.deadTimer>0){
       this.deathPanelAnim=this.clamp((this.deathPanelAnim||0)+dt*3.6,0,1);
       if(this.isMothershipMode()&&this.mothershipEndgame) return;
@@ -25860,6 +26347,7 @@ const POLYTANK_IO={
   },
   damageArenaBoss(boss,amount,ownerId,ownerTeam){
     if(!boss||amount<=0||boss.hp<=0) return false;
+    if(boss.invulnerable) return false;
     const scaledAmount=this.scaleDamageFromSource(amount,ownerId,ownerTeam);
     const actualDamage=Math.min(boss.hp,scaledAmount);
     boss.hp=Math.max(0,boss.hp-scaledAmount);
@@ -25870,7 +26358,7 @@ const POLYTANK_IO={
     const xpPool=boss.id===this.enemyMothership?.id?1600:(boss.id===this.centerBoss?.id?1400:(boss.kind==='fallen'?720:220));
     this.awardDamageXp(boss,ownerId,actualDamage,xpPool);
     this.spawnDamageNumber(boss.x,boss.y-boss.r*.32,scaledAmount,boss.kind==='mothership'?'#ffb4bc':'#ffe78c');
-    if(boss.hp<=0){
+    if(boss.hp<=0&&!boss.isDefaultBoss&&!boss.isAdventureBoss){
       if(this.enemyMothership&&boss.id===this.enemyMothership.id) this.destroyEncounterMothership(ownerId,ownerTeam);
       else if(this.centerBoss&&boss.id===this.centerBoss.id) this.destroyCenterBoss();
       else this.destroySummonedBoss(boss);
@@ -28368,6 +28856,7 @@ const POLYTANK_IO={
     this.drawTank(this.player,true);
     this.drawParticles();
     this.ctx.restore();
+    if(this.voidSequence) this.drawVoidSequenceOverlay();
     const cleanSpectate=this.player.deadTimer>0&&this.deathSpectateUiHidden&&!!this.deathSpectateTargetId;
     if(this.player.deadTimer>0) this.drawDeathScreen();
     else this.deathUiButtons=null;

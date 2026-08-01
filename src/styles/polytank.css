@@ -399,6 +399,7 @@ body.meltdown-warp{animation:warp-distort 1.6s ease-in-out infinite}
 #polytank-boss-replay-fight{background:linear-gradient(180deg,#ff8a7a,#e5453f);color:#fff8f6}
 #polytank-boss-replay-actions button:hover{transform:translateY(-2px);filter:brightness(1.05)}
 #polytank-boss-replay-actions button:active{transform:translateY(2px) scale(.96)}
+#polytank-mode-select-native.mode-locked,#polytank-mode-wheel.mode-locked{opacity:.4;pointer-events:none;filter:grayscale(.6)}
 #polytank-play-btn.boss-pending{
   background:linear-gradient(180deg,#ff8a7a,#e5453f) !important;
   border-color:rgba(150,20,20,.5) !important;
@@ -636,6 +637,21 @@ body.mobile-touch.mobile-portrait-lock #polytank-mobile-controls{display:none}
 #polytank-sandbox-toggle{position:absolute;right:18px;top:72px;z-index:4;display:none;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;border:1px solid rgba(158,206,255,.24);background:linear-gradient(180deg,rgba(22,31,48,.96),rgba(13,18,30,.98));color:#f4f7fb;font-family:'Orbitron',monospace;font-size:.52rem;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;box-shadow:0 18px 30px rgba(0,0,0,.28);transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease}
 #polytank-sandbox-toggle.show{display:flex}
 #polytank-sandbox-toggle:hover{transform:translateY(-1px);border-color:rgba(140,223,255,.54);box-shadow:0 20px 34px rgba(0,0,0,.3)}
+#polytank-sandbox-settings-toggle{position:absolute;right:18px;top:126px;z-index:4;display:none;width:40px;height:40px;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(158,206,255,.24);background:linear-gradient(180deg,rgba(22,31,48,.96),rgba(13,18,30,.98));color:#f4f7fb;font-size:1.05rem;cursor:pointer;box-shadow:0 14px 26px rgba(0,0,0,.28);transition:transform .14s ease,border-color .14s ease}
+#polytank-sandbox-settings-toggle.show{display:flex}
+#polytank-sandbox-settings-toggle:hover{transform:translateY(-1px) rotate(20deg);border-color:rgba(140,223,255,.54)}
+#polytank-sandbox-settings-panel{position:absolute;right:18px;top:174px;z-index:5;display:none;width:min(240px,calc(100vw - 36px));padding:14px;border-radius:18px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(20,24,33,.97),rgba(14,18,26,.95));box-shadow:0 24px 48px rgba(0,0,0,.34)}
+#polytank-sandbox-settings-panel.open{display:block;animation:polytankPanelIn .2s cubic-bezier(.2,.8,.2,1)}
+#polytank-sandbox-settings-title{font-family:'Orbitron',monospace;font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:#f4f7fb;margin-bottom:10px}
+#polytank-sandbox-settings-row{display:flex;gap:8px}
+.polytank-sandbox-map-option{flex:1;padding:9px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:rgba(230,236,244,.8);font-family:'Orbitron',monospace;font-size:.46rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:border-color .14s ease,background .14s ease,color .14s ease}
+.polytank-sandbox-map-option.active{border-color:#8fd6ff;background:rgba(143,214,255,.16);color:#fff}
+#polytank-sandbox-settings-note{margin-top:10px;font-family:'Rajdhani',sans-serif;font-size:.76rem;color:rgba(200,208,220,.62)}
+#polytank-spectate-btn{position:fixed;top:14px;left:14px;z-index:56;display:none;padding:10px 16px;border-radius:999px;border:2px solid rgba(210,198,164,.85);background:linear-gradient(180deg,#fffdf6,#f2ecd8);color:#3a3626;font-family:'Orbitron',monospace;font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;box-shadow:0 10px 20px rgba(0,0,0,.24);transition:transform .12s ease,filter .12s ease,background .12s ease,color .12s ease}
+#polytank-spectate-btn.active{background:linear-gradient(180deg,#8aff5c,#5fd633);color:#173510;border-color:rgba(60,140,20,.6)}
+#polytank-spectate-btn.show{display:inline-flex}
+#polytank-spectate-btn:hover{transform:translateY(-2px);filter:brightness(1.05)}
+#polytank-spectate-btn:active{transform:translateY(2px) scale(.97)}
 #polytank-sandbox-panel{position:absolute;right:18px;top:120px;z-index:4;display:none;width:min(360px,calc(100vw - 36px));max-height:calc(100vh - 168px);overflow:auto;padding:16px;border-radius:22px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(20,24,33,.97),rgba(14,18,26,.95));box-shadow:0 28px 58px rgba(0,0,0,.36);pointer-events:auto}
 #polytank-sandbox-panel.open{display:block;animation:polytankPanelIn .24s cubic-bezier(.2,.8,.2,1)}
 #polytank-sandbox-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
